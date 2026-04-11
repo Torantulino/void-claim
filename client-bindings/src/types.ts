@@ -57,6 +57,30 @@ export const Player = __t.object("Player", {
   kills: __t.u32(),
   earned: __t.u64(),
   lastUpdate: __t.u64(),
+  vx: __t.f32(),
+  vy: __t.f32(),
 });
 export type Player = __Infer<typeof Player>;
+
+export const Projectile = __t.object("Projectile", {
+  id: __t.u64(),
+  ownerId: __t.string(),
+  ownerName: __t.string(),
+  x: __t.f32(),
+  y: __t.f32(),
+  vx: __t.f32(),
+  vy: __t.f32(),
+  dmg: __t.f32(),
+  color: __t.string(),
+  isPlayer: __t.bool(),
+  spawnedAt: __t.u64(),
+  ttlMs: __t.u32(),
+});
+export type Projectile = __Infer<typeof Projectile>;
+
+export const WorldState = __t.object("WorldState", {
+  id: __t.u32(),
+  worldSeed: __t.u64(),
+});
+export type WorldState = __Infer<typeof WorldState>;
 

@@ -10,20 +10,4 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default {
-  x: __t.f32(),
-  y: __t.f32(),
-  vx: __t.f32(),
-  vy: __t.f32(),
-  angle: __t.f32(),
-  cargoUsed: __t.u32(),
-  dead: __t.bool(),
-  cloaked: __t.bool(),
-  bounty: __t.bool(),
-  kills: __t.u32(),
-  earned: __t.u64(),
-  ship: __t.string(),
-  color: __t.string(),
-  maxHp: __t.f32(),
-  maxShield: __t.f32(),
-};
+export default {};

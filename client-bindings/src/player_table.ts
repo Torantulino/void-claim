@@ -29,4 +29,6 @@ export default __t.row({
   kills: __t.u32(),
   earned: __t.u64(),
   lastUpdate: __t.u64().name("last_update"),
+  vx: __t.f32(),
+  vy: __t.f32(),
 });

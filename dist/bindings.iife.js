@@ -7906,6 +7906,30 @@ ${ty.variants.map(
   // src/client_disconnected_reducer.ts
   var client_disconnected_reducer_default = {};
 
+  // src/deal_damage_reducer.ts
+  var deal_damage_reducer_default = {
+    victimIdentityHex: t.string(),
+    damage: t.f32(),
+    attackerName: t.string()
+  };
+
+  // src/fire_projectile_reducer.ts
+  var fire_projectile_reducer_default = {
+    x: t.f32(),
+    y: t.f32(),
+    vx: t.f32(),
+    vy: t.f32(),
+    dmg: t.f32(),
+    color: t.string(),
+    ttlMs: t.u32()
+  };
+
+  // src/heal_player_reducer.ts
+  var heal_player_reducer_default = {
+    healHp: t.f32(),
+    healShield: t.f32()
+  };
+
   // src/join_game_reducer.ts
   var join_game_reducer_default = {
     name: t.string(),
@@ -7921,11 +7945,17 @@ ${ty.variants.map(
   // src/prune_events_reducer.ts
   var prune_events_reducer_default = {};
 
+  // src/prune_projectiles_reducer.ts
+  var prune_projectiles_reducer_default = {};
+
   // src/report_kill_reducer.ts
   var report_kill_reducer_default = {
     killerName: t.string(),
     victimName: t.string()
   };
+
+  // src/respawn_player_reducer.ts
+  var respawn_player_reducer_default = {};
 
   // src/send_chat_reducer.ts
   var send_chat_reducer_default = {
@@ -7947,11 +7977,9 @@ ${ty.variants.map(
   var update_player_reducer_default = {
     x: t.f32(),
     y: t.f32(),
+    vx: t.f32(),
+    vy: t.f32(),
     angle: t.f32(),
-    hp: t.f32(),
-    maxHp: t.f32(),
-    shield: t.f32(),
-    maxShield: t.f32(),
     cargoUsed: t.u32(),
     dead: t.bool(),
     cloaked: t.bool(),
@@ -7959,7 +7987,9 @@ ${ty.variants.map(
     kills: t.u32(),
     earned: t.u64(),
     ship: t.string(),
-    color: t.string()
+    color: t.string(),
+    maxHp: t.f32(),
+    maxShield: t.f32()
   };
 
   // src/chat_message_table.ts
@@ -8009,7 +8039,31 @@ ${ty.variants.map(
     bounty: t.bool(),
     kills: t.u32(),
     earned: t.u64(),
-    lastUpdate: t.u64().name("last_update")
+    lastUpdate: t.u64().name("last_update"),
+    vx: t.f32(),
+    vy: t.f32()
+  });
+
+  // src/projectile_table.ts
+  var projectile_table_default = t.row({
+    id: t.u64().primaryKey(),
+    ownerId: t.string().name("owner_id"),
+    ownerName: t.string().name("owner_name"),
+    x: t.f32(),
+    y: t.f32(),
+    vx: t.f32(),
+    vy: t.f32(),
+    dmg: t.f32(),
+    color: t.string(),
+    isPlayer: t.bool().name("is_player"),
+    spawnedAt: t.u64().name("spawned_at"),
+    ttlMs: t.u32().name("ttl_ms")
+  });
+
+  // src/world_state_table.ts
+  var world_state_table_default = t.row({
+    id: t.u32().primaryKey(),
+    worldSeed: t.u64().name("world_seed")
   });
 
   // src/index.ts
@@ -8017,7 +8071,7 @@ ${ty.variants.map(
     chat_message: table({
       name: "chat_message",
       indexes: [
-        { accessor: "id", name: "chat_message_id_idx_btree", algorithm: "btree", columns: [
+        { name: "id", algorithm: "btree", columns: [
           "id"
         ] }
       ],
@@ -8028,7 +8082,7 @@ ${ty.variants.map(
     kill_event: table({
       name: "kill_event",
       indexes: [
-        { accessor: "id", name: "kill_event_id_idx_btree", algorithm: "btree", columns: [
+        { name: "id", algorithm: "btree", columns: [
           "id"
         ] }
       ],
@@ -8039,7 +8093,7 @@ ${ty.variants.map(
     leaderboard_entry: table({
       name: "leaderboard_entry",
       indexes: [
-        { accessor: "id", name: "leaderboard_entry_id_idx_btree", algorithm: "btree", columns: [
+        { name: "id", algorithm: "btree", columns: [
           "id"
         ] }
       ],
@@ -8050,22 +8104,49 @@ ${ty.variants.map(
     player: table({
       name: "player",
       indexes: [
-        { accessor: "identity", name: "player_identity_idx_btree", algorithm: "btree", columns: [
+        { name: "identity", algorithm: "btree", columns: [
           "identity"
         ] }
       ],
       constraints: [
         { name: "player_identity_key", constraint: "unique", columns: ["identity"] }
       ]
-    }, player_table_default)
+    }, player_table_default),
+    projectile: table({
+      name: "projectile",
+      indexes: [
+        { name: "id", algorithm: "btree", columns: [
+          "id"
+        ] }
+      ],
+      constraints: [
+        { name: "projectile_id_key", constraint: "unique", columns: ["id"] }
+      ]
+    }, projectile_table_default),
+    world_state: table({
+      name: "world_state",
+      indexes: [
+        { name: "id", algorithm: "btree", columns: [
+          "id"
+        ] }
+      ],
+      constraints: [
+        { name: "world_state_id_key", constraint: "unique", columns: ["id"] }
+      ]
+    }, world_state_table_default)
   });
   var reducersSchema = reducers(
     reducerSchema("client_connected", client_connected_reducer_default),
     reducerSchema("client_disconnected", client_disconnected_reducer_default),
+    reducerSchema("deal_damage", deal_damage_reducer_default),
+    reducerSchema("fire_projectile", fire_projectile_reducer_default),
+    reducerSchema("heal_player", heal_player_reducer_default),
     reducerSchema("join_game", join_game_reducer_default),
     reducerSchema("leave_game", leave_game_reducer_default),
     reducerSchema("prune_events", prune_events_reducer_default),
+    reducerSchema("prune_projectiles", prune_projectiles_reducer_default),
     reducerSchema("report_kill", report_kill_reducer_default),
+    reducerSchema("respawn_player", respawn_player_reducer_default),
     reducerSchema("send_chat", send_chat_reducer_default),
     reducerSchema("submit_score", submit_score_reducer_default),
     reducerSchema("update_player", update_player_reducer_default)
@@ -8073,7 +8154,7 @@ ${ty.variants.map(
   var proceduresSchema = procedures();
   var REMOTE_MODULE = {
     versionInfo: {
-      cliVersion: "2.1.0"
+      cliVersion: "2.0.1"
     },
     tables: tablesSchema.schemaType.tables,
     reducers: reducersSchema.reducersType.reducers,

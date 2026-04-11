@@ -10,20 +10,17 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default {
+export default __t.row({
+  id: __t.u64().primaryKey(),
+  ownerId: __t.string().name("owner_id"),
+  ownerName: __t.string().name("owner_name"),
   x: __t.f32(),
   y: __t.f32(),
   vx: __t.f32(),
   vy: __t.f32(),
-  angle: __t.f32(),
-  cargoUsed: __t.u32(),
-  dead: __t.bool(),
-  cloaked: __t.bool(),
-  bounty: __t.bool(),
-  kills: __t.u32(),
-  earned: __t.u64(),
-  ship: __t.string(),
+  dmg: __t.f32(),
   color: __t.string(),
-  maxHp: __t.f32(),
-  maxShield: __t.f32(),
-};
+  isPlayer: __t.bool().name("is_player"),
+  spawnedAt: __t.u64().name("spawned_at"),
+  ttlMs: __t.u32().name("ttl_ms"),
+});
