@@ -32,7 +32,7 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 #notifications{position:absolute;top:60px;left:50%;transform:translateX(-50%);text-align:center;pointer-events:none}
 .notification{font-size:.9rem;padding:8px 18px;margin-bottom:4px;border-radius:8px;animation:notifFade 2.5s forwards;background:rgba(0,0,0,.75);white-space:nowrap;font-weight:bold;text-shadow:0 1px 4px rgba(0,0,0,.9)}
 @keyframes notifFade{0%{opacity:1;transform:translateY(0)}70%{opacity:1}100%{opacity:0;transform:translateY(-20px)}}
-#abilityBar{position:absolute;bottom:55px;left:50%;transform:translateX(-50%);pointer-events:none;text-align:center}
+#abilityBar{position:absolute;bottom:75px;left:50%;transform:translateX(-50%);pointer-events:none;text-align:center}
 #abilityHint{font-size:.75rem;color:rgba(255,255,255,.85);margin-bottom:3px;letter-spacing:.1em;text-shadow:0 1px 4px rgba(0,0,0,.9)}
 #abilityCooldown{width:100px;height:6px;background:rgba(255,255,255,.12);border-radius:3px;margin:0 auto;overflow:hidden}
 #abilityCooldown .fill{height:100%;border-radius:3px;transition:width .15s;width:100%;background:linear-gradient(90deg,#44ff88,#66bbff)}
@@ -93,10 +93,11 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 <div id="notifications"></div>
 <button id="soundToggle">🔊</button>
 <a href="./about.html" id="aboutLink" style="position:absolute;top:20px;right:70px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.35);color:rgba(255,255,255,.9);font-size:.75rem;cursor:pointer;border-radius:4px;padding:4px 8px;z-index:55;text-decoration:none;font-family:inherit;letter-spacing:.1em;transition:all .3s" onmouseover="this.style.borderColor='rgba(100,150,255,.6)';this.style.color='#4488ff'" onmouseout="this.style.borderColor='rgba(255,255,255,.35)';this.style.color='rgba(255,255,255,.9)'">ℹ ABOUT</a>
+<div id="onlineCount" style="position:absolute;top:48px;right:20px;font-size:.72rem;color:rgba(100,200,150,.85);letter-spacing:.1em;pointer-events:none;text-shadow:0 1px 4px rgba(0,0,0,.8);background:rgba(0,0,0,.5);padding:2px 8px;border-radius:4px">🌐 1 online</div>
 <button class="btn btn-sm" id="marketBtn">⬡ MARKET</button>
-<div id="abilityBar"><div id="abilityHint">E — ability</div><div id="abilityCooldown"><div class="fill"></div></div></div>
+<div id="abilityBar"><div id="abilityHint">R — ability</div><div id="abilityCooldown"><div class="fill"></div></div></div>
 <div id="cargoBar"><div class="cargo-outer"><div class="cargo-inner"></div></div><div class="cargo-label">CARGO 0/0</div></div>
-<div id="controls-hint">WASD move · Mouse aim or Q/R rotate · Click/Space shoot · Hold near asteroid to mine<br>E for ability · Return to Earth to sell · Press M for market</div>
+<div id="controls-hint">WASD move · Mouse aim or Q/E rotate · Click/Space shoot · Hold near asteroid to mine<br>R for ability · Return to Earth to sell · Press M for market</div>
 </div>
 <div id="leaderboard"><h4>⬡ LEADERBOARD</h4><div id="lbList"></div></div>
 <div id="market">
@@ -127,7 +128,7 @@ const CFG={
   PROJ_SPEED:700,PROJ_TTL:1.2,PROJ_DMG:8,
   MINE_RANGE:120,MINE_RATE:25,COLLECT_RANGE:60,SHOOT_CD:.35,
   RESPAWN_TIME:3,NPC_COUNT:14,AST_COUNT:350,LOOT_TTL:25,BOUNTY_TIME:90,
-  CAM_LERP:.08,SHAKE_DECAY:.9,MINIMAP_R:140,MINIMAP_SCALE:0.008,
+  CAM_LERP:.08,SHAKE_DECAY:.9,MINIMAP_R:140,MINIMAP_SCALE:0.02,
   STAR_LAYERS:[{count:200,size:1,speed:.05,alpha:.3},{count:150,size:1.5,speed:.15,alpha:.5},{count:80,size:2,speed:.3,alpha:.8}],
   WS_URL:null, // legacy — kept for backwards compat
   LB_URL:null, // legacy — kept for backwards compat
@@ -651,7 +652,7 @@ function updateAbilities(dt){
   const pct=1-player.abilityCD/shipDef.abilityCd;
   document.querySelector('#abilityCooldown .fill').style.width=(pct*100)+'%';
   document.getElementById('abilityHint').textContent=
-    player.abilityCD>0?`${shipDef.ability} (${Math.ceil(player.abilityCD)}s)`:`E — ${shipDef.ability}`;
+    player.abilityCD>0?`${shipDef.ability} (${Math.ceil(player.abilityCD)}s)`:`R — ${shipDef.ability}`;
   document.getElementById('abilityHint').style.color=
     player.abilityCD>0?'rgba(255,255,255,.15)':'rgba(255,255,255,.35)';
 }
@@ -1483,10 +1484,10 @@ document.addEventListener('keydown',e=>{
   input.keys[e.key.toLowerCase()]=true;
   if(e.key===' '&&gameState==='playing'){input.spaceDown=true;e.preventDefault();}
   if(e.key.toLowerCase()==='m'&&gameState==='playing'){toggleMarket();e.preventDefault();}
-  if(e.key.toLowerCase()==='e'&&gameState==='playing'){useAbility();e.preventDefault();}
+  if(e.key.toLowerCase()==='r'&&gameState==='playing'){useAbility();e.preventDefault();}
   if(e.key==='Escape')document.getElementById('market').style.display='none';
-  // Q/R keys activate keyboard-aim mode
-  if(e.key.toLowerCase()==='q'||e.key.toLowerCase()==='r')input.useKeyboardAim=true;
+  // Q/E keys activate keyboard-aim mode
+  if(e.key.toLowerCase()==='q'||e.key.toLowerCase()==='e')input.useKeyboardAim=true;
 });
 document.addEventListener('keyup',e=>{
   input.keys[e.key.toLowerCase()]=false;
@@ -1564,7 +1565,7 @@ function updatePlayer(dt){
   const ROT_SPEED=4.0; // radians/sec for keyboard rotation
   if(input.useKeyboardAim){
     if(input.keys['q'])player.angle-=ROT_SPEED*dt;
-    if(input.keys['r'])player.angle+=ROT_SPEED*dt;
+    if(input.keys['e'])player.angle+=ROT_SPEED*dt;
   }else{
     player.angle=Math.atan2(input.mouseWorld.y-player.y,input.mouseWorld.x-player.x);
   }
@@ -1998,6 +1999,8 @@ function connectSTDB(){
         console.log('[STDB] Connected as',identity.toHexString());
         notify('🌐 Connected to server','#44ff88');
         document.getElementById('playerCount').textContent='Online';
+        const oc=document.getElementById('onlineCount');
+        if(oc)oc.textContent='🌐 1 online';
         
         // Subscribe to all public tables for real-time sync
         conn.subscriptionBuilder()
@@ -2044,6 +2047,8 @@ function connectSTDB(){
       .onDisconnect(()=>{
         stdbConnected=false;
         remotePlayers=[];
+        const oc=document.getElementById('onlineCount');
+        if(oc)oc.textContent='🌐 offline';
         console.log('[STDB] Disconnected — retrying in 3s');
         setTimeout(()=>{stdbConn=null;connectSTDB();},3000);
       })
@@ -2062,8 +2067,8 @@ function stdbJoinGame(){
       name:player.name,
       ship:player.ship,
       color:player.color,
-      max_hp:player.maxHp,
-      max_shield:player.maxShield
+      maxHp:player.maxHp,
+      maxShield:player.maxShield
     });
   }catch(e){console.warn('[STDB] join_game failed:',e);}
 }
@@ -2081,18 +2086,20 @@ function syncRemotePlayers(){
         name:p.name,
         x:p.x,y:p.y,angle:p.angle,
         ship:p.ship,color:p.color,
-        hp:p.hp,maxHp:p.max_hp,
-        shield:p.shield,maxShield:p.max_shield,
-        cargo:p.cargo_used,
+        hp:p.hp,maxHp:p.maxHp,
+        shield:p.shield,maxShield:p.maxShield,
+        cargo:p.cargoUsed,
         dead:p.dead,cloaked:p.cloaked,bounty:p.bounty,
         kills:p.kills,earned:Number(p.earned)
       });
     }
     remotePlayers=allPlayers;
     
-    // Update player count
+    // Update player count on start screen and in-game HUD
     const total=allPlayers.length+1;
     document.getElementById('playerCount').textContent=`${total} player${total!==1?'s':''} online`;
+    const oc=document.getElementById('onlineCount');
+    if(oc)oc.textContent=`🌐 ${total} online`;
   }catch(e){}
 }
 
@@ -2121,10 +2128,10 @@ function sendState(){
         y:Math.round(player.y),
         angle:+(player.angle.toFixed(2)),
         hp:Math.round(player.hp),
-        max_hp:player.maxHp,
+        maxHp:player.maxHp,
         shield:Math.round(player.shield),
-        max_shield:player.maxShield,
-        cargo_used:totalCargo(player.cargo),
+        maxShield:player.maxShield,
+        cargoUsed:totalCargo(player.cargo),
         dead:player.dead||false,
         cloaked:player.cloaked||false,
         bounty:player.bounty>0,
@@ -2133,7 +2140,7 @@ function sendState(){
         ship:player.ship,
         color:player.color
       });
-    }catch(e){}
+    }catch(e){console.warn('[STDB] update_player failed:',e);}
     return;
   }
   
@@ -2157,7 +2164,7 @@ function sendState(){
 
 function reportKill(killerName,victimName){
   if(stdbConn&&stdbConnected){
-    try{stdbConn.reducers.report_kill({killer_name:killerName,victim_name:victimName});}catch(e){}
+    try{stdbConn.reducers.report_kill({killerName:killerName,victimName:victimName});}catch(e){}
   }
 }
 
@@ -2177,7 +2184,7 @@ function submitScore(){
 
 function sendChat(text){
   if(stdbConn&&stdbConnected&&player){
-    try{stdbConn.reducers.send_chat({sender_name:player.name,text:text});}catch(e){}
+    try{stdbConn.reducers.send_chat({senderName:player.name,text:text});}catch(e){}
   }
 }
 
