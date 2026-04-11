@@ -1,9 +1,10 @@
 /**
- * VOID CLAIM — SpacetimeDB Server Module (v2 — Hybrid Authority)
+ * VOID CLAIM — SpacetimeDB Server Module (v3 — Hybrid Authority + Server-Synced NPCs)
  * 
- * Server-authoritative combat, seeded asteroids, projectile sync.
- * Tables: players, kill_feed, chat, leaderboard, world_state, projectiles
- * Reducers: player CRUD, deal_damage, fire_projectile, world seed, chat, leaderboard
+ * Server-authoritative combat, seeded asteroids, projectile sync, NPC host-authority.
+ * Tables: players, kill_feed, chat, leaderboard, world_state, projectiles, npc, npc_host
+ * Reducers: player CRUD, deal_damage, fire_projectile, world seed, chat, leaderboard,
+ *           claim_npc_host, update_npcs_batch, damage_npc, respawn_npc
  */
 
 import { schema, table, t } from 'spacetimedb/server';
@@ -100,6 +101,46 @@ const spacetimedb = schema({
       timestamp: t.u64(),
     }
   ),
+
+  // ── NPC Host-Authority Tables ──
+  // One client runs NPC AI and syncs state here; others just render from this table
+  npc: table(
+    { public: true },
+    {
+      id:          t.u32().primaryKey(),   // NPC index 0..NPC_COUNT-1
+      name:        t.string(),
+      x:           t.f32(),
+      y:           t.f32(),
+      vx:          t.f32(),
+      vy:          t.f32(),
+      angle:       t.f32(),
+      ship:        t.string(),
+      color:       t.string(),
+      personality: t.string(),             // 'miner' or 'pirate'
+      state:       t.string(),             // 'idle','mine','attack','flee','return','sell','wander'
+      hp:          t.f32(),
+      max_hp:      t.f32(),
+      shield:      t.f32(),
+      max_shield:  t.f32(),
+      dead:        t.bool(),
+      cargo_used:  t.u32(),
+      total_kills: t.u32(),
+      total_mined: t.u32(),
+      total_earned:t.u32(),
+      stun_timer:  t.f32(),
+      last_update: t.u64(),
+    }
+  ),
+
+  // Singleton: which client is the NPC host
+  npc_host: table(
+    { public: true },
+    {
+      id:              t.u32().primaryKey(),   // always 0 (singleton)
+      host_identity:   t.string(),             // hex identity of the host client
+      claimed_at:      t.u64(),
+    }
+  ),
 });
 
 export default spacetimedb;
@@ -148,6 +189,12 @@ spacetimedb.clientDisconnected(
     if (existing) {
       ctx.db.player.identity.delete(ctx.sender);
       console.log(`Player left: ${existing.name}`);
+    }
+    // If this was the NPC host, clear the host claim so another client can take over
+    const host = ctx.db.npc_host.id.find(0);
+    if (host && host.host_identity === ctx.sender.toHexString()) {
+      ctx.db.npc_host.id.delete(0);
+      console.log(`NPC host disconnected: ${ctx.sender.toHexString().slice(0,8)} — host slot open`);
     }
   }
 );
@@ -521,5 +568,238 @@ export const prune_events = spacetimedb.reducer(
         ctx.db.chat_message.id.delete(msg.id);
       }
     }
+  }
+);
+
+// ═══════════════════════════════════════════
+// Reducers — NPC Host-Authority System
+// ═══════════════════════════════════════════
+// One client runs NPC AI locally and pushes state updates here.
+// All other clients read from the npc table and just render.
+
+// claim_npc_host — first caller wins; if existing host disconnected, anyone can reclaim
+export const claim_npc_host = spacetimedb.reducer(
+  (ctx) => {
+    const myHex = ctx.sender.toHexString();
+    const existing = ctx.db.npc_host.id.find(0);
+    
+    if (existing) {
+      // Check if existing host is still connected (has a player row)
+      let hostAlive = false;
+      for (const p of ctx.db.player.iter()) {
+        if (p.identity.toHexString() === existing.host_identity) {
+          hostAlive = true;
+          break;
+        }
+      }
+      if (hostAlive && existing.host_identity !== myHex) {
+        // Another live client is already hosting — reject
+        console.log(`NPC host claim rejected: ${myHex.slice(0,8)} (host=${existing.host_identity.slice(0,8)})`);
+        return;
+      }
+      // Host disconnected or it's us re-claiming — update
+      ctx.db.npc_host.id.update({
+        id: 0,
+        host_identity: myHex,
+        claimed_at: BigInt(Date.now()),
+      });
+    } else {
+      // No host exists — claim it
+      try { ctx.db.npc_host.id.delete(0); } catch(e) {} // safety cleanup
+      ctx.db.npc_host.insert({
+        id: 0,
+        host_identity: myHex,
+        claimed_at: BigInt(Date.now()),
+      });
+    }
+    console.log(`NPC host claimed by: ${myHex.slice(0,8)}`);
+  }
+);
+
+// spawn_npc — host creates initial NPC rows
+export const spawn_npc = spacetimedb.reducer(
+  {
+    npc_id:      t.u32(),
+    name:        t.string(),
+    x:           t.f32(),
+    y:           t.f32(),
+    angle:       t.f32(),
+    ship:        t.string(),
+    color:       t.string(),
+    personality: t.string(),
+    hp:          t.f32(),
+    max_hp:      t.f32(),
+    shield:      t.f32(),
+    max_shield:  t.f32(),
+    total_kills: t.u32(),
+    total_mined: t.u32(),
+    total_earned:t.u32(),
+  },
+  (ctx, args) => {
+    // Only the NPC host can spawn NPCs
+    const host = ctx.db.npc_host.id.find(0);
+    if (!host || host.host_identity !== ctx.sender.toHexString()) return;
+
+    // Delete existing NPC with this ID if present
+    const existing = ctx.db.npc.id.find(args.npc_id);
+    if (existing) {
+      ctx.db.npc.id.delete(args.npc_id);
+    }
+
+    ctx.db.npc.insert({
+      id:           args.npc_id,
+      name:         args.name,
+      x:            args.x,
+      y:            args.y,
+      vx:           0,
+      vy:           0,
+      angle:        args.angle,
+      ship:         args.ship,
+      color:        args.color,
+      personality:  args.personality,
+      state:        'idle',
+      hp:           args.hp,
+      max_hp:       args.max_hp,
+      shield:       args.shield,
+      max_shield:   args.max_shield,
+      dead:         false,
+      cargo_used:   0,
+      total_kills:  args.total_kills,
+      total_mined:  args.total_mined,
+      total_earned: args.total_earned,
+      stun_timer:   0,
+      last_update:  BigInt(Date.now()),
+    });
+  }
+);
+
+// update_npc — host pushes position/state for a single NPC (called in batch from client)
+export const update_npc = spacetimedb.reducer(
+  {
+    npc_id:      t.u32(),
+    x:           t.f32(),
+    y:           t.f32(),
+    vx:          t.f32(),
+    vy:          t.f32(),
+    angle:       t.f32(),
+    state:       t.string(),
+    hp:          t.f32(),
+    shield:      t.f32(),
+    dead:        t.bool(),
+    cargo_used:  t.u32(),
+    stun_timer:  t.f32(),
+    total_kills: t.u32(),
+    total_mined: t.u32(),
+    total_earned:t.u32(),
+  },
+  (ctx, args) => {
+    // Only the NPC host can update NPCs
+    const host = ctx.db.npc_host.id.find(0);
+    if (!host || host.host_identity !== ctx.sender.toHexString()) return;
+
+    const npc = ctx.db.npc.id.find(args.npc_id);
+    if (!npc) return;
+
+    ctx.db.npc.id.update({
+      ...npc,
+      x:            args.x,
+      y:            args.y,
+      vx:           args.vx,
+      vy:           args.vy,
+      angle:        args.angle,
+      state:        args.state,
+      hp:           args.hp,
+      shield:       args.shield,
+      dead:         args.dead,
+      cargo_used:   args.cargo_used,
+      stun_timer:   args.stun_timer,
+      total_kills:  args.total_kills,
+      total_mined:  args.total_mined,
+      total_earned: args.total_earned,
+      last_update:  BigInt(Date.now()),
+    });
+  }
+);
+
+// damage_npc — any player can deal damage to an NPC (server-authoritative)
+export const damage_npc = spacetimedb.reducer(
+  {
+    npc_id:       t.u32(),
+    damage:       t.f32(),
+    attacker_name:t.string(),
+  },
+  (ctx, args) => {
+    const npc = ctx.db.npc.id.find(args.npc_id);
+    if (!npc || npc.dead) return;
+
+    // Shield absorption (70% — same as player combat)
+    let dmg = args.damage;
+    let newShield = npc.shield;
+    let newHp = npc.hp;
+
+    if (newShield > 0) {
+      const shieldAbsorb = Math.min(newShield, dmg * 0.7);
+      newShield -= shieldAbsorb;
+      dmg -= shieldAbsorb;
+    }
+    newHp -= dmg;
+
+    if (newHp <= 0) {
+      ctx.db.npc.id.update({
+        ...npc,
+        hp: 0,
+        shield: 0,
+        dead: true,
+        last_update: BigInt(Date.now()),
+      });
+      // Record kill event
+      ctx.db.kill_event.insert({
+        id: BigInt(0),
+        killer: args.attacker_name,
+        victim: npc.name,
+        timestamp: BigInt(Date.now()),
+      });
+      console.log(`${args.attacker_name} destroyed NPC ${npc.name}`);
+    } else {
+      ctx.db.npc.id.update({
+        ...npc,
+        hp: newHp,
+        shield: Math.max(0, newShield),
+        last_update: BigInt(Date.now()),
+      });
+    }
+  }
+);
+
+// respawn_npc — host respawns a dead NPC
+export const respawn_npc = spacetimedb.reducer(
+  {
+    npc_id:    t.u32(),
+    x:         t.f32(),
+    y:         t.f32(),
+    hp:        t.f32(),
+    shield:    t.f32(),
+  },
+  (ctx, args) => {
+    const host = ctx.db.npc_host.id.find(0);
+    if (!host || host.host_identity !== ctx.sender.toHexString()) return;
+
+    const npc = ctx.db.npc.id.find(args.npc_id);
+    if (!npc) return;
+
+    ctx.db.npc.id.update({
+      ...npc,
+      x:           args.x,
+      y:           args.y,
+      vx:          0,
+      vy:          0,
+      hp:          args.hp,
+      shield:      args.shield,
+      dead:        false,
+      cargo_used:  0,
+      state:       'idle',
+      stun_timer:  0,
+      last_update: BigInt(Date.now()),
+    });
   }
 );

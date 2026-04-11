@@ -413,6 +413,13 @@ let autoSaveTimer=30;
 // World seed for deterministic asteroids (synced from SpacetimeDB)
 let worldSeed=null;
 
+// NPC Host-Authority state
+let isNpcHost=false;        // Are we the client running NPC AI?
+let npcHostCheckDone=false;  // Have we attempted to claim host?
+let npcSyncTimer=0;          // Timer for batching NPC state to server (10Hz)
+const NPC_SYNC_RATE=0.1;     // Send NPC state every 100ms
+let npcHostRecheckTimer=5;   // Re-check host claim periodically
+
 // Seeded PRNG (mulberry32)
 function seededRng(seed){
   let s=seed|0;
@@ -756,10 +763,10 @@ function updateAbilities(dt){
 
 
 // ═══════════════════════════════════════════
-// NPC System
+// NPC System (Host-Authority: one client runs AI, syncs to SpacetimeDB)
 // ═══════════════════════════════════════════
 
-function createNPC(){
+function createNPC(npcIndex){
   const isMiner=Math.random()>.35;
   const personality=isMiner?'miner':'pirate';
   const shipType=personality==='pirate'?pick(['corsair','corsair','prospector']):pick(['prospector','hauler','prospector','hauler','sentinel']);
@@ -769,6 +776,7 @@ function createNPC(){
   const base=SHIPS[shipType];
   const upgLvl=personality==='pirate'?randInt(1,3):randInt(0,2);
   return{
+    npcId:npcIndex, // Stable server ID (0..NPC_COUNT-1)
     id:uid(),name,x:Math.cos(a)*d,y:Math.sin(a)*d,vx:0,vy:0,angle:rand(0,Math.PI*2),
     hp:base.hull,maxHp:base.hull,shield:base.shield,maxShield:base.shield,
     ship:shipType,credits:randInt(0,200),cargo:{},
@@ -783,10 +791,209 @@ function createNPC(){
 
 function spawnNPCs(){
   npcs=[];
-  for(let i=0;i<CFG.NPC_COUNT;i++)npcs.push(createNPC());
+  for(let i=0;i<CFG.NPC_COUNT;i++)npcs.push(createNPC(i));
+}
+
+// Host pushes all NPC initial state to SpacetimeDB
+function pushNPCsToServer(){
+  if(!stdbConn||!stdbConnected||!isNpcHost)return;
+  console.log('[STDB-NPC] Host pushing',npcs.length,'NPCs to server');
+  npcs.forEach(n=>{
+    try{
+      stdbConn.reducers.spawnNpc({
+        npcId:n.npcId,name:n.name,
+        x:n.x,y:n.y,angle:n.angle,
+        ship:n.ship,color:n.color,personality:n.personality,
+        hp:n.hp,maxHp:n.maxHp,shield:n.shield,maxShield:n.maxShield,
+        totalKills:n.totalKills,totalMined:n.totalMined,totalEarned:n.totalEarned
+      });
+    }catch(e){console.warn('[STDB-NPC] spawnNpc failed:',e);}
+  });
+}
+
+// Sync NPC positions/state from server table (for non-host clients)
+function syncNPCsFromServer(){
+  if(!stdbConn||!stdbConnected||isNpcHost)return;
+  try{
+    const serverNPCs=new Map();
+    for(const sn of stdbConn.db.npc.iter()){
+      serverNPCs.set(sn.id,sn);
+    }
+    if(serverNPCs.size===0)return; // No NPCs from server yet
+    
+    // Build or update local NPC array from server data
+    const now=performance.now()/1000;
+    const newNpcs=[];
+    for(const[npcId,sn]of serverNPCs){
+      // Find existing local NPC to preserve interpolation state
+      const existing=npcs.find(n=>n.npcId===npcId);
+      if(existing){
+        // Update with interpolation targets
+        existing.targetX=sn.x;existing.targetY=sn.y;existing.targetAngle=sn.angle;
+        existing.startX=existing.x;existing.startY=existing.y;existing.startAngle=existing.angle;
+        existing.vx=sn.vx;existing.vy=sn.vy;
+        existing.interpStart=now;existing.interpDur=NPC_SYNC_RATE;
+        // Update non-interpolated fields directly
+        existing.hp=sn.hp;existing.maxHp=sn.maxHp;
+        existing.shield=sn.shield;existing.maxShield=sn.maxShield;
+        existing.dead=sn.dead;existing.state=sn.state;
+        existing.personality=sn.personality;existing.ship=sn.ship;
+        existing.color=sn.color;existing.name=sn.name;
+        existing.stunTimer=sn.stunTimer;
+        existing.totalKills=sn.totalKills;existing.totalMined=sn.totalMined;
+        existing.totalEarned=sn.totalEarned;
+        newNpcs.push(existing);
+      }else{
+        // Create new local NPC from server data
+        const base=SHIPS[sn.ship]||SHIPS.prospector;
+        newNpcs.push({
+          npcId:npcId,id:'npc_'+npcId,name:sn.name,
+          x:sn.x,y:sn.y,vx:sn.vx,vy:sn.vy,angle:sn.angle,
+          targetX:sn.x,targetY:sn.y,targetAngle:sn.angle,
+          startX:sn.x,startY:sn.y,startAngle:sn.angle,
+          interpStart:now,interpDur:NPC_SYNC_RATE,
+          hp:sn.hp,maxHp:sn.maxHp,shield:sn.shield,maxShield:sn.maxShield,
+          ship:sn.ship,credits:0,cargo:{},
+          upgrades:{engine:1,laser:1,shields:1,cargo:1,scanner:0},
+          shootCD:0,dead:sn.dead,respawnTimer:0,cloaked:false,bounty:0,
+          personality:sn.personality,state:sn.state,target:null,stateTimer:1,
+          thinkTimer:1,fleeHP:.25,isPlayer:false,isNPC:true,
+          color:sn.color,stunTimer:sn.stunTimer,
+          totalKills:sn.totalKills,totalMined:sn.totalMined,totalEarned:sn.totalEarned
+        });
+      }
+    }
+    npcs=newNpcs;
+  }catch(e){console.error('[STDB-NPC] syncNPCsFromServer error:',e);}
+}
+
+// Non-host: interpolate NPC positions each frame
+function interpolateRemoteNPCs(dt){
+  const now=performance.now()/1000;
+  npcs.forEach(n=>{
+    if(n.targetX===undefined)return;
+    const elapsed=now-n.interpStart;
+    const t=Math.min(elapsed/n.interpDur,1);
+    const ease=1-(1-t)*(1-t);
+    n.x=n.startX+(n.targetX-n.startX)*ease;
+    n.y=n.startY+(n.targetY-n.startY)*ease;
+    // Dead reckoning after interpolation
+    if(t>=1&&(n.vx||n.vy)){
+      const extraT=elapsed-n.interpDur;
+      if(extraT>0&&extraT<0.15){
+        n.x+=n.vx*extraT;n.y+=n.vy*extraT;
+      }
+    }
+    // Angle interpolation
+    let da=n.targetAngle-n.startAngle;
+    while(da>Math.PI)da-=2*Math.PI;
+    while(da<-Math.PI)da+=2*Math.PI;
+    n.angle=n.startAngle+da*ease;
+  });
+}
+
+// Host: batch sync NPC state to server at NPC_SYNC_RATE
+function syncNPCsToServer(){
+  if(!stdbConn||!stdbConnected||!isNpcHost)return;
+  npcs.forEach(n=>{
+    try{
+      stdbConn.reducers.updateNpc({
+        npcId:n.npcId,
+        x:Math.round(n.x),y:Math.round(n.y),
+        vx:+(n.vx.toFixed(1)),vy:+(n.vy.toFixed(1)),
+        angle:+(n.angle.toFixed(2)),
+        state:n.state||'idle',
+        hp:+(n.hp.toFixed(1)),shield:+(n.shield.toFixed(1)),
+        dead:n.dead||false,
+        cargoUsed:totalCargo(n.cargo),
+        stunTimer:+(Math.max(0,n.stunTimer||0).toFixed(2)),
+        totalKills:n.totalKills||0,
+        totalMined:n.totalMined||0,
+        totalEarned:n.totalEarned||0
+      });
+    }catch(e){}
+  });
+}
+
+// Host: notify server when an NPC respawns
+function serverRespawnNPC(n){
+  if(!stdbConn||!stdbConnected||!isNpcHost)return;
+  try{
+    stdbConn.reducers.respawnNpc({
+      npcId:n.npcId,x:n.x,y:n.y,
+      hp:n.hp,shield:n.shield
+    });
+  }catch(e){}
+}
+
+// Try to claim NPC host role
+function tryClaimNpcHost(){
+  if(!stdbConn||!stdbConnected)return;
+  try{
+    stdbConn.reducers.claimNpcHost({});
+    console.log('[STDB-NPC] Attempting to claim NPC host...');
+  }catch(e){console.warn('[STDB-NPC] claimNpcHost failed:',e);}
+}
+
+// Check if we are the current NPC host
+function checkIfNpcHost(){
+  if(!stdbConn||!stdbConnected)return false;
+  try{
+    for(const h of stdbConn.db.npc_host.iter()){
+      if(stdbConn.identity&&h.hostIdentity===stdbConn.identity.toHexString()){
+        return true;
+      }
+    }
+  }catch(e){}
+  return false;
 }
 
 function updateNPCs(dt){
+  // If multiplayer is connected, handle host/non-host logic
+  if(stdbConn&&stdbConnected){
+    // Periodically re-check host status
+    npcHostRecheckTimer-=dt;
+    if(npcHostRecheckTimer<=0){
+      npcHostRecheckTimer=3;
+      const wasHost=isNpcHost;
+      isNpcHost=checkIfNpcHost();
+      if(!wasHost&&isNpcHost){
+        console.log('[STDB-NPC] We are now the NPC host!');
+        // If we just became host and have no NPCs, spawn them
+        if(npcs.length===0){spawnNPCs();pushNPCsToServer();}
+        else{pushNPCsToServer();}
+      }
+      // If nobody is hosting and we haven't tried yet, claim it
+      if(!isNpcHost&&!npcHostCheckDone){
+        npcHostCheckDone=true;
+        tryClaimNpcHost();
+      }
+      // If nobody is hosting (host left), try to claim
+      let anyHost=false;
+      try{for(const h of stdbConn.db.npc_host.iter()){anyHost=true;break;}}catch(e){}
+      if(!anyHost){
+        tryClaimNpcHost();
+      }
+    }
+    
+    if(!isNpcHost){
+      // Non-host: sync from server table + interpolate
+      syncNPCsFromServer();
+      interpolateRemoteNPCs(dt);
+      // Still do visual FX for nearby NPCs (stun particles, thrust)
+      npcs.forEach(n=>{
+        if(n.dead)return;
+        if(n.stunTimer>0&&Math.random()<.2&&distToPlayer(n.x,n.y)<FX_RANGE){
+          spawnParticle(n.x+rand(-20,20),n.y+rand(-20,20),0,-20,'#44ddff',1.5,.3,4);
+        }
+        const v=Math.sqrt(n.vx*n.vx+n.vy*n.vy);
+        if(v>30&&Math.random()<.3&&distToPlayer(n.x,n.y)<FX_RANGE)emitThrust(n.x,n.y,n.angle,v,n.color);
+      });
+      return;
+    }
+  }
+  
+  // HOST path (or single-player): run full NPC AI locally
   npcs.forEach(n=>{
     if(n.dead){
       n.respawnTimer-=dt;
@@ -795,6 +1002,7 @@ function updateNPCs(dt){
         n.x=Math.cos(a)*d;n.y=Math.sin(a)*d;n.vx=0;n.vy=0;
         n.hp=SHIPS[n.ship].hull;n.shield=SHIPS[n.ship].shield;
         n.dead=false;n.cargo={};n.state='idle';n.bounty=0;n.stunTimer=0;
+        serverRespawnNPC(n);
       }
       return;
     }
@@ -803,11 +1011,10 @@ function updateNPCs(dt){
     if(n.stunTimer>0){
       n.stunTimer-=dt;
       n.vx*=.9;n.vy*=.9;
-      // Stun visual
-      if(Math.random()<.2){
+      if(Math.random()<.2&&distToPlayer(n.x,n.y)<FX_RANGE){
         spawnParticle(n.x+rand(-20,20),n.y+rand(-20,20),0,-20,'#44ddff',1.5,.3,4);
       }
-      return; // can't act while stunned
+      return;
     }
     
     n.thinkTimer-=dt;n.stateTimer-=dt;n.shootCD-=dt;n.bounty=Math.max(0,n.bounty-dt);
@@ -817,6 +1024,15 @@ function updateNPCs(dt){
     if(n.thinkTimer<=0){n.thinkTimer=rand(.5,1.5);npcThink(n);}
     npcAct(n,dt);
   });
+  
+  // Host: batch sync NPC state to server
+  if(stdbConn&&stdbConnected&&isNpcHost){
+    npcSyncTimer-=dt;
+    if(npcSyncTimer<=0){
+      npcSyncTimer=NPC_SYNC_RATE;
+      syncNPCsToServer();
+    }
+  }
 }
 
 function npcThink(n){
@@ -1780,7 +1996,7 @@ function updateProjectiles(dt){
         const nearPlayer=distToPlayer(p.x,p.y)<FX_RANGE;
         const hitsPlayer=t.isPlayer||t.isRemotePlayer;
         if(t.isRemotePlayer){
-          // Server-authoritative: tell server to apply damage
+          // Server-authoritative: tell server to apply damage to remote player
           if(stdbConn&&stdbConnected&&p.isPlayerOwned){
             try{stdbConn.reducers.dealDamage({
               victimIdentityHex:t.id,
@@ -1792,7 +2008,19 @@ function updateProjectiles(dt){
           emitBurst(p.x,p.y,8,80,p.color,2,.3,8);SFX.hit();
           minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
           shake(2);
+        }else if(t.isNPC&&stdbConn&&stdbConnected&&p.isPlayerOwned){
+          // Server-authoritative NPC damage: route through damageNpc reducer
+          try{stdbConn.reducers.damageNpc({
+            npcId:t.npcId,
+            damage:p.dmg,
+            attackerName:player?player.name:'Unknown'
+          });}catch(e){console.warn('[STDB] damage_npc failed:',e);}
+          // Local FX only (HP comes from server via host sync)
+          if(nearPlayer)emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
+          minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
+          if(nearPlayer){SFX.hit();shake(Math.max(0,1.5-distToPlayer(p.x,p.y)/FX_RANGE*1.5));}
         }else{
+          // Local damage (single-player, or NPC-vs-NPC on host, or NPC hitting player)
           applyDamage(t,p.dmg,p.ownerId,nearPlayer||hitsPlayer);
           if(nearPlayer||hitsPlayer)emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
           minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
@@ -2509,8 +2737,10 @@ function updateStdbDebug(){
   if(!d||d.style.display==='none')return;
   let playerCount=0;
   if(stdbConn&&stdbConnected){try{for(const p of stdbConn.db.player.iter())playerCount++;}catch(e){}}
+  let npcCount=0;try{if(stdbConn&&stdbConnected)for(const n of stdbConn.db.npc.iter())npcCount++;}catch(e){}
   d.textContent=`STDB: conn=${!!stdbConn} connected=${stdbConnected} subscribed=${stdbSubscribed} | `+
     `players_in_db=${playerCount} remote=${remotePlayers.length} | `+
+    `npcHost=${isNpcHost} npcs_local=${npcs.length} npcs_db=${npcCount} | `+
     `identity=${stdbConn&&stdbConn.identity?stdbConn.identity.toHexString().slice(0,12)+'...':'none'} | `+
     `db=${CFG.STDB_DATABASE} host=${CFG.STDB_HOST}`;
 }
@@ -2605,6 +2835,44 @@ function connectSTDB(){
           syncLeaderboard();
         });
         
+        // Listen for NPC table changes (non-host clients sync from this)
+        conn.db.npc.onInsert((ctx,npcRow)=>{
+          if(!isNpcHost)syncNPCsFromServer();
+        });
+        conn.db.npc.onUpdate((ctx,oldNpc,newNpc)=>{
+          if(!isNpcHost)syncNPCsFromServer();
+          // Check for NPC death (any client can see the explosion FX)
+          if(newNpc.dead&&!oldNpc.dead&&player){
+            const dx=newNpc.x-player.x,dy=newNpc.y-player.y;
+            if(Math.sqrt(dx*dx+dy*dy)<FX_RANGE){
+              emitBurst(newNpc.x,newNpc.y,30,150,newNpc.color||'#ff5555',3,.7,12);
+              emitBurst(newNpc.x,newNpc.y,15,80,'#fff',2,.4,8);
+              SFX.explode();shake(Math.max(0,4-Math.sqrt(dx*dx+dy*dy)/FX_RANGE*4));
+            }
+            minimapEvents.push({x:newNpc.x,y:newNpc.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
+          }
+        });
+        
+        // Listen for NPC host changes (for host election)
+        conn.db.npc_host.onInsert((ctx,host)=>{
+          const myHex=stdbConn&&stdbConn.identity?stdbConn.identity.toHexString():'';
+          isNpcHost=host.hostIdentity===myHex;
+          console.log('[STDB-NPC] Host changed:',host.hostIdentity.slice(0,8),'isUs=',isNpcHost);
+          if(isNpcHost&&npcs.length>0)pushNPCsToServer();
+        });
+        conn.db.npc_host.onUpdate((ctx,oldHost,newHost)=>{
+          const myHex=stdbConn&&stdbConn.identity?stdbConn.identity.toHexString():'';
+          isNpcHost=newHost.hostIdentity===myHex;
+          console.log('[STDB-NPC] Host updated:',newHost.hostIdentity.slice(0,8),'isUs=',isNpcHost);
+          if(isNpcHost&&npcs.length>0)pushNPCsToServer();
+        });
+        conn.db.npc_host.onDelete((ctx,host)=>{
+          const myHex=stdbConn&&stdbConn.identity?stdbConn.identity.toHexString():'';
+          if(host.hostIdentity===myHex)isNpcHost=false;
+          console.log('[STDB-NPC] Host slot cleared — will attempt re-claim');
+          npcHostRecheckTimer=0; // trigger immediate re-check
+        });
+        
         // NOW subscribe to all tables — listeners are ready
         conn.subscriptionBuilder()
           .onApplied(()=>{
@@ -2634,6 +2902,26 @@ function connectSTDB(){
               console.log('[STDB] Joining game after subscription applied...');
               stdbJoinGame();
             }
+            // Attempt to claim NPC host role
+            if(!npcHostCheckDone){
+              npcHostCheckDone=true;
+              // Small delay to let join_game settle first
+              setTimeout(()=>{
+                tryClaimNpcHost();
+                // After claiming, check if we got it
+                setTimeout(()=>{
+                  isNpcHost=checkIfNpcHost();
+                  if(isNpcHost){
+                    console.log('[STDB-NPC] ✅ We are the NPC host!');
+                    if(npcs.length>0)pushNPCsToServer();
+                    else{spawnNPCs();pushNPCsToServer();}
+                  }else{
+                    console.log('[STDB-NPC] Another client is NPC host — syncing from server');
+                    syncNPCsFromServer();
+                  }
+                },500);
+              },300);
+            }
           })
           .onError((ctx,err)=>{
             console.error('[STDB] ❌ Subscription error:',err);
@@ -2643,6 +2931,8 @@ function connectSTDB(){
       .onDisconnect((ctx)=>{
         stdbConnected=false;
         stdbSubscribed=false;
+        isNpcHost=false;
+        npcHostCheckDone=false;
         remotePlayers=[];
         remoteProjectiles=[];
         const oc=document.getElementById('onlineCount');
