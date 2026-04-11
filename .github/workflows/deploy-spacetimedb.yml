@@ -1,0 +1,85 @@
+name: Deploy SpacetimeDB Module
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'spacetimedb/**'
+      - '.github/workflows/deploy-spacetimedb.yml'
+  workflow_dispatch:
+
+env:
+  STDB_DATABASE: void-claim
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install SpacetimeDB CLI
+        run: |
+          curl -sSf https://install.spacetimedb.com | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Authenticate with SpacetimeDB
+        run: spacetime login --token "${{ secrets.SPACETIMEDB_TOKEN }}"
+
+      - name: Publish module to Maincloud
+        run: |
+          spacetime publish "${{ env.STDB_DATABASE }}" \
+            --server maincloud \
+            --module-path ./spacetimedb \
+            --delete-data on-conflict \
+            2>&1
+          echo "✅ Module published to Maincloud"
+
+      - name: Generate TypeScript client bindings
+        run: |
+          spacetime generate \
+            --lang typescript \
+            --out-dir ./client-bindings/src \
+            --module-path ./spacetimedb
+          echo "✅ Client bindings generated"
+
+      - name: Build IIFE bundle for browser
+        run: |
+          cd client-bindings
+          cat > package.json << 'EOF'
+          {
+            "name": "void-claim-bindings",
+            "private": true,
+            "type": "module",
+            "scripts": {
+              "build": "npx esbuild src/index.ts --bundle --format=iife --global-name=VoidClaimDB --outfile=../dist/bindings.iife.js --platform=browser --target=es2020"
+            },
+            "dependencies": {
+              "spacetimedb": "^2.0.0"
+            },
+            "devDependencies": {
+              "esbuild": "^0.20.0",
+              "typescript": "^5.4.0"
+            }
+          }
+          EOF
+          npm install
+          npm run build
+          echo "✅ IIFE bundle built at dist/bindings.iife.js"
+
+      - name: Commit generated bindings
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dist/ client-bindings/src/
+          git diff --cached --quiet && echo "No changes to commit" || \
+            (git commit -m "chore: auto-generate SpacetimeDB client bindings" && \
+             git push)
+          echo "✅ Bindings committed to repo"
