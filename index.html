@@ -72,6 +72,22 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 #soundToggle{position:absolute;top:20px;right:20px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.35);color:rgba(255,255,255,.9);font-size:1rem;cursor:pointer;border-radius:4px;padding:4px 8px;z-index:55}
 #soundToggle:hover{border-color:rgba(255,255,255,.6);color:#fff}
 ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}::-webkit-scrollbar-thumb{background:rgba(100,150,255,.2);border-radius:2px}
+#chatBox{position:absolute;bottom:70px;left:16px;width:340px;max-width:45vw;z-index:55;transition:opacity .4s;pointer-events:none}
+#chatBox.active{pointer-events:auto}
+#chatBox.faded{opacity:.3}
+#chatBox.faded:hover{opacity:1}
+#chatLog{max-height:180px;overflow-y:auto;padding:6px 0;display:flex;flex-direction:column;gap:2px;scrollbar-width:thin}
+.chat-msg{font-size:.72rem;padding:3px 8px;color:rgba(255,255,255,.9);line-height:1.4;word-wrap:break-word;animation:chatIn .25s ease-out}
+.chat-msg .chat-name{font-weight:bold;margin-right:4px}
+.chat-msg.system{color:rgba(150,180,255,.7);font-style:italic}
+@keyframes chatIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+#chatInputRow{display:flex;align-items:center;gap:4px;margin-top:4px;opacity:0;pointer-events:none;transition:opacity .2s}
+#chatInputRow.visible{opacity:1;pointer-events:auto}
+#chatInputRow label{font-size:.7rem;color:rgba(150,180,255,.7);white-space:nowrap}
+#chatInput{flex:1;background:rgba(0,0,10,.8);border:1px solid rgba(100,150,255,.3);color:#fff;padding:6px 10px;font-size:.78rem;font-family:inherit;border-radius:4px;outline:none}
+#chatInput:focus{border-color:rgba(100,150,255,.6);box-shadow:0 0 8px rgba(100,150,255,.15)}
+#chatInput::placeholder{color:rgba(150,180,255,.35)}
+#chatHint{font-size:.6rem;color:rgba(150,180,255,.35);text-align:center;margin-top:2px;transition:opacity .3s}
 </style>
 </head>
 <body>
@@ -98,7 +114,12 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 <button class="btn btn-sm" id="marketBtn">⬡ MARKET</button>
 <div id="abilityBar"><div id="abilityHint">R — ability</div><div id="abilityCooldown"><div class="fill"></div></div></div>
 <div id="cargoBar"><div class="cargo-outer"><div class="cargo-inner"></div></div><div class="cargo-label">CARGO 0/0</div></div>
-<div id="controls-hint">W/S thrust · A/D rotate · Q/E strafe · Mouse aim · Click/Space shoot · Hold near asteroid to mine<br>R for ability · Return to Earth to sell · Press M for market</div>
+<div id="chatBox" class="faded">
+<div id="chatLog"></div>
+<div id="chatInputRow"><label>💬</label><input type="text" id="chatInput" placeholder="Type a message..." maxlength="200" autocomplete="off"></div>
+<div id="chatHint">Enter to chat</div>
+</div>
+<div id="controls-hint">W/S thrust · A/D rotate · Q/E strafe · Mouse aim · Click/Space shoot · Hold near asteroid to mine<br>R for ability · Return to Earth to sell · M for market · Enter/T to chat</div>
 </div>
 <div id="leaderboard"><h4>⬡ LEADERBOARD</h4><div id="lbList"></div></div>
 <div id="market">
@@ -1891,6 +1912,12 @@ function drawPortal(portal,label,color,showPrompt){
 // ═══════════════════════════════════════════
 
 document.addEventListener('keydown',e=>{
+  // If chat is open, block all game input (chatInput handles its own keys via stopPropagation)
+  if(chatOpen)return;
+  // Enter or T opens chat while playing
+  if((e.key==='Enter'||e.key.toLowerCase()==='t')&&gameState==='playing'&&document.getElementById('market').style.display==='none'){
+    openChat();e.preventDefault();return;
+  }
   input.keys[e.key.toLowerCase()]=true;
   if(e.key===' '&&gameState==='playing'){input.spaceDown=true;e.preventDefault();}
   if(e.key.toLowerCase()==='m'&&gameState==='playing'){toggleMarket();e.preventDefault();}
@@ -1899,6 +1926,7 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape')document.getElementById('market').style.display='none';
 });
 document.addEventListener('keyup',e=>{
+  if(chatOpen)return;
   input.keys[e.key.toLowerCase()]=false;
   if(e.key===' ')input.spaceDown=false;
 });
@@ -2883,11 +2911,12 @@ function connectSTDB(){
         // Listen for kill events
         conn.db.kill_event.onInsert((ctx,ev)=>{
           notify(`☠ ${ev.killer} destroyed ${ev.victim}`,'#ff6644');
+          if(typeof addChatMessage==='function')addChatMessage('','☠ '+ev.killer+' destroyed '+ev.victim,true);
         });
         
         // Listen for chat messages
         conn.db.chat_message.onInsert((ctx,msg)=>{
-          notify(`${msg.sender}: ${msg.text}`,'#aaaaff');
+          addChatMessage(msg.sender,msg.text);
         });
         
         // Listen for remote projectiles (from other players)
@@ -3123,6 +3152,7 @@ function handlePlayerInsert(p){
   };
   remotePlayerMap.set(id,rp);
   rebuildRemotePlayers();
+  if(typeof addChatMessage==='function')addChatMessage('',p.name+' entered the sector',true);
 }
 
 function handlePlayerUpdate(oldP,newP){
@@ -3170,6 +3200,7 @@ function handlePlayerDelete(p){
   console.log('[STDB] player.onDelete:',p.name);
   remotePlayerMap.delete(id);
   rebuildRemotePlayers();
+  if(typeof addChatMessage==='function')addChatMessage('',p.name+' left the sector',true);
 }
 
 // Rebuild the remotePlayers array from the map (only on join/leave, not every update)
@@ -3424,6 +3455,109 @@ function sendChat(text){
   }
 }
 
+// ═══════════════════════════════════════════
+// Chat UI System
+// ═══════════════════════════════════════════
+let chatOpen=false;
+let chatFadeTimer=0;
+const CHAT_FADE_DELAY=6000; // fade after 6s of inactivity
+const CHAT_MAX_MESSAGES=50;
+
+const chatBox=document.getElementById('chatBox');
+const chatLog=document.getElementById('chatLog');
+const chatInput=document.getElementById('chatInput');
+const chatInputRow=document.getElementById('chatInputRow');
+const chatHint=document.getElementById('chatHint');
+
+function openChat(){
+  chatOpen=true;
+  // Clear all held keys so ship doesn't keep drifting
+  for(const k in input.keys)input.keys[k]=false;
+  input.spaceDown=false;input.mouseDown=false;
+  chatBox.classList.add('active');
+  chatBox.classList.remove('faded');
+  chatInputRow.classList.add('visible');
+  chatHint.style.opacity='0';
+  chatInput.focus();
+  resetChatFade();
+}
+
+function closeChat(){
+  chatOpen=false;
+  chatInput.blur();
+  chatInput.value='';
+  chatInputRow.classList.remove('visible');
+  chatBox.classList.remove('active');
+  chatHint.style.opacity='1';
+  resetChatFade();
+}
+
+function resetChatFade(){
+  chatFadeTimer=performance.now()+CHAT_FADE_DELAY;
+  chatBox.classList.remove('faded');
+}
+
+function updateChatFade(){
+  if(!chatOpen&&performance.now()>chatFadeTimer){
+    chatBox.classList.add('faded');
+  }
+}
+
+function addChatMessage(sender,text,isSystem){
+  const div=document.createElement('div');
+  div.className='chat-msg'+(isSystem?' system':'');
+  if(isSystem){
+    div.textContent=text;
+  }else{
+    const nameSpan=document.createElement('span');
+    nameSpan.className='chat-name';
+    nameSpan.style.color=getPlayerColor(sender);
+    nameSpan.textContent=sender+':';
+    div.appendChild(nameSpan);
+    div.appendChild(document.createTextNode(' '+text));
+  }
+  chatLog.appendChild(div);
+  // Trim old messages
+  while(chatLog.children.length>CHAT_MAX_MESSAGES){
+    chatLog.removeChild(chatLog.firstChild);
+  }
+  chatLog.scrollTop=chatLog.scrollHeight;
+  resetChatFade();
+}
+
+function getPlayerColor(name){
+  // Deterministic color from player name
+  let hash=0;
+  for(let i=0;i<name.length;i++)hash=((hash<<5)-hash)+name.charCodeAt(i);
+  const hue=Math.abs(hash)%360;
+  return `hsl(${hue},70%,70%)`;
+}
+
+function handleChatSubmit(){
+  const text=chatInput.value.trim();
+  if(text){
+    sendChat(text);
+    // Don't add locally — it'll come back via onInsert
+  }
+  closeChat();
+}
+
+// Chat keyboard handling
+chatInput.addEventListener('keydown',e=>{
+  e.stopPropagation(); // Prevent game from receiving keystrokes while typing
+  if(e.key==='Enter'){
+    handleChatSubmit();
+    e.preventDefault();
+  }else if(e.key==='Escape'){
+    closeChat();
+    e.preventDefault();
+  }
+});
+
+// Prevent game input while chat is focused
+chatInput.addEventListener('keyup',e=>e.stopPropagation());
+chatInput.addEventListener('keypress',e=>e.stopPropagation());
+
 // Legacy WebSocket (kept as fallback)
 function connectWS(){
   if(!CFG.WS_URL)return;
@@ -3670,7 +3804,7 @@ function gameLoop(timestamp){
     for(let i=minimapEvents.length-1;i>=0;i--){minimapEvents[i].t+=dt;if(minimapEvents[i].t>=minimapEvents[i].maxT)minimapEvents.splice(i,1);}updateLoot(dt);
     updateAsteroidRespawn(dt);updateParticles(dt);updateCamera(dt);
     
-    hudTimer-=dt;if(hudTimer<=0){updateHUD();hudTimer=.15;}
+    hudTimer-=dt;if(hudTimer<=0){updateHUD();updateChatFade();hudTimer=.15;}
     wsTimer-=dt;if(wsTimer<=0){sendState();wsTimer=.05;} // 20Hz net tick
     projPruneTimer-=dt;if(projPruneTimer<=0&&stdbConn&&stdbConnected){try{stdbConn.reducers.pruneProjectiles();}catch(e){}projPruneTimer=2;}
     pruneTimer-=dt;if(pruneTimer<=0&&stdbConn&&stdbConnected){try{stdbConn.reducers.pruneEvents();}catch(e){}pruneTimer=60;}
