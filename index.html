@@ -1915,7 +1915,7 @@ document.addEventListener('keydown',e=>{
   // If chat is open, block all game input (chatInput handles its own keys via stopPropagation)
   if(chatOpen)return;
   // Enter or T opens chat while playing
-  if((e.key==='Enter'||e.key.toLowerCase()==='t')&&gameState==='playing'&&document.getElementById('market').style.display==='none'){
+  if((e.key==='Enter'||e.key.toLowerCase()==='t')&&gameState==='playing'&&document.getElementById('market').style.display!=='block'){
     openChat();e.preventDefault();return;
   }
   input.keys[e.key.toLowerCase()]=true;
