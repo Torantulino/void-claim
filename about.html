@@ -478,6 +478,26 @@ footer p { color:#556677; font-size:.8rem; margin-top:1.5rem; letter-spacing:.1e
   .nav-links { display:none; }
   .cta-group { flex-direction:column; align-items:center; }
 }
+/* ===== SCROLL ARROW ===== */
+.scroll-arrow {
+  position:absolute; bottom:2.5rem; left:50%; transform:translateX(-50%);
+  z-index:10; cursor:pointer;
+  animation:bounce 2s ease-in-out infinite;
+  text-decoration:none;
+  opacity:.7; transition:opacity .3s;
+}
+.scroll-arrow:hover { opacity:1; }
+.scroll-arrow svg {
+  width:32px; height:32px;
+  stroke:rgba(150,180,255,.7); stroke-width:2; fill:none;
+  filter:drop-shadow(0 0 6px rgba(68,136,255,.4));
+  transition:stroke .3s;
+}
+.scroll-arrow:hover svg { stroke:#44ddff; filter:drop-shadow(0 0 10px rgba(68,221,255,.6)); }
+@keyframes bounce {
+  0%,100% { transform:translateX(-50%) translateY(0); }
+  50% { transform:translateX(-50%) translateY(10px); }
+}
 </style>
 </head>
 <body>
@@ -514,6 +534,9 @@ footer p { color:#556677; font-size:.8rem; margin-top:1.5rem; letter-spacing:.1e
     <a href="./index.html" class="btn-primary">▶ PLAY NOW</a>
     <a href="https://github.com/Torantulino/void-claim" target="_blank" class="btn-secondary">⟨/⟩ VIEW SOURCE</a>
   </div>
+  <a href="#screenshots" class="scroll-arrow" aria-label="Scroll down">
+    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+  </a>
 </section>
 
 <!-- ===== SCREENSHOTS ===== -->
