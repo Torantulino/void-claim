@@ -127,7 +127,7 @@ const CFG={
   PROJ_SPEED:700,PROJ_TTL:1.2,PROJ_DMG:8,
   MINE_RANGE:120,MINE_RATE:25,COLLECT_RANGE:60,SHOOT_CD:.35,
   RESPAWN_TIME:3,NPC_COUNT:14,AST_COUNT:350,LOOT_TTL:25,BOUNTY_TIME:90,
-  CAM_LERP:.08,SHAKE_DECAY:.9,MINIMAP_R:80,MINIMAP_SCALE:0.004,
+  CAM_LERP:.08,SHAKE_DECAY:.9,MINIMAP_R:140,MINIMAP_SCALE:0.003,
   STAR_LAYERS:[{count:200,size:1,speed:.05,alpha:.3},{count:150,size:1.5,speed:.15,alpha:.5},{count:80,size:2,speed:.3,alpha:.8}],
   WS_URL:null, // legacy — kept for backwards compat
   LB_URL:null, // legacy — kept for backwards compat
@@ -338,6 +338,7 @@ let selectedColor=SHIP_COLORS[0];
 let ws=null;
 let leaderboard=[];
 let killStreak=0;
+let minimapEvents=[]; // {x,y,color,t,maxT,type}
 let killStreakTimer=0;
 let pruneTimer=60;
 let autoSaveTimer=30;
@@ -833,6 +834,7 @@ function fireProjectile(entity){
   const p=createProjectile(entity,entity.x+Math.cos(entity.angle)*15,entity.y+Math.sin(entity.angle)*15,entity.angle,shipDmg(entity));
   projectiles.push(p);
   emitBurst(p.x,p.y,3,60,p.color,2,.2,8);
+  if(minimapEvents.length<100)minimapEvents.push({x:p.x,y:p.y,color:p.color,t:0,maxT:.6,type:'shot'});
   if(entity.isPlayer)SFX.laser();
 }
 
@@ -1067,52 +1069,215 @@ function drawFloatingTexts(){
 
 function drawMinimap(){
   if(!player)return;
-  const mr=CFG.MINIMAP_R;const mx=W-mr-20,my=mr+20;
+  const mr=CFG.MINIMAP_R;const mx=W-mr-18,my=mr+18;
   const scale=CFG.MINIMAP_SCALE*(1+(player.upgrades?.scanner||0)*.3);
+  const t=performance.now()*.001;
+
+  // ── Background with slight vignette ──
   ctx.save();ctx.beginPath();ctx.arc(mx,my,mr,0,Math.PI*2);ctx.clip();
-  ctx.fillStyle='rgba(5,8,20,.85)';ctx.fillRect(mx-mr,my-mr,mr*2,mr*2);
-  [{r:CFG.EARTH_SHIELD_R,c:'rgba(68,255,136,.45)'},{r:CFG.GREEN_R,c:'rgba(68,200,100,.35)'},{r:CFG.YELLOW_R,c:'rgba(255,200,68,.35)'}].forEach(z=>{
-    ctx.strokeStyle=z.c;ctx.lineWidth=.5;
-    ctx.beginPath();ctx.arc(mx+(0-player.x)*scale,my+(0-player.y)*scale,z.r*scale,0,Math.PI*2);ctx.stroke();
+  const bg=ctx.createRadialGradient(mx,my,mr*.2,mx,my,mr);
+  bg.addColorStop(0,'rgba(5,8,20,.8)');bg.addColorStop(1,'rgba(2,4,12,.95)');
+  ctx.fillStyle=bg;ctx.fillRect(mx-mr,my-mr,mr*2,mr*2);
+
+  // ── Subtle grid lines ──
+  ctx.strokeStyle='rgba(60,80,140,.12)';ctx.lineWidth=.5;
+  const gridSpacing=1000*scale;
+  const offX=(mx+(0-player.x)*scale)%gridSpacing;
+  const offY=(my+(0-player.y)*scale)%gridSpacing;
+  for(let gx=mx-mr;gx<mx+mr;gx+=gridSpacing){
+    ctx.beginPath();ctx.moveTo(gx+offX,my-mr);ctx.lineTo(gx+offX,my+mr);ctx.stroke();
+  }
+  for(let gy=my-mr;gy<my+mr;gy+=gridSpacing){
+    ctx.beginPath();ctx.moveTo(mx-mr,gy+offY);ctx.lineTo(mx+mr,gy+offY);ctx.stroke();
+  }
+
+  // ── Zone rings with zone labels ──
+  const zones=[
+    {r:CFG.EARTH_SHIELD_R,c:'rgba(68,255,136,.4)',label:'SAFE'},
+    {r:CFG.GREEN_R,c:'rgba(68,200,100,.3)',label:'GREEN'},
+    {r:CFG.YELLOW_R,c:'rgba(255,200,68,.3)',label:'YELLOW'},
+    {r:CFG.RED_R,c:'rgba(255,80,60,.25)',label:'RED'}
+  ];
+  zones.forEach(z=>{
+    const zr=z.r*scale;
+    const zcx=mx+(0-player.x)*scale,zcy=my+(0-player.y)*scale;
+    ctx.strokeStyle=z.c;ctx.lineWidth=.8;
+    ctx.beginPath();ctx.arc(zcx,zcy,zr,0,Math.PI*2);ctx.stroke();
   });
+
+  // ── Earth dot with pulse ──
   const esx=mx+(0-player.x)*scale,esy=my+(0-player.y)*scale;
-  ctx.fillStyle='#4488ff';ctx.beginPath();ctx.arc(esx,esy,3,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='rgba(190,190,220,.7)';
+  if(dist(esx,esy,mx,my)<mr){
+    const ep=2.5+Math.sin(t*2)*.8;
+    ctx.fillStyle='rgba(68,136,255,.3)';ctx.beginPath();ctx.arc(esx,esy,ep+3,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#4488ff';ctx.beginPath();ctx.arc(esx,esy,ep,0,Math.PI*2);ctx.fill();
+  }
+
+  // ── Asteroids (color-coded by ore value) ──
   asteroids.forEach(a=>{
     if(!a.alive)return;
     const ax=mx+(a.x-player.x)*scale,ay=my+(a.y-player.y)*scale;
-    if(dist(ax,ay,mx,my)<mr){ctx.beginPath();ctx.arc(ax,ay,1,0,Math.PI*2);ctx.fill();}
+    if(dist(ax,ay,mx,my)<mr){
+      const ore=ORES[a.ore];
+      ctx.fillStyle=ore?ore.color+'99':'rgba(190,190,220,.5)';
+      const sz=a.hp>60?1.5:1;
+      ctx.beginPath();ctx.arc(ax,ay,sz,0,Math.PI*2);ctx.fill();
+    }
   });
+
+  // ── NPCs with threat pulsing ──
   npcs.forEach(n=>{
     if(n.dead)return;
     const nx=mx+(n.x-player.x)*scale,ny=my+(n.y-player.y)*scale;
     if(dist(nx,ny,mx,my)<mr){
-      ctx.fillStyle=n.bounty>0?'#ff4444':(n.personality==='pirate'?'#ff6644':totalCargo(n.cargo)>0?'#44ff88':'#5588ff');
-      ctx.beginPath();ctx.arc(nx,ny,2,0,Math.PI*2);ctx.fill();
+      const isHostile=n.bounty>0||n.personality==='pirate';
+      const col=n.bounty>0?'#ff4444':(n.personality==='pirate'?'#ff6644':totalCargo(n.cargo)>0?'#44ff88':'#5588ff');
+      // Hostile pulsing glow
+      if(isHostile){
+        const pulse=.3+Math.sin(t*4+n.x)*.2;
+        ctx.fillStyle=col;
+        ctx.globalAlpha=pulse;
+        ctx.beginPath();ctx.arc(nx,ny,5,0,Math.PI*2);ctx.fill();
+        ctx.globalAlpha=1;
+      }
+      ctx.fillStyle=col;
+      ctx.beginPath();ctx.arc(nx,ny,2.5,0,Math.PI*2);ctx.fill();
+      // Heading indicator for NPCs
+      if(n.vx!==undefined&&n.vy!==undefined){
+        const speed=Math.sqrt(n.vx*n.vx+n.vy*n.vy);
+        if(speed>20){
+          const ha=Math.atan2(n.vy,n.vx);
+          ctx.strokeStyle=col;ctx.lineWidth=1;ctx.globalAlpha=.6;
+          ctx.beginPath();ctx.moveTo(nx,ny);ctx.lineTo(nx+Math.cos(ha)*6,ny+Math.sin(ha)*6);ctx.stroke();
+          ctx.globalAlpha=1;
+        }
+      }
     }
   });
-  // Remote players on minimap
+
+  // ── Remote players (with heading) ──
   remotePlayers.forEach(rp=>{
     const rx=mx+(rp.x-player.x)*scale,ry=my+(rp.y-player.y)*scale;
     if(dist(rx,ry,mx,my)<mr){
-      ctx.fillStyle=rp.color||'#ffffff';
-      ctx.beginPath();ctx.arc(rx,ry,2.5,0,Math.PI*2);ctx.fill();
+      const col=rp.color||'#ffffff';
+      // Player highlight ring
+      ctx.strokeStyle=col;ctx.lineWidth=1;ctx.globalAlpha=.4;
+      ctx.beginPath();ctx.arc(rx,ry,5,0,Math.PI*2);ctx.stroke();
+      ctx.globalAlpha=1;
+      ctx.fillStyle=col;
+      ctx.beginPath();ctx.arc(rx,ry,3,0,Math.PI*2);ctx.fill();
     }
   });
+
+  // ── Loot ──
   ctx.fillStyle='#ffcc44';
   loot.forEach(l=>{
     const lx=mx+(l.x-player.x)*scale,ly=my+(l.y-player.y)*scale;
-    if(dist(lx,ly,mx,my)<mr){ctx.beginPath();ctx.arc(lx,ly,1.5,0,Math.PI*2);ctx.fill();}
+    if(dist(lx,ly,mx,my)<mr){ctx.beginPath();ctx.arc(lx,ly,1.8,0,Math.PI*2);ctx.fill();}
   });
+
+  // ── Projectiles on minimap (weapon fire trails) ──
+  projectiles.forEach(p=>{
+    const px=mx+(p.x-player.x)*scale,py=my+(p.y-player.y)*scale;
+    if(dist(px,py,mx,my)<mr){
+      ctx.fillStyle=p.isPlayerOwned?'rgba(100,170,255,.9)':'rgba(255,100,68,.9)';
+      ctx.beginPath();ctx.arc(px,py,1,0,Math.PI*2);ctx.fill();
+    }
+  });
+
+  // ── Combat events (hits, explosions, shots) ──
+  for(let i=minimapEvents.length-1;i>=0;i--){
+    const ev=minimapEvents[i];
+    const ex=mx+(ev.x-player.x)*scale,ey=my+(ev.y-player.y)*scale;
+    if(dist(ex,ey,mx,my)<mr){
+      const prog=ev.t/ev.maxT; // 0→1
+      const fade=1-prog;
+      if(ev.type==='explosion'){
+        // Expanding ring
+        const r=3+prog*18;
+        ctx.strokeStyle=ev.color;ctx.lineWidth=2*(1-prog);ctx.globalAlpha=fade*.8;
+        ctx.beginPath();ctx.arc(ex,ey,r,0,Math.PI*2);ctx.stroke();
+        // Inner flash
+        if(prog<.3){
+          ctx.fillStyle='#ffffff';ctx.globalAlpha=(1-prog/.3)*.6;
+          ctx.beginPath();ctx.arc(ex,ey,4*(1-prog/.3),0,Math.PI*2);ctx.fill();
+        }
+      }else if(ev.type==='hit'){
+        // Small flash burst
+        const r=2+prog*8;
+        ctx.fillStyle=ev.color;ctx.globalAlpha=fade*.6;
+        ctx.beginPath();ctx.arc(ex,ey,r,0,Math.PI*2);ctx.fill();
+      }else if(ev.type==='shot'){
+        // Tiny flash
+        ctx.fillStyle=ev.color;ctx.globalAlpha=fade*.5;
+        ctx.beginPath();ctx.arc(ex,ey,1.5+prog*3,0,Math.PI*2);ctx.fill();
+      }
+      ctx.globalAlpha=1;
+    }
+  }
+
+  // ── Vibe portal ──
   if(vibePortal){
     const px=mx+(vibePortal.x-player.x)*scale,py=my+(vibePortal.y-player.y)*scale;
-    if(dist(px,py,mx,my)<mr){ctx.fillStyle='#bb66ff';ctx.beginPath();ctx.arc(px,py,3,0,Math.PI*2);ctx.fill();}
+    if(dist(px,py,mx,my)<mr){
+      const pr=3+Math.sin(t*3)*.8;
+      ctx.fillStyle='rgba(187,102,255,.3)';ctx.beginPath();ctx.arc(px,py,pr+3,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#bb66ff';ctx.beginPath();ctx.arc(px,py,pr,0,Math.PI*2);ctx.fill();
+    }
   }
-  ctx.fillStyle='#fff';
-  ctx.beginPath();ctx.arc(mx,my,3,0,Math.PI*2);ctx.fill();
+
+  // ── Player dot with heading arrow ──
+  ctx.fillStyle='#ffffff';
+  ctx.beginPath();ctx.arc(mx,my,4,0,Math.PI*2);ctx.fill();
+  // Heading arrow
+  const ha=player.angle||0;
+  ctx.strokeStyle='#ffffff';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx+Math.cos(ha)*12,my+Math.sin(ha)*12);ctx.stroke();
+  // FOV cone
+  ctx.fillStyle='rgba(255,255,255,.06)';
+  ctx.beginPath();ctx.moveTo(mx,my);
+  ctx.arc(mx,my,mr*.7,ha-.4,ha+.4);
+  ctx.closePath();ctx.fill();
+
   ctx.restore();
-  ctx.strokeStyle='rgba(100,150,255,.6)';ctx.lineWidth=2;
+
+  // ── Border ring with scanner sweep ──
+  ctx.strokeStyle='rgba(100,150,255,.5)';ctx.lineWidth=2;
   ctx.beginPath();ctx.arc(mx,my,mr,0,Math.PI*2);ctx.stroke();
+  // Scanner sweep line
+  const sweepAngle=t*1.5%(Math.PI*2);
+  const grad2=ctx.createConicalGradient?null:null; // fallback
+  ctx.strokeStyle='rgba(100,180,255,.25)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(mx,my);
+  ctx.lineTo(mx+Math.cos(sweepAngle)*mr,my+Math.sin(sweepAngle)*mr);ctx.stroke();
+  // Sweep glow arc
+  ctx.strokeStyle='rgba(100,180,255,.1)';ctx.lineWidth=mr*.15;
+  ctx.beginPath();ctx.arc(mx,my,mr*.85,sweepAngle-.3,sweepAngle);ctx.stroke();
+
+  // ── Off-screen threat arrows (outside minimap) ──
+  const arrowDist=mr+12;
+  npcs.forEach(n=>{
+    if(n.dead)return;
+    if(!(n.bounty>0||n.personality==='pirate'))return;
+    const dx=n.x-player.x,dy=n.y-player.y;
+    const d=Math.sqrt(dx*dx+dy*dy);
+    // Only show arrows for threats within 2x minimap range but outside view
+    if(d<300||d>1/(scale/mr)*1.2)return;
+    const nmx=mx+dx*scale,nmy=my+dy*scale;
+    if(dist(nmx,nmy,mx,my)<mr-5)return; // already visible on map
+    const a2=Math.atan2(dy,dx);
+    const ax=mx+Math.cos(a2)*arrowDist,ay=my+Math.sin(a2)*arrowDist;
+    // Pulsing red arrow
+    const pulse=.5+Math.sin(t*5)*.3;
+    ctx.save();ctx.translate(ax,ay);ctx.rotate(a2);
+    ctx.fillStyle='rgba(255,68,68,'+pulse+')';
+    ctx.beginPath();ctx.moveTo(8,0);ctx.lineTo(-4,-5);ctx.lineTo(-4,5);ctx.closePath();ctx.fill();
+    ctx.restore();
+  });
+
+  // ── Minimap label ──
+  ctx.fillStyle='rgba(100,150,255,.5)';ctx.font='bold 9px Courier New';ctx.textAlign='center';
+  ctx.fillText('SCANNER',mx,my+mr+14);
 }
 
 // ═══════════════════════════════════════════
@@ -1307,6 +1472,7 @@ function updateProjectiles(dt){
         const hitsPlayer=t.isPlayer;
         applyDamage(t,p.dmg,p.ownerId,nearPlayer||hitsPlayer);
         if(nearPlayer||hitsPlayer)emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
+        minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
         if(hitsPlayer)shake(4);
         else if(nearPlayer)shake(Math.max(0,1.5-distToPlayer(p.x,p.y)/FX_RANGE*1.5));
         hit=true;
@@ -1337,6 +1503,7 @@ function killEntity(target,attackerId){
     emitBurst(target.x,target.y,15,80,'#fff',2,.4,8);
     SFX.explode();
   }
+  minimapEvents.push({x:target.x,y:target.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
   if(target.isPlayer)shake(8);
   else if(near)shake(Math.max(0,4-distToPlayer(target.x,target.y)/FX_RANGE*4));
   
@@ -2029,7 +2196,9 @@ function gameLoop(timestamp){
     }
     if(gameState==='dead'&&player)player.respawnTimer-=dt;
     
-    updateNPCs(dt);updateProjectiles(dt);updateLoot(dt);
+    updateNPCs(dt);updateProjectiles(dt);
+    // Decay minimap events
+    for(let i=minimapEvents.length-1;i>=0;i--){minimapEvents[i].t+=dt;if(minimapEvents[i].t>=minimapEvents[i].maxT)minimapEvents.splice(i,1);}updateLoot(dt);
     updateAsteroidRespawn(dt);updateParticles(dt);updateCamera(dt);
     
     hudTimer-=dt;if(hudTimer<=0){updateHUD();hudTimer=.15;}
