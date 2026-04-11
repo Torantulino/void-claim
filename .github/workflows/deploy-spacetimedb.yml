@@ -43,25 +43,25 @@ jobs:
 
       - name: Publish module to Maincloud
         run: |
+          cd spacetimedb
           spacetime publish "${{ env.STDB_DATABASE }}" \
             --server maincloud \
-            --project-path ./spacetimedb \
             -y \
             2>&1
           echo "✅ Module published to Maincloud"
 
       - name: Generate TypeScript client bindings
         run: |
+          cd spacetimedb
           spacetime generate \
             --lang typescript \
-            --out-dir ./client-bindings/src \
-            --project-path ./spacetimedb
+            --out-dir ../client-bindings/src
           echo "✅ Client bindings generated"
 
       - name: Build IIFE bundle for browser
         run: |
           cd client-bindings
-          
+
           # Create package.json for the bindings bundle
           cat > package.json << 'EOF'
           {
@@ -80,7 +80,7 @@ jobs:
             }
           }
           EOF
-          
+
           npm install
           npm run build
           echo "✅ IIFE bundle built at dist/bindings.iife.js"
