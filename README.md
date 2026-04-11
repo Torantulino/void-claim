@@ -13,7 +13,7 @@
 [![Built with AutoGPT AutoPilot](https://img.shields.io/badge/built_with-AutoGPT_AutoPilot-44ff88?style=flat-square&labelColor=0a0a2e)](https://autogpt.com)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-ffcc44?style=flat-square&labelColor=0a0a2e)](.)
 [![Vibe Jam 2026](https://img.shields.io/badge/Vibe_Jam-2026-bb66ff?style=flat-square&labelColor=0a0a2e)](https://vibej.am/2026/)
-[![Lines of Code](https://img.shields.io/badge/lines-1830-5588ff?style=flat-square&labelColor=0a0a2e)](.)
+[![Lines of Code](https://img.shields.io/badge/lines-1860-5588ff?style=flat-square&labelColor=0a0a2e)](.)
 
 </div>
 
@@ -23,13 +23,13 @@
 
 This entire game was built by AI in a single conversation.
 
-One person said *"multiplayer asteroid mining with piracy."* An AI designed every mechanic, wrote every line of code, and deployed it live — all in one session. No frameworks. No build step. No loading screens. Just 1,830 lines of raw HTML, CSS, and JavaScript in a single file.
+One person said *"multiplayer asteroid mining with piracy."* An AI designed every mechanic — ship abilities, sound design, kill streaks, an economy, a leaderboard — wrote every line of code, and deployed it live. No frameworks. No build step. No loading screens. Just 1,860 lines of raw HTML, CSS, and JavaScript in a single file.
 
 The result: a game about greed, risk, and split-second decisions in the vacuum of space.
 
 ## What Is This?
 
-**VOID CLAIM** is a real-time multiplayer asteroid mining game where every second in space is a gamble.
+**VOID CLAIM** is a real-time asteroid mining game where every second in space is a gamble.
 
 You pilot a mining ship. You start safe, orbiting Earth. But the valuable ore? It's out there — past the safe zone, past the pirates, deep in the void where nobody can help you.
 
@@ -37,29 +37,66 @@ You pilot a mining ship. You start safe, orbiting Earth. But the valuable ore? I
 
 ## How to Play
 
-- **WASD** to fly your ship
-- **Mouse** to aim, **Click** to shoot (or hold near an asteroid to mine)
-- **M** to open the market at Earth
+- **WASD** — fly your ship
+- **Mouse** — aim · **Click** — shoot (or mine when near an asteroid)
+- **E** — activate ship ability
+- **M** — open market at Earth
 - Bring ore back to Earth to auto-sell
 - Buy upgrades and new ships
 - Don't die with a full cargo hold
 
-That's it. No tutorial needed.
-
 ## What's Inside
 
+### 🎮 Gameplay
 - **4 danger zones** — Green (safe), Yellow (PvP), Red (dangerous), The Void (💀)
 - **7 ore types** — Iron to Voidstone, worth 1 to 200 credits each
-- **5 ship classes** — Prospector, Hauler, Corsair, Sentinel, Phantom (with cloaking!)
+- **5 ship classes** with unique abilities
 - **5 upgrade paths** — Engine, Laser, Shields, Cargo, Scanner (Mk I → V)
-- **AI miners & pirates** — 10 NPCs with full behavior trees (mining, fleeing, attacking, selling)
 - **Bounty system** — Grief a peaceful miner, get a skull on the map
-- **Parallax starfield** — 3 layers with twinkling and nebula clouds
-- **Particle juice** — Mining sparks, engine trails, explosions, shield shimmer, floating damage numbers
-- **Screen shake** — Because it feels good
-- **Touch controls** — Full mobile support with virtual joystick
-- **Vibe Jam portal** — Webring integration for hopping between jam games
-- **Canvas 2D** — No WebGL, no Three.js, no dependencies. Just `<canvas>`.
+- **Kill streak system** — Double Kill, Triple Kill, Rampage, GODLIKE
+- **Persistent leaderboard** — compete for the top
+
+### 🚀 Ships & Abilities (press E)
+| Ship | Ability | Description |
+|------|---------|-------------|
+| **Prospector** | ⚡ EMP Pulse | Stuns nearby enemies for 2 seconds |
+| **Hauler** | 🧲 Tractor Beam | Pulls loot and asteroids toward you |
+| **Corsair** | 🔥 Afterburner | Massive speed burst forward |
+| **Sentinel** | 🛡 Shield Bash | AoE knockback + damage |
+| **Phantom** | 👻 Phase Cloak | Invisible for 4 seconds |
+
+### 🔊 Sound Design
+- Fully procedural audio — no sound files, zero extra bytes
+- Laser zaps, mining hums, explosions, shield hits
+- Ambient space drone that shifts with danger zones
+- Satisfying sell chime, upgrade fanfare, death rumble
+- One-click mute toggle
+
+### 🎨 Visual Polish
+- Ship color picker (8 colors) on start screen
+- Kill streak auras that grow with each kill
+- Particle systems for everything — mining, combat, abilities, thrust
+- Screen shake on damage and explosions
+- Parallax starfield with nebula clouds
+- Zone-colored HUD that shifts as you venture deeper
+
+### 🌐 Multiplayer
+- WebSocket server for real-time player sync ([server repo](https://github.com/Torantulino/void-claim-server))
+- 14 AI miners & pirates with full behavior trees when playing solo
+- Vibe Jam portal webring integration
+
+## Deploy the Server
+
+The game works standalone with NPC AI, but for real multiplayer:
+
+```bash
+git clone https://github.com/Torantulino/void-claim-server.git
+cd void-claim-server
+npm install
+node server.js
+```
+
+Or deploy to [Render](https://render.com), [Railway](https://railway.app), or [Fly.io](https://fly.io) — the repo includes `render.yaml` and `Dockerfile`.
 
 ## Run Locally
 
@@ -69,7 +106,7 @@ cd void-claim
 open index.html
 ```
 
-That's literally it. One file. Zero dependencies.
+One file. Zero dependencies.
 
 ## License
 
