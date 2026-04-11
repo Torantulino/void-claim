@@ -796,6 +796,11 @@ function useAbility(){
         const d=dist(player.x,player.y,rp.x,rp.y);
         if(d<nearestDist){nearestDist=d;nearestEnemy=rp;}
       });
+      // Also check leviathan
+      if(leviathan&&!leviathan.dead){
+        const dLev=dist(player.x,player.y,leviathan.x,leviathan.y);
+        if(dLev<nearestDist){nearestDist=dLev;nearestEnemy=leviathan;}
+      }
       if(nearestEnemy){
         wingmanRallyTimer=5;
         wingmanRallyTarget=nearestEnemy;
@@ -1003,6 +1008,11 @@ function wingmanThink(w){
   }
   
   // Check for nearby threats — defend the carrier
+  // Prioritize leviathan as the biggest threat
+  if(leviathan&&!leviathan.dead){
+    const dLev=dist(player.x,player.y,leviathan.x,leviathan.y);
+    if(dLev<1200){w.state='attack';w.target=leviathan;return;}
+  }
   let nearestThreat=null,threatDist=500;
   npcs.forEach(n=>{
     if(n.dead||n.personality!=='pirate')return;
@@ -1444,6 +1454,12 @@ function npcThink(n){
   if(hpPct<n.fleeHP){n.state='flee';n.target=null;return;}
   if(tc>=mc*.8&&dToEarth>CFG.EARTH_SHIELD_R){n.state='return';n.target=null;return;}
   if(tc>0&&dToEarth<CFG.EARTH_SHIELD_R+100){n.state='sell';return;}
+  
+  // All NPCs flee from the Leviathan when it's nearby
+  if(leviathan&&!leviathan.dead){
+    const dLev=dist(n.x,n.y,leviathan.x,leviathan.y);
+    if(dLev<600){n.state='flee';n.target=null;return;}
+  }
   
   if(n.personality==='pirate'){
     let bestTarget=null,bestDist=2000;
