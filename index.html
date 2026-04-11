@@ -88,6 +88,53 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 #chatInput:focus{border-color:rgba(100,150,255,.6);box-shadow:0 0 8px rgba(100,150,255,.15)}
 #chatInput::placeholder{color:rgba(150,180,255,.35)}
 #chatHint{font-size:.6rem;color:rgba(150,180,255,.35);text-align:center;margin-top:2px;transition:opacity .3s}
+
+/* ═══ Mobile Touch Controls ═══ */
+#mobileControls{display:none;position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:52}
+#mobileControls>*{pointer-events:auto}
+.mobile-btn{position:absolute;border-radius:50%;border:2px solid rgba(255,255,255,.25);background:rgba(0,0,0,.35);color:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;font-size:1.2rem;-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none;transition:background .15s,border-color .15s,transform .1s}
+.mobile-btn:active,.mobile-btn.pressed{background:rgba(100,150,255,.35);border-color:rgba(100,150,255,.7);transform:scale(.92)}
+.mobile-btn .btn-label{position:absolute;bottom:-16px;font-size:.55rem;color:rgba(255,255,255,.5);letter-spacing:.05em;white-space:nowrap;text-align:center;pointer-events:none}
+#mb-ability{width:64px;height:64px;bottom:180px;right:20px;border-color:rgba(100,255,150,.35);font-size:1.4rem}
+#mb-ability.on-cd{opacity:.4;border-color:rgba(255,255,255,.12)}
+#mb-ability .cd-ring{position:absolute;top:-3px;left:-3px;width:70px;height:70px;border-radius:50%;pointer-events:none}
+#mb-market{width:52px;height:52px;bottom:260px;right:24px}
+#mb-chat{width:52px;height:52px;bottom:260px;right:84px}
+#mb-portal{width:52px;height:52px;bottom:180px;right:92px;border-color:rgba(187,102,255,.5);display:none}
+#mb-strafe-l{width:52px;height:52px;bottom:90px;left:20px;font-size:1.5rem}
+#mb-strafe-r{width:52px;height:52px;bottom:90px;left:82px;font-size:1.5rem}
+
+/* Mobile HUD adjustments */
+@media(max-width:768px),(pointer:coarse){
+  #credits{font-size:1rem;top:12px;left:12px;padding:3px 8px}
+  #zoneIndicator{font-size:.75rem;padding:4px 12px;top:12px}
+  #leaderboard{display:none!important}
+  #chatBox{bottom:auto;top:50px;left:8px;width:260px;max-width:55vw}
+  #chatLog{max-height:100px}
+  #chatHint{display:none}
+  #controls-hint{display:none!important}
+  #cargoBar{bottom:18px;width:200px}
+  .cargo-label{font-size:.65rem!important}
+  .cargo-outer{height:16px}
+  #abilityBar{bottom:55px}
+  #abilityHint{display:none}
+  #marketBtn{display:none!important}
+  #soundToggle{top:12px;right:12px;font-size:.85rem;padding:3px 6px}
+  #aboutLink{display:none!important}
+  #onlineCount{top:36px;right:12px;font-size:.6rem}
+  #notifications{top:38px}
+  .notification{font-size:.75rem;padding:5px 12px}
+  #market{width:95vw;max-height:80vh;padding:16px}
+  #market h2{font-size:1rem;margin-bottom:12px}
+  .upgrade-grid,.ship-grid{grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}
+  .upgrade-card,.ship-card{padding:8px}
+  .card-name{font-size:.72rem}.card-cost{font-size:.72rem}.card-desc{font-size:.55rem}
+  #deathScreen h2{font-size:clamp(1.4rem,5vw,2.4rem)}
+  #startScreen h1{font-size:clamp(1.6rem,7vw,3.5rem)}
+  #startScreen input{width:220px;padding:10px 18px;font-size:1rem}
+  .btn{padding:12px 36px;font-size:1rem}
+  #killStreak{top:34px;left:12px;font-size:.7rem}
+}
 </style>
 </head>
 <body>
@@ -120,6 +167,14 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 <div id="chatHint">Enter to chat</div>
 </div>
 <div id="controls-hint">W/S thrust · A/D rotate · Q/E strafe · Mouse aim · Click/Space shoot · Hold near asteroid to mine<br>R for ability · Return to Earth to sell · M for market · Enter/T to chat</div>
+<div id="mobileControls">
+  <div id="mb-ability" class="mobile-btn">⚡<svg class="cd-ring" viewBox="0 0 70 70"><circle cx="35" cy="35" r="32" fill="none" stroke="rgba(100,255,150,.6)" stroke-width="3" stroke-dasharray="201" stroke-dashoffset="0" stroke-linecap="round" id="abilityCdRing"/></svg><span class="btn-label">ABILITY</span></div>
+  <div id="mb-market" class="mobile-btn">⬡<span class="btn-label">MARKET</span></div>
+  <div id="mb-chat" class="mobile-btn">💬<span class="btn-label">CHAT</span></div>
+  <div id="mb-portal" class="mobile-btn">🌀<span class="btn-label">ENTER</span></div>
+  <div id="mb-strafe-l" class="mobile-btn">◁</div>
+  <div id="mb-strafe-r" class="mobile-btn">▷</div>
+</div>
 </div>
 <div id="leaderboard"><h4>⬡ LEADERBOARD</h4><div id="lbList"></div></div>
 <div id="market">
@@ -472,6 +527,23 @@ let floatingTexts=[];
 let stars=[];
 let camera={x:0,y:0,shakeX:0,shakeY:0,shakeAmt:0};
 let input={keys:{},mx:0,my:0,mouseDown:false,mouseWorld:{x:0,y:0},lastMouseMoveTime:0};
+// Mobile detection — true on phones/tablets with touch screens
+const isMobile=(function(){
+  const touch='ontouchstart' in window||navigator.maxTouchPoints>0;
+  const small=window.innerWidth<=900||window.innerHeight<=500;
+  const coarse=window.matchMedia('(pointer:coarse)').matches;
+  return touch&&(small||coarse);
+})();
+if(isMobile){
+  // Prevent pull-to-refresh, pinch zoom, overscroll
+  document.addEventListener('touchmove',e=>{if(e.touches.length>1||e.target===canvas)e.preventDefault();},{passive:false});
+  document.body.style.overscrollBehavior='none';
+  document.body.style.touchAction='none';
+  // Lock to landscape on mobile (suggestion only)
+  if(screen.orientation&&screen.orientation.lock)try{screen.orientation.lock('landscape-primary').catch(()=>{});}catch(e){}
+}
+// Haptic feedback helper (mobile only)
+function haptic(ms){if(isMobile&&navigator.vibrate)try{navigator.vibrate(ms);}catch(e){}}
 let hintTimer=12;
 let portalParams=null;
 let portalPromptActive=false; // true when player is inside exit portal zone
@@ -704,7 +776,7 @@ function useAbility(){
   const shipDef=SHIPS[player.ship];
   player.abilityCD=shipDef.abilityCd;
   player.abilityActive=true;
-  SFX.ability();
+  SFX.ability();haptic(25);
   
   switch(player.ship){
     case 'prospector':{ // EMP Pulse — stun nearby enemies 2s
@@ -2429,26 +2501,80 @@ canvas.addEventListener('mouseup',e=>{input.mouseDown=false});
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
 
 let touchMove=null,touchShoot=null;
+// Enhanced mobile joystick config
+const JOY_DEAD=14,JOY_MAX=60,JOY_OUTER=JOY_MAX+10;
+let mobileStrafing={left:false,right:false}; // strafe button state
+
 canvas.addEventListener('touchstart',e=>{
   e.preventDefault();resumeAudio();
   for(let t of e.changedTouches){
-    if(t.clientX<W/2){touchMove={id:t.identifier,sx:t.clientX,sy:t.clientY,cx:t.clientX,cy:t.clientY};}
-    else{touchShoot={id:t.identifier,x:t.clientX,y:t.clientY};input.mouseDown=true;input.mx=t.clientX;input.my=t.clientY;input.mouseWorld=screenToWorld(t.clientX,t.clientY);}
+    // Left 40% of screen = movement joystick (dynamic origin)
+    if(t.clientX<W*0.4&&!touchMove){
+      touchMove={id:t.identifier,sx:t.clientX,sy:t.clientY,cx:t.clientX,cy:t.clientY,active:false};
+      haptic(8);
+    }
+    // Right side = aim + shoot joystick
+    else if(t.clientX>=W*0.4&&!touchShoot){
+      touchShoot={id:t.identifier,sx:t.clientX,sy:t.clientY,cx:t.clientX,cy:t.clientY};
+      input.mouseDown=true;input.mx=t.clientX;input.my=t.clientY;input.mouseWorld=screenToWorld(t.clientX,t.clientY);
+      input.lastMouseMoveTime=performance.now();
+      haptic(6);
+    }
   }
 },{passive:false});
 canvas.addEventListener('touchmove',e=>{
   e.preventDefault();
   for(let t of e.changedTouches){
-    if(touchMove&&t.identifier===touchMove.id){touchMove.cx=t.clientX;touchMove.cy=t.clientY;}
-    if(touchShoot&&t.identifier===touchShoot.id){input.mx=t.clientX;input.my=t.clientY;input.mouseWorld=screenToWorld(t.clientX,t.clientY);}
+    if(touchMove&&t.identifier===touchMove.id){
+      touchMove.cx=t.clientX;touchMove.cy=t.clientY;
+      const dx=touchMove.cx-touchMove.sx,dy=touchMove.cy-touchMove.sy;
+      if(Math.sqrt(dx*dx+dy*dy)>JOY_DEAD)touchMove.active=true;
+    }
+    if(touchShoot&&t.identifier===touchShoot.id){
+      touchShoot.cx=t.clientX;touchShoot.cy=t.clientY;
+      input.mx=t.clientX;input.my=t.clientY;input.mouseWorld=screenToWorld(t.clientX,t.clientY);
+      input.lastMouseMoveTime=performance.now();
+    }
   }
 },{passive:false});
 canvas.addEventListener('touchend',e=>{
   for(let t of e.changedTouches){
-    if(touchMove&&t.identifier===touchMove.id)touchMove=null;
+    if(touchMove&&t.identifier===touchMove.id){touchMove=null;}
     if(touchShoot&&t.identifier===touchShoot.id){touchShoot=null;input.mouseDown=false;}
   }
 });
+
+// Mobile button event handlers (only active on mobile)
+if(isMobile){
+  const mbAbility=document.getElementById('mb-ability');
+  const mbMarket=document.getElementById('mb-market');
+  const mbChat=document.getElementById('mb-chat');
+  const mbPortal=document.getElementById('mb-portal');
+  const mbStrafeL=document.getElementById('mb-strafe-l');
+  const mbStrafeR=document.getElementById('mb-strafe-r');
+  
+  mbAbility.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();useAbility();haptic(20);mbAbility.classList.add('pressed');},{passive:false});
+  mbAbility.addEventListener('touchend',e=>{mbAbility.classList.remove('pressed');});
+  
+  mbMarket.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();toggleMarket();haptic(12);},{passive:false});
+  
+  mbChat.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();
+    if(chatOpen)closeChat();else openChat();haptic(12);
+  },{passive:false});
+  
+  mbPortal.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();portalConfirmKey=true;haptic(30);},{passive:false});
+  
+  mbStrafeL.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();mobileStrafing.left=true;haptic(6);mbStrafeL.classList.add('pressed');},{passive:false});
+  mbStrafeL.addEventListener('touchend',e=>{mobileStrafing.left=false;mbStrafeL.classList.remove('pressed');});
+  mbStrafeL.addEventListener('touchcancel',e=>{mobileStrafing.left=false;mbStrafeL.classList.remove('pressed');});
+  
+  mbStrafeR.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();mobileStrafing.right=true;haptic(6);mbStrafeR.classList.add('pressed');},{passive:false});
+  mbStrafeR.addEventListener('touchend',e=>{mobileStrafing.right=false;mbStrafeR.classList.remove('pressed');});
+  mbStrafeR.addEventListener('touchcancel',e=>{mobileStrafing.right=false;mbStrafeR.classList.remove('pressed');});
+  
+  // Show mobile controls when game starts
+  document.getElementById('mobileControls').style.display='block';
+}
 
 // ═══════════════════════════════════════════
 // Player Update
@@ -2464,25 +2590,39 @@ function updatePlayer(dt){
   const ROT_SPEED=4.0;
   if(input.keys['a']||input.keys['arrowleft'])player.angle-=ROT_SPEED*dt;
   if(input.keys['d']||input.keys['arrowright'])player.angle+=ROT_SPEED*dt;
-  // Mouse aim: only update angle if mouse moved within last 150ms
-  const mouseRecent=(performance.now()-input.lastMouseMoveTime)<150;
-  if(mouseRecent&&!input.keys['a']&&!input.keys['d']&&!input.keys['arrowleft']&&!input.keys['arrowright']){
-    player.angle=Math.atan2(input.mouseWorld.y-player.y,input.mouseWorld.x-player.x);
+  // Aim: mouse (PC) or right joystick (mobile)
+  if(isMobile&&touchShoot){
+    // On mobile, aim direction from right joystick drag vector
+    const adx=touchShoot.cx-touchShoot.sx,ady=touchShoot.cy-touchShoot.sy;
+    const adist=Math.sqrt(adx*adx+ady*ady);
+    if(adist>12){
+      player.angle=Math.atan2(ady,adx);
+    }
+  }else{
+    // PC: only update angle if mouse moved within last 150ms
+    const mouseRecent=(performance.now()-input.lastMouseMoveTime)<150;
+    if(mouseRecent&&!input.keys['a']&&!input.keys['d']&&!input.keys['arrowleft']&&!input.keys['arrowright']){
+      player.angle=Math.atan2(input.mouseWorld.y-player.y,input.mouseWorld.x-player.x);
+    }
   }
   
   // Ship-relative movement: W/S = forward/back, Q/E = strafe
   let fwd=0,strafe=0;
   if(input.keys['w']||input.keys['arrowup'])fwd+=1;
   if(input.keys['s']||input.keys['arrowdown'])fwd-=1;
-  if(input.keys['q'])strafe-=1; // strafe left
-  if(input.keys['e'])strafe+=1; // strafe right
+  if(input.keys['q']||mobileStrafing.left)strafe-=1; // strafe left
+  if(input.keys['e']||mobileStrafing.right)strafe+=1; // strafe right
   // Forward direction is along player.angle
   let tx=fwd*Math.cos(player.angle)+strafe*Math.cos(player.angle+Math.PI/2);
   let ty=fwd*Math.sin(player.angle)+strafe*Math.sin(player.angle+Math.PI/2);
-  if(touchMove){
+  if(touchMove&&touchMove.active){
     const dx=touchMove.cx-touchMove.sx,dy=touchMove.cy-touchMove.sy;
     const d=Math.sqrt(dx*dx+dy*dy);
-    if(d>10){tx+=dx/d;ty+=dy/d;}
+    if(d>JOY_DEAD){
+      // Twin-stick: left joystick = direct world-space movement (intuitive)
+      const mag=Math.min((d-JOY_DEAD)/(JOY_MAX-JOY_DEAD),1);
+      tx+=dx/d*mag;ty+=dy/d*mag;
+    }
   }
   const tLen=Math.sqrt(tx*tx+ty*ty);
   if(tLen>0){
@@ -2559,7 +2699,7 @@ function updateMining(dt){
     player.totalMined+=canTake;
     addFloatingText(closest.x,closest.y,`+${canTake} ${ORES[oreType].name}`,ORES[oreType].glow);
     emitBurst(closest.x,closest.y,15,100,ORES[oreType].glow,3,.6,10);
-    SFX.pickup();
+    SFX.pickup();haptic(12);
     closest.alive=false;closest.respawnTimer=rand(15,35);miningTarget=null;
   }
 }
@@ -2651,10 +2791,11 @@ function applyDamage(target,dmg,attackerId,playFX){
     const sa=Math.min(target.shield,dmg*.7);
     target.shield-=sa;dmg-=sa;
     if(playFX)emitBurst(target.x,target.y,4,50,'rgba(100,180,255,.8)',2,.2,6);
-    if(target.isPlayer)SFX.shieldHit();
+    if(target.isPlayer){SFX.shieldHit();haptic(15);}
   }
   target.hp-=dmg;
   if(playFX&&!target.isPlayer)SFX.hit();
+  if(target.isPlayer&&target.hp>0)haptic(25);
   if(target.hp<=0)killEntity(target,attackerId);
 }
 
@@ -2716,7 +2857,7 @@ function killEntity(target,attackerId){
     }else{
       document.getElementById('lostInfo').textContent=(val>0?`You lost ${val} credits worth of ore.`:'Your empty ship was destroyed.')+(wmCount>0?' Your wingmen were lost.':'');
     }
-    SFX.death();killStreak=0;
+    SFX.death();killStreak=0;haptic([50,30,80]);
     // Report player death to SpacetimeDB
     const killerNpc=npcs.find(n=>n.id===attackerId);
     reportKill(killedByLeviathan?'Void Leviathan':(killerNpc?killerNpc.name:'Unknown'),target.name);
@@ -3867,7 +4008,7 @@ function syncSelfFromServer(p){
     gameState='dead';
     document.getElementById('deathScreen').style.display='flex';
     document.getElementById('lostInfo').textContent='You were destroyed by another player.';
-    SFX.death();killStreak=0;shake(8);
+    SFX.death();killStreak=0;shake(8);haptic([50,30,80]);
     emitBurst(player.x,player.y,30,150,player.color||'#ff5555',3,.7,12);
     emitBurst(player.x,player.y,15,80,'#fff',2,.4,8);
   }
@@ -4296,6 +4437,42 @@ function updateHUD(){
   updateDroneZone(zone);
 }
 
+function updateMobileHUD(){
+  if(!isMobile||!player)return;
+  // Ability cooldown ring
+  const abBtn=document.getElementById('mb-ability');
+  const ring=document.getElementById('abilityCdRing');
+  if(abBtn&&ring){
+    const shipDef=SHIPS[player.ship]||SHIPS.prospector;
+    const cdMax=shipDef.abilityCd||10;
+    const cdLeft=player.abilityCD||0;
+    if(cdLeft>0){
+      abBtn.classList.add('on-cd');
+      const pct=cdLeft/cdMax;
+      ring.setAttribute('stroke-dashoffset',String(201*(1-pct)));
+      ring.setAttribute('stroke','rgba(255,100,100,.5)');
+    }else{
+      abBtn.classList.remove('on-cd');
+      ring.setAttribute('stroke-dashoffset','0');
+      ring.setAttribute('stroke','rgba(100,255,150,.6)');
+    }
+    // Show ability icon per ship
+    const icons={prospector:'⚡',hauler:'🧲',corsair:'🔥',sentinel:'🛡',phantom:'👻',carrier:'📢'};
+    abBtn.firstChild.textContent=icons[player.ship]||'⚡';
+  }
+  // Portal button visibility
+  const mbPortal=document.getElementById('mb-portal');
+  if(mbPortal){mbPortal.style.display=portalPromptActive?'flex':'none';}
+  // Hide controls when market/death is open
+  const mc=document.getElementById('mobileControls');
+  if(mc){
+    const marketOpen=document.getElementById('market').style.display==='block';
+    const dead=gameState==='dead';
+    mc.style.opacity=(marketOpen||dead)?'0':'1';
+    mc.style.pointerEvents=(marketOpen||dead)?'none':'auto';
+  }
+}
+
 function notify(text,color){
   const n=document.getElementById('notifications');
   const div=document.createElement('div');
@@ -4438,7 +4615,7 @@ function gameLoop(timestamp){
     for(let i=minimapEvents.length-1;i>=0;i--){minimapEvents[i].t+=dt;if(minimapEvents[i].t>=minimapEvents[i].maxT)minimapEvents.splice(i,1);}updateLoot(dt);
     updateAsteroidRespawn(dt);updateParticles(dt);updateCamera(dt);
     
-    hudTimer-=dt;if(hudTimer<=0){updateHUD();updateChatFade();hudTimer=.15;}
+    hudTimer-=dt;if(hudTimer<=0){updateHUD();updateChatFade();if(isMobile)updateMobileHUD();hudTimer=.15;}
     wsTimer-=dt;if(wsTimer<=0){sendState();wsTimer=.05;} // 20Hz net tick
     projPruneTimer-=dt;if(projPruneTimer<=0&&stdbConn&&stdbConnected){try{stdbConn.reducers.pruneProjectiles();}catch(e){}projPruneTimer=2;}
     pruneTimer-=dt;if(pruneTimer<=0&&stdbConn&&stdbConnected){try{stdbConn.reducers.pruneEvents();}catch(e){}pruneTimer=60;}
@@ -4498,15 +4675,80 @@ function gameLoop(timestamp){
       ctx.fillStyle='rgba(255,255,255,1)';ctx.font='bold 11px Courier New';ctx.textAlign='left';
       ctx.fillText(`DIST: ${dToEarth}`,20,H-16);
       if(cv>0){ctx.fillStyle='rgba(255,225,100,1)';ctx.fillText(`VALUE: ⬡${cv}`,20,H-32);}
+      
+      // Mobile HP/Shield bars at top-center
+      if(isMobile){
+        const bw=Math.min(180,W*.3),bx=(W-bw)/2,by=38;
+        // Shield bar
+        if(player.maxShield>0){
+          const sPct=Math.max(0,player.shield)/player.maxShield;
+          ctx.fillStyle='rgba(0,0,0,.5)';ctx.beginPath();ctx.roundRect(bx,by,bw,6,3);ctx.fill();
+          ctx.fillStyle='rgba(100,180,255,.7)';ctx.beginPath();ctx.roundRect(bx,by,bw*sPct,6,3);ctx.fill();
+          ctx.fillStyle='rgba(200,230,255,.6)';ctx.font='bold 8px Courier New';ctx.textAlign='center';
+          ctx.fillText('🛡 '+Math.round(player.shield),W/2,by-2);
+        }
+        // HP bar
+        const hpPct=Math.max(0,player.hp)/player.maxHp;
+        const hby=by+9;
+        ctx.fillStyle='rgba(0,0,0,.5)';ctx.beginPath();ctx.roundRect(bx,hby,bw,8,4);ctx.fill();
+        const hpCol=hpPct>.5?'rgba(68,255,136,.8)':hpPct>.25?'rgba(255,200,68,.8)':'rgba(255,68,68,.9)';
+        ctx.fillStyle=hpCol;ctx.beginPath();ctx.roundRect(bx,hby,bw*hpPct,8,4);ctx.fill();
+        ctx.fillStyle='rgba(255,255,255,.7)';ctx.font='bold 8px Courier New';ctx.textAlign='center';
+        ctx.fillText('♥ '+Math.round(player.hp)+'/'+player.maxHp,W/2,hby+7);
+        // Invulnerability indicator
+        if(player.invulnTimer>0){
+          ctx.fillStyle='rgba(100,200,255,.6)';ctx.font='bold 10px Courier New';
+          ctx.fillText('⛊ INVULNERABLE',W/2,hby+20);
+        }
+      }
     }
-    // Touch joystick
+    // Touch joysticks (polished mobile rendering)
     if(touchMove){
-      ctx.strokeStyle='rgba(255,255,255,.3)';ctx.lineWidth=2;
-      ctx.beginPath();ctx.arc(touchMove.sx,touchMove.sy,50,0,Math.PI*2);ctx.stroke();
-      const dx=touchMove.cx-touchMove.sx,dy=touchMove.cy-touchMove.sy;
-      const d=Math.min(Math.sqrt(dx*dx+dy*dy),50);const a=Math.atan2(dy,dx);
-      ctx.fillStyle='rgba(255,255,255,.35)';
-      ctx.beginPath();ctx.arc(touchMove.sx+Math.cos(a)*d,touchMove.sy+Math.sin(a)*d,15,0,Math.PI*2);ctx.fill();
+      const ox=touchMove.sx,oy=touchMove.sy;
+      const dx=touchMove.cx-ox,dy=touchMove.cy-oy;
+      const rawD=Math.sqrt(dx*dx+dy*dy);
+      const d=Math.min(rawD,JOY_MAX);const a=Math.atan2(dy,dx);
+      const mag=Math.max(0,(d-JOY_DEAD)/(JOY_MAX-JOY_DEAD));
+      // Outer ring (subtle glow when active)
+      ctx.save();
+      const ringAlpha=touchMove.active?.35:.2;
+      ctx.strokeStyle=`rgba(100,180,255,${ringAlpha})`;ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(ox,oy,JOY_OUTER,0,Math.PI*2);ctx.stroke();
+      // Directional arc (shows intensity)
+      if(touchMove.active){
+        ctx.strokeStyle='rgba(100,200,255,.4)';ctx.lineWidth=4;
+        ctx.beginPath();ctx.arc(ox,oy,JOY_OUTER,a-.5,a+.5);ctx.stroke();
+        // Faint dead zone circle
+        ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1;
+        ctx.beginPath();ctx.arc(ox,oy,JOY_DEAD,0,Math.PI*2);ctx.stroke();
+      }
+      // Thumb knob
+      const kx=ox+(rawD>JOY_DEAD?Math.cos(a)*d:dx);
+      const ky=oy+(rawD>JOY_DEAD?Math.sin(a)*d:dy);
+      const knobR=touchMove.active?18:14;
+      const grad=ctx.createRadialGradient(kx,ky,0,kx,ky,knobR);
+      grad.addColorStop(0,`rgba(180,220,255,${.25+mag*.2})`);
+      grad.addColorStop(1,'rgba(100,150,255,.08)');
+      ctx.fillStyle=grad;ctx.beginPath();ctx.arc(kx,ky,knobR,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle=`rgba(200,230,255,${.3+mag*.3})`;ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.arc(kx,ky,knobR,0,Math.PI*2);ctx.stroke();
+      ctx.restore();
+    }
+    if(touchShoot){
+      // Aim reticle (right joystick)
+      const sx=touchShoot.cx,sy=touchShoot.cy;
+      ctx.save();
+      ctx.strokeStyle='rgba(255,100,100,.3)';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.arc(sx,sy,20,0,Math.PI*2);ctx.stroke();
+      // Crosshair
+      ctx.strokeStyle='rgba(255,100,100,.5)';ctx.lineWidth=1;
+      for(let i=0;i<4;i++){
+        const ca=i*Math.PI/2;
+        ctx.beginPath();ctx.moveTo(sx+Math.cos(ca)*10,sy+Math.sin(ca)*10);
+        ctx.lineTo(sx+Math.cos(ca)*20,sy+Math.sin(ca)*20);ctx.stroke();
+      }
+      ctx.fillStyle='rgba(255,80,80,.6)';ctx.beginPath();ctx.arc(sx,sy,3,0,Math.PI*2);ctx.fill();
+      ctx.restore();
     }
   }
 }
@@ -4548,6 +4790,7 @@ function startGame(name,color,saved){
   gameState='playing';
   document.getElementById('startScreen').style.display='none';
   document.getElementById('hud').style.display='block';
+  if(isMobile)document.getElementById('mobileControls').style.display='block';
   updateHUD();
   initAudio();resumeAudio();startDrone();
   loadLeaderboard();renderLeaderboard();
@@ -4611,11 +4854,20 @@ document.getElementById('respawnBtn').onclick=respawn;
 // Init
 // ═══════════════════════════════════════════
 
-function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;generateStars();}
+function resize(){
+  W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;generateStars();
+  // On mobile, adjust minimap size for small screens
+  if(isMobile){CFG.MINIMAP_R=Math.min(90,Math.floor(Math.min(W,H)*.14));}
+}
 window.addEventListener('resize',resize);
 
 function init(){
   parsePortalParams();resize();initColorPicker();
+  // Mobile-specific init
+  if(isMobile){
+    document.getElementById('controls-hint').style.display='none';
+    document.getElementById('mobileControls').style.display='none'; // hidden until game starts
+  }
   if(portalParams){
     const name=portalParams.username||'Traveler_'+randInt(100,999);
     const color=portalParams.color||SHIP_COLORS[0];
