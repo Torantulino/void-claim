@@ -97,7 +97,7 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 <button class="btn btn-sm" id="marketBtn">⬡ MARKET</button>
 <div id="abilityBar"><div id="abilityHint">R — ability</div><div id="abilityCooldown"><div class="fill"></div></div></div>
 <div id="cargoBar"><div class="cargo-outer"><div class="cargo-inner"></div></div><div class="cargo-label">CARGO 0/0</div></div>
-<div id="controls-hint">WASD move · Mouse aim or Q/E rotate · Click/Space shoot · Hold near asteroid to mine<br>R for ability · Return to Earth to sell · Press M for market</div>
+<div id="controls-hint">W/S thrust · A/D rotate · Q/E strafe · Mouse aim · Click/Space shoot · Hold near asteroid to mine<br>R for ability · Return to Earth to sell · Press M for market</div>
 </div>
 <div id="leaderboard"><h4>⬡ LEADERBOARD</h4><div id="lbList"></div></div>
 <div id="market">
@@ -331,7 +331,7 @@ let particles=[];
 let floatingTexts=[];
 let stars=[];
 let camera={x:0,y:0,shakeX:0,shakeY:0,shakeAmt:0};
-let input={keys:{},mx:0,my:0,mouseDown:false,mouseWorld:{x:0,y:0},useKeyboardAim:false,keyboardAngle:0};
+let input={keys:{},mx:0,my:0,mouseDown:false,mouseWorld:{x:0,y:0},lastMouseMoveTime:0};
 let hintTimer=12;
 let portalParams=null;
 let miningTarget=null;
@@ -1486,8 +1486,6 @@ document.addEventListener('keydown',e=>{
   if(e.key.toLowerCase()==='m'&&gameState==='playing'){toggleMarket();e.preventDefault();}
   if(e.key.toLowerCase()==='r'&&gameState==='playing'){useAbility();e.preventDefault();}
   if(e.key==='Escape')document.getElementById('market').style.display='none';
-  // Q/E keys activate keyboard-aim mode
-  if(e.key.toLowerCase()==='q'||e.key.toLowerCase()==='e')input.useKeyboardAim=true;
 });
 document.addEventListener('keyup',e=>{
   input.keys[e.key.toLowerCase()]=false;
@@ -1495,8 +1493,7 @@ document.addEventListener('keyup',e=>{
 });
 canvas.addEventListener('mousemove',e=>{
   input.mx=e.clientX;input.my=e.clientY;input.mouseWorld=screenToWorld(e.clientX,e.clientY);
-  // Mouse movement switches back to mouse aiming
-  input.useKeyboardAim=false;
+  input.lastMouseMoveTime=performance.now();
 });
 canvas.addEventListener('mousedown',e=>{input.mouseDown=true;e.preventDefault();resumeAudio();});
 canvas.addEventListener('mouseup',e=>{input.mouseDown=false});
@@ -1534,21 +1531,35 @@ function updatePlayer(dt){
   
   const spd=shipSpeed(player)*(player.afterburnerTimer>0?1.8:1);
   const thrust=CFG.THRUST*(spd/CFG.BASE_SPEED);
-  let tx=0,ty=0;
-  if(input.keys['w']||input.keys['arrowup'])ty-=1;
-  if(input.keys['s']||input.keys['arrowdown'])ty+=1;
-  if(input.keys['a']||input.keys['arrowleft'])tx-=1;
-  if(input.keys['d']||input.keys['arrowright'])tx+=1;
+  // Rotation: A/D rotate, mouse aims only when recently moved
+  const ROT_SPEED=4.0;
+  if(input.keys['a']||input.keys['arrowleft'])player.angle-=ROT_SPEED*dt;
+  if(input.keys['d']||input.keys['arrowright'])player.angle+=ROT_SPEED*dt;
+  // Mouse aim: only update angle if mouse moved within last 150ms
+  const mouseRecent=(performance.now()-input.lastMouseMoveTime)<150;
+  if(mouseRecent&&!input.keys['a']&&!input.keys['d']&&!input.keys['arrowleft']&&!input.keys['arrowright']){
+    player.angle=Math.atan2(input.mouseWorld.y-player.y,input.mouseWorld.x-player.x);
+  }
+  
+  // Ship-relative movement: W/S = forward/back, Q/E = strafe
+  let fwd=0,strafe=0;
+  if(input.keys['w']||input.keys['arrowup'])fwd+=1;
+  if(input.keys['s']||input.keys['arrowdown'])fwd-=1;
+  if(input.keys['q'])strafe-=1; // strafe left
+  if(input.keys['e'])strafe+=1; // strafe right
+  // Forward direction is along player.angle
+  let tx=fwd*Math.cos(player.angle)+strafe*Math.cos(player.angle+Math.PI/2);
+  let ty=fwd*Math.sin(player.angle)+strafe*Math.sin(player.angle+Math.PI/2);
   if(touchMove){
     const dx=touchMove.cx-touchMove.sx,dy=touchMove.cy-touchMove.sy;
     const d=Math.sqrt(dx*dx+dy*dy);
-    if(d>10){tx=dx/d;ty=dy/d;}
+    if(d>10){tx+=dx/d;ty+=dy/d;}
   }
   const tLen=Math.sqrt(tx*tx+ty*ty);
   if(tLen>0){
     tx/=tLen;ty/=tLen;
     player.vx+=tx*thrust*dt;player.vy+=ty*thrust*dt;
-    if(Math.random()<.6)emitThrust(player.x,player.y,Math.atan2(ty,tx),spd,player.color);
+    if(Math.random()<.6)emitThrust(player.x,player.y,player.angle+Math.PI,spd,player.color);
   }
   player.vx*=Math.pow(CFG.DRAG,dt*60);player.vy*=Math.pow(CFG.DRAG,dt*60);
   const v=Math.sqrt(player.vx*player.vx+player.vy*player.vy);
@@ -1560,14 +1571,6 @@ function updatePlayer(dt){
     const a=Math.atan2(player.y,player.x);
     player.x=Math.cos(a)*CFG.WORLD_R;player.y=Math.sin(a)*CFG.WORLD_R;
     player.vx*=-.5;player.vy*=-.5;
-  }
-  // Rotation: keyboard (Q/R) or mouse
-  const ROT_SPEED=4.0; // radians/sec for keyboard rotation
-  if(input.useKeyboardAim){
-    if(input.keys['q'])player.angle-=ROT_SPEED*dt;
-    if(input.keys['e'])player.angle+=ROT_SPEED*dt;
-  }else{
-    player.angle=Math.atan2(input.mouseWorld.y-player.y,input.mouseWorld.x-player.x);
   }
   
   player.shootCD-=dt;
