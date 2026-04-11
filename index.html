@@ -94,6 +94,7 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 <button id="soundToggle">🔊</button>
 <a href="./about.html" id="aboutLink" style="position:absolute;top:20px;right:70px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.35);color:rgba(255,255,255,.9);font-size:.75rem;cursor:pointer;border-radius:4px;padding:4px 8px;z-index:55;text-decoration:none;font-family:inherit;letter-spacing:.1em;transition:all .3s" onmouseover="this.style.borderColor='rgba(100,150,255,.6)';this.style.color='#4488ff'" onmouseout="this.style.borderColor='rgba(255,255,255,.35)';this.style.color='rgba(255,255,255,.9)'">ℹ ABOUT</a>
 <div id="onlineCount" style="position:absolute;top:48px;right:20px;font-size:.72rem;color:rgba(100,200,150,.85);letter-spacing:.1em;pointer-events:none;text-shadow:0 1px 4px rgba(0,0,0,.8);background:rgba(0,0,0,.5);padding:2px 8px;border-radius:4px">🌐 1 online</div>
+<div id="stdbDebug" style="position:absolute;bottom:8px;left:8px;font-size:.6rem;color:rgba(100,255,150,.6);pointer-events:none;font-family:monospace;text-shadow:0 1px 2px #000;z-index:60;display:none"></div>
 <button class="btn btn-sm" id="marketBtn">⬡ MARKET</button>
 <div id="abilityBar"><div id="abilityHint">R — ability</div><div id="abilityCooldown"><div class="fill"></div></div></div>
 <div id="cargoBar"><div class="cargo-outer"><div class="cargo-inner"></div></div><div class="cargo-label">CARGO 0/0</div></div>
@@ -2493,7 +2494,27 @@ function renderLeaderboard(){
 
 let stdbConn=null;
 let stdbConnected=false;
+let stdbSubscribed=false;
 const STDB_TOKEN_KEY='void_claim_stdb_token';
+
+// Debug panel toggle (press F2)
+document.addEventListener('keydown',e=>{
+  if(e.key==='F2'){
+    const d=document.getElementById('stdbDebug');
+    if(d)d.style.display=d.style.display==='none'?'block':'none';
+  }
+});
+function updateStdbDebug(){
+  const d=document.getElementById('stdbDebug');
+  if(!d||d.style.display==='none')return;
+  let playerCount=0;
+  if(stdbConn&&stdbConnected){try{for(const p of stdbConn.db.player.iter())playerCount++;}catch(e){}}
+  d.textContent=`STDB: conn=${!!stdbConn} connected=${stdbConnected} subscribed=${stdbSubscribed} | `+
+    `players_in_db=${playerCount} remote=${remotePlayers.length} | `+
+    `identity=${stdbConn&&stdbConn.identity?stdbConn.identity.toHexString().slice(0,12)+'...':'none'} | `+
+    `db=${CFG.STDB_DATABASE} host=${CFG.STDB_HOST}`;
+}
+setInterval(updateStdbDebug,1000);
 
 function connectSTDB(){
   // Gate: skip if disabled, bindings not loaded, or already connected
@@ -2522,33 +2543,19 @@ function connectSTDB(){
         const oc=document.getElementById('onlineCount');
         if(oc)oc.textContent='🌐 1 online';
         
-        // Subscribe to all public tables for real-time sync
-        conn.subscriptionBuilder()
-          .onApplied(()=>{
-            console.log('[STDB] Subscriptions applied — syncing players');
-            syncRemotePlayers();
-            // Check for world seed
-            try{
-              for(const ws of conn.db.world_state.iter()){
-                if(worldSeed===null){
-                  worldSeed=Number(ws.worldSeed);
-                  console.log('[STDB] World seed from initial sync:',worldSeed);
-                  spawnAsteroids(); // re-generate with shared seed
-                }
-                break;
-              }
-            }catch(e){}
-          })
-          .subscribeToAllTables();
+        // Register table event listeners BEFORE subscribing
+        // so we don't miss any events during initial sync
         
         // Listen for player table changes
         conn.db.player.onInsert((ctx,p)=>{
+          console.log('[STDB] player.onInsert:',p.name,p.identity.toHexString().slice(0,8));
           syncRemotePlayers();
         });
         conn.db.player.onUpdate((ctx,oldP,newP)=>{
           syncRemotePlayers();
         });
         conn.db.player.onDelete((ctx,p)=>{
+          console.log('[STDB] player.onDelete:',p.name);
           syncRemotePlayers();
         });
         
@@ -2598,21 +2605,48 @@ function connectSTDB(){
           syncLeaderboard();
         });
         
-        // Join the game if player exists
-        if(player){
-          stdbJoinGame();
-        }
+        // NOW subscribe to all tables — listeners are ready
+        conn.subscriptionBuilder()
+          .onApplied(()=>{
+            console.log('[STDB] ✅ Subscriptions applied — syncing state');
+            stdbSubscribed=true;
+            syncRemotePlayers();
+            // Check for world seed from initial data
+            try{
+              for(const ws of conn.db.world_state.iter()){
+                if(worldSeed===null){
+                  worldSeed=Number(ws.worldSeed);
+                  console.log('[STDB] World seed from initial sync:',worldSeed);
+                  spawnAsteroids(); // re-generate with shared seed
+                }
+                break;
+              }
+            }catch(e){console.warn('[STDB] world_state sync error:',e);}
+            // Join game AFTER subscriptions are ready (critical!)
+            if(player){
+              console.log('[STDB] Joining game after subscription applied...');
+              stdbJoinGame();
+            }
+          })
+          .onError((ctx,err)=>{
+            console.error('[STDB] ❌ Subscription error:',err);
+          })
+          .subscribeToAllTables();
       })
-      .onDisconnect(()=>{
+      .onDisconnect((ctx)=>{
         stdbConnected=false;
+        stdbSubscribed=false;
         remotePlayers=[];
+        remoteProjectiles=[];
         const oc=document.getElementById('onlineCount');
         if(oc)oc.textContent='🌐 offline';
-        console.log('[STDB] Disconnected — retrying in 3s');
+        console.warn('[STDB] ⚠️ Disconnected — retrying in 3s');
+        notify('⚠️ Server disconnected — reconnecting...','#ffaa44');
         setTimeout(()=>{stdbConn=null;connectSTDB();},3000);
       })
       .onConnectError((ctx,err)=>{
-        console.error('[STDB] Connect error:',err);
+        console.error('[STDB] ❌ Connect error:',err);
+        notify('❌ Server connection failed — retrying...','#ff4444');
         stdbConn=null;
         setTimeout(connectSTDB,5000);
       })
@@ -2625,8 +2659,12 @@ function connectSTDB(){
 }
 
 function stdbJoinGame(){
-  if(!stdbConn||!stdbConnected||!player)return;
+  if(!stdbConn||!stdbConnected||!player){
+    console.warn('[STDB] stdbJoinGame skipped: conn=',!!stdbConn,'connected=',stdbConnected,'player=',!!player);
+    return;
+  }
   try{
+    console.log('[STDB] Calling joinGame for',player.name,'ship=',player.ship);
     stdbConn.reducers.joinGame({
       name:player.name,
       ship:player.ship,
@@ -2634,9 +2672,11 @@ function stdbJoinGame(){
       maxHp:player.maxHp,
       maxShield:player.maxShield
     });
-  }catch(e){console.warn('[STDB] join_game failed:',e);}
+    console.log('[STDB] joinGame reducer called successfully');
+  }catch(e){console.error('[STDB] ❌ join_game failed:',e);}
 }
 
+let _syncLogTimer=0;
 function syncRemotePlayers(){
   if(!stdbConn||!stdbConnected)return;
   try{
@@ -2700,12 +2740,21 @@ function syncRemotePlayers(){
     }
     remotePlayers=allPlayers;
     
+    // Periodic debug logging (every 5s)
+    const now2=Date.now();
+    if(now2-_syncLogTimer>5000){
+      _syncLogTimer=now2;
+      let totalInTable=0;
+      for(const p of stdbConn.db.player.iter())totalInTable++;
+      console.log(`[STDB] Sync: ${totalInTable} in player table, ${allPlayers.length} remote, myId=${myIdentity?myIdentity.toHexString().slice(0,8):'?'}`);
+    }
+    
     // Update player count on start screen and in-game HUD
     const total=allPlayers.length+1;
     document.getElementById('playerCount').textContent=`${total} player${total!==1?'s':''} online`;
     const oc=document.getElementById('onlineCount');
     if(oc)oc.textContent=`🌐 ${total} online`;
-  }catch(e){}
+  }catch(e){console.error('[STDB] syncRemotePlayers error:',e);}
 }
 
 // Interpolate remote player positions each frame for smooth movement
@@ -2813,7 +2862,7 @@ function sendState(){
         maxHp:player.maxHp,
         maxShield:player.maxShield
       });
-    }catch(e){console.warn('[STDB] update_player failed:',e);}
+    }catch(e){console.error('[STDB] ❌ update_player failed:',e);}
     return;
   }
   
@@ -3168,7 +3217,7 @@ function startGame(name,color,saved){
   initAudio();resumeAudio();startDrone();
   loadLeaderboard();renderLeaderboard();
   connectSTDB();connectWS();
-  if(stdbConnected)stdbJoinGame();
+  // stdbJoinGame() is now called inside onApplied callback (after subscriptions ready)
   // Add NPC scores to leaderboard for content
   npcs.forEach(n=>{
     if(n.totalEarned>100){
