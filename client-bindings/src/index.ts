@@ -43,6 +43,7 @@ import PruneEventsReducer from "./prune_events_reducer";
 import PruneProjectilesReducer from "./prune_projectiles_reducer";
 import ReportKillReducer from "./report_kill_reducer";
 import RespawnPlayerReducer from "./respawn_player_reducer";
+import SeedWorldReducer from "./seed_world_reducer";
 import SendChatReducer from "./send_chat_reducer";
 import SubmitScoreReducer from "./submit_score_reducer";
 import UpdatePlayerReducer from "./update_player_reducer";
@@ -140,6 +141,7 @@ const reducersSchema = __reducers(
   __reducerSchema("prune_projectiles", PruneProjectilesReducer),
   __reducerSchema("report_kill", ReportKillReducer),
   __reducerSchema("respawn_player", RespawnPlayerReducer),
+  __reducerSchema("seed_world", SeedWorldReducer),
   __reducerSchema("send_chat", SendChatReducer),
   __reducerSchema("submit_score", SubmitScoreReducer),
   __reducerSchema("update_player", UpdatePlayerReducer),

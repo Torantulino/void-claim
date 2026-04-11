@@ -7951,6 +7951,9 @@ ${ty.variants.map(
   // src/respawn_player_reducer.ts
   var respawn_player_reducer_default = {};
 
+  // src/seed_world_reducer.ts
+  var seed_world_reducer_default = {};
+
   // src/send_chat_reducer.ts
   var send_chat_reducer_default = {
     senderName: t.string(),
@@ -8139,6 +8142,7 @@ ${ty.variants.map(
     reducerSchema("prune_projectiles", prune_projectiles_reducer_default),
     reducerSchema("report_kill", report_kill_reducer_default),
     reducerSchema("respawn_player", respawn_player_reducer_default),
+    reducerSchema("seed_world", seed_world_reducer_default),
     reducerSchema("send_chat", send_chat_reducer_default),
     reducerSchema("submit_score", submit_score_reducer_default),
     reducerSchema("update_player", update_player_reducer_default)
