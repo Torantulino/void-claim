@@ -391,6 +391,12 @@ let gameState='menu';
 let player=null;
 let asteroids=[];
 let npcs=[];
+// Event-driven remote player cache (SpacetimeDB recommended pattern)
+// Updated exclusively by onInsert/onUpdate/onDelete callbacks — never polled
+const remotePlayerMap=new Map(); // identity hex → remote player object
+// Convenience getter used by rendering/collision code
+function getRemotePlayers(){return Array.from(remotePlayerMap.values());}
+// Legacy compat: many places still reference `remotePlayers` as an array
 let remotePlayers=[];
 let projectiles=[];
 let loot=[];
@@ -414,11 +420,13 @@ let autoSaveTimer=30;
 let worldSeed=null;
 
 // NPC Host-Authority state
-let isNpcHost=false;        // Are we the client running NPC AI?
+let isNpcHost=false;        // Are we the client running NPC AI? (set by npc_host callbacks)
 let npcHostCheckDone=false;  // Have we attempted to claim host?
 let npcSyncTimer=0;          // Timer for batching NPC state to server (10Hz)
 const NPC_SYNC_RATE=0.1;     // Send NPC state every 100ms
 let npcHostRecheckTimer=5;   // Re-check host claim periodically
+// Event-driven NPC cache for non-host clients (SpacetimeDB recommended pattern)
+const npcServerMap=new Map(); // npcId → server NPC object with interpolation state
 
 // Seeded PRNG (mulberry32)
 function seededRng(seed){
@@ -811,60 +819,81 @@ function pushNPCsToServer(){
   });
 }
 
-// Sync NPC positions/state from server table (for non-host clients)
-function syncNPCsFromServer(){
-  if(!stdbConn||!stdbConnected||isNpcHost)return;
-  try{
-    const serverNPCs=new Map();
-    for(const sn of stdbConn.db.npc.iter()){
-      serverNPCs.set(sn.id,sn);
-    }
-    if(serverNPCs.size===0)return; // No NPCs from server yet
-    
-    // Build or update local NPC array from server data
-    const now=performance.now()/1000;
-    const newNpcs=[];
-    for(const[npcId,sn]of serverNPCs){
-      // Find existing local NPC to preserve interpolation state
-      const existing=npcs.find(n=>n.npcId===npcId);
-      if(existing){
-        // Update with interpolation targets
-        existing.targetX=sn.x;existing.targetY=sn.y;existing.targetAngle=sn.angle;
-        existing.startX=existing.x;existing.startY=existing.y;existing.startAngle=existing.angle;
-        existing.vx=sn.vx;existing.vy=sn.vy;
-        existing.interpStart=now;existing.interpDur=NPC_SYNC_RATE;
-        // Update non-interpolated fields directly
-        existing.hp=sn.hp;existing.maxHp=sn.maxHp;
-        existing.shield=sn.shield;existing.maxShield=sn.maxShield;
-        existing.dead=sn.dead;existing.state=sn.state;
-        existing.personality=sn.personality;existing.ship=sn.ship;
-        existing.color=sn.color;existing.name=sn.name;
-        existing.stunTimer=sn.stunTimer;
-        existing.totalKills=sn.totalKills;existing.totalMined=sn.totalMined;
-        existing.totalEarned=sn.totalEarned;
-        newNpcs.push(existing);
-      }else{
-        // Create new local NPC from server data
-        const base=SHIPS[sn.ship]||SHIPS.prospector;
-        newNpcs.push({
-          npcId:npcId,id:'npc_'+npcId,name:sn.name,
-          x:sn.x,y:sn.y,vx:sn.vx,vy:sn.vy,angle:sn.angle,
-          targetX:sn.x,targetY:sn.y,targetAngle:sn.angle,
-          startX:sn.x,startY:sn.y,startAngle:sn.angle,
-          interpStart:now,interpDur:NPC_SYNC_RATE,
-          hp:sn.hp,maxHp:sn.maxHp,shield:sn.shield,maxShield:sn.maxShield,
-          ship:sn.ship,credits:0,cargo:{},
-          upgrades:{engine:1,laser:1,shields:1,cargo:1,scanner:0},
-          shootCD:0,dead:sn.dead,respawnTimer:0,cloaked:false,bounty:0,
-          personality:sn.personality,state:sn.state,target:null,stateTimer:1,
-          thinkTimer:1,fleeHP:.25,isPlayer:false,isNPC:true,
-          color:sn.color,stunTimer:sn.stunTimer,
-          totalKills:sn.totalKills,totalMined:sn.totalMined,totalEarned:sn.totalEarned
-        });
-      }
-    }
-    npcs=newNpcs;
-  }catch(e){console.error('[STDB-NPC] syncNPCsFromServer error:',e);}
+// ── Event-driven NPC sync (SpacetimeDB recommended pattern) ──
+// These functions are called from onInsert/onUpdate/onDelete callbacks,
+// NOT from polling loops. They update the npcServerMap which drives
+// non-host NPC state via interpolation.
+
+function handleNpcInsert(sn){
+  if(isNpcHost)return; // host runs AI locally, ignores server NPC rows
+  const npcId=sn.id;
+  const now=performance.now()/1000;
+  const existing=npcServerMap.get(npcId);
+  if(existing){
+    // Already have this NPC — treat as update
+    handleNpcUpdateInner(existing,sn,now);
+  }else{
+    // Brand new NPC from server
+    const obj={
+      npcId:npcId,id:'npc_'+npcId,name:sn.name,
+      x:sn.x,y:sn.y,vx:sn.vx||0,vy:sn.vy||0,angle:sn.angle||0,
+      targetX:sn.x,targetY:sn.y,targetAngle:sn.angle||0,
+      startX:sn.x,startY:sn.y,startAngle:sn.angle||0,
+      interpStart:now,interpDur:NPC_SYNC_RATE,
+      hp:sn.hp,maxHp:sn.maxHp,shield:sn.shield,maxShield:sn.maxShield,
+      ship:sn.ship,credits:0,cargo:{},
+      upgrades:{engine:1,laser:1,shields:1,cargo:1,scanner:0},
+      shootCD:0,dead:sn.dead||false,respawnTimer:0,cloaked:false,bounty:0,
+      personality:sn.personality,state:sn.state||'idle',target:null,stateTimer:1,
+      thinkTimer:1,fleeHP:.25,isPlayer:false,isNPC:true,
+      color:sn.color,stunTimer:sn.stunTimer||0,
+      totalKills:sn.totalKills||0,totalMined:sn.totalMined||0,totalEarned:sn.totalEarned||0
+    };
+    npcServerMap.set(npcId,obj);
+    rebuildNpcsFromServerMap();
+  }
+}
+
+function handleNpcUpdate(oldNpc,newNpc){
+  if(isNpcHost)return;
+  const npcId=newNpc.id;
+  const now=performance.now()/1000;
+  const existing=npcServerMap.get(npcId);
+  if(!existing){
+    // Don't have it yet — treat as insert
+    handleNpcInsert(newNpc);
+    return;
+  }
+  handleNpcUpdateInner(existing,newNpc,now);
+}
+
+function handleNpcUpdateInner(existing,sn,now){
+  // Set interpolation targets (current visual pos → new server pos)
+  existing.targetX=sn.x;existing.targetY=sn.y;existing.targetAngle=sn.angle||0;
+  existing.startX=existing.x;existing.startY=existing.y;existing.startAngle=existing.angle;
+  existing.vx=sn.vx||0;existing.vy=sn.vy||0;
+  existing.interpStart=now;existing.interpDur=NPC_SYNC_RATE;
+  // Update non-interpolated fields directly
+  existing.hp=sn.hp;existing.maxHp=sn.maxHp;
+  existing.shield=sn.shield;existing.maxShield=sn.maxShield;
+  existing.dead=sn.dead||false;existing.state=sn.state||'idle';
+  existing.personality=sn.personality;existing.ship=sn.ship;
+  existing.color=sn.color;existing.name=sn.name;
+  existing.stunTimer=sn.stunTimer||0;
+  existing.totalKills=sn.totalKills||0;existing.totalMined=sn.totalMined||0;
+  existing.totalEarned=sn.totalEarned||0;
+}
+
+function handleNpcDelete(sn){
+  if(isNpcHost)return;
+  npcServerMap.delete(sn.id);
+  rebuildNpcsFromServerMap();
+}
+
+// Rebuild npcs array from the server map (called only on insert/delete, not update)
+function rebuildNpcsFromServerMap(){
+  if(isNpcHost)return;
+  npcs=Array.from(npcServerMap.values());
 }
 
 // Non-host: interpolate NPC positions each frame
@@ -935,50 +964,29 @@ function tryClaimNpcHost(){
   }catch(e){console.warn('[STDB-NPC] claimNpcHost failed:',e);}
 }
 
-// Check if we are the current NPC host
-function checkIfNpcHost(){
-  if(!stdbConn||!stdbConnected)return false;
-  try{
-    for(const h of stdbConn.db.npc_host.iter()){
-      if(stdbConn.identity&&h.hostIdentity===stdbConn.identity.toHexString()){
-        return true;
-      }
-    }
-  }catch(e){}
-  return false;
-}
+// Note: isNpcHost is now set purely by npc_host onInsert/onUpdate/onDelete callbacks
+// No polling needed — the SpacetimeDB client cache is event-driven
 
 function updateNPCs(dt){
   // If multiplayer is connected, handle host/non-host logic
   if(stdbConn&&stdbConnected){
-    // Periodically re-check host status
+    // Periodically check if host slot is empty and try to claim
+    // (isNpcHost itself is set by npc_host onInsert/onUpdate/onDelete callbacks — no polling)
     npcHostRecheckTimer-=dt;
     if(npcHostRecheckTimer<=0){
       npcHostRecheckTimer=3;
-      const wasHost=isNpcHost;
-      isNpcHost=checkIfNpcHost();
-      if(!wasHost&&isNpcHost){
-        console.log('[STDB-NPC] We are now the NPC host!');
-        // If we just became host and have no NPCs, spawn them
-        if(npcs.length===0){spawnNPCs();pushNPCsToServer();}
-        else{pushNPCsToServer();}
-      }
-      // If nobody is hosting and we haven't tried yet, claim it
-      if(!isNpcHost&&!npcHostCheckDone){
-        npcHostCheckDone=true;
-        tryClaimNpcHost();
-      }
       // If nobody is hosting (host left), try to claim
-      let anyHost=false;
-      try{for(const h of stdbConn.db.npc_host.iter()){anyHost=true;break;}}catch(e){}
-      if(!anyHost){
-        tryClaimNpcHost();
+      if(!isNpcHost){
+        let anyHost=false;
+        try{for(const h of stdbConn.db.npc_host.iter()){anyHost=true;break;}}catch(e){}
+        if(!anyHost){
+          tryClaimNpcHost();
+        }
       }
     }
     
     if(!isNpcHost){
-      // Non-host: sync from server table + interpolate
-      syncNPCsFromServer();
+      // Non-host: interpolate only (state comes from event-driven callbacks)
       interpolateRemoteNPCs(dt);
       // Still do visual FX for nearby NPCs (stun particles, thrust)
       npcs.forEach(n=>{
@@ -2735,12 +2743,12 @@ document.addEventListener('keydown',e=>{
 function updateStdbDebug(){
   const d=document.getElementById('stdbDebug');
   if(!d||d.style.display==='none')return;
-  let playerCount=0;
-  if(stdbConn&&stdbConnected){try{for(const p of stdbConn.db.player.iter())playerCount++;}catch(e){}}
-  let npcCount=0;try{if(stdbConn&&stdbConnected)for(const n of stdbConn.db.npc.iter())npcCount++;}catch(e){}
+  // Use local maps instead of polling iter() — event-driven architecture
+  const playerCount=remotePlayerMap.size+1;
+  const npcCount=isNpcHost?npcs.length:npcServerMap.size;
   d.textContent=`STDB: conn=${!!stdbConn} connected=${stdbConnected} subscribed=${stdbSubscribed} | `+
-    `players_in_db=${playerCount} remote=${remotePlayers.length} | `+
-    `npcHost=${isNpcHost} npcs_local=${npcs.length} npcs_db=${npcCount} | `+
+    `players=${playerCount} remoteMap=${remotePlayerMap.size} | `+
+    `npcHost=${isNpcHost} npcs_local=${npcs.length} npcServerMap=${npcServerMap.size} | `+
     `identity=${stdbConn&&stdbConn.identity?stdbConn.identity.toHexString().slice(0,12)+'...':'none'} | `+
     `db=${CFG.STDB_DATABASE} host=${CFG.STDB_HOST}`;
 }
@@ -2776,17 +2784,15 @@ function connectSTDB(){
         // Register table event listeners BEFORE subscribing
         // so we don't miss any events during initial sync
         
-        // Listen for player table changes
+        // Listen for player table changes (event-driven — no polling)
         conn.db.player.onInsert((ctx,p)=>{
-          console.log('[STDB] player.onInsert:',p.name,p.identity.toHexString().slice(0,8));
-          syncRemotePlayers();
+          handlePlayerInsert(p);
         });
         conn.db.player.onUpdate((ctx,oldP,newP)=>{
-          syncRemotePlayers();
+          handlePlayerUpdate(oldP,newP);
         });
         conn.db.player.onDelete((ctx,p)=>{
-          console.log('[STDB] player.onDelete:',p.name);
-          syncRemotePlayers();
+          handlePlayerDelete(p);
         });
         
         // Listen for kill events
@@ -2835,12 +2841,12 @@ function connectSTDB(){
           syncLeaderboard();
         });
         
-        // Listen for NPC table changes (non-host clients sync from this)
+        // Listen for NPC table changes (event-driven — no polling)
         conn.db.npc.onInsert((ctx,npcRow)=>{
-          if(!isNpcHost)syncNPCsFromServer();
+          handleNpcInsert(npcRow);
         });
         conn.db.npc.onUpdate((ctx,oldNpc,newNpc)=>{
-          if(!isNpcHost)syncNPCsFromServer();
+          handleNpcUpdate(oldNpc,newNpc);
           // Check for NPC death (any client can see the explosion FX)
           if(newNpc.dead&&!oldNpc.dead&&player){
             const dx=newNpc.x-player.x,dy=newNpc.y-player.y;
@@ -2852,19 +2858,38 @@ function connectSTDB(){
             minimapEvents.push({x:newNpc.x,y:newNpc.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
           }
         });
+        conn.db.npc.onDelete((ctx,npcRow)=>{
+          handleNpcDelete(npcRow);
+        });
         
-        // Listen for NPC host changes (for host election)
+        // Listen for NPC host changes (event-driven host election)
         conn.db.npc_host.onInsert((ctx,host)=>{
           const myHex=stdbConn&&stdbConn.identity?stdbConn.identity.toHexString():'';
+          const wasHost=isNpcHost;
           isNpcHost=host.hostIdentity===myHex;
-          console.log('[STDB-NPC] Host changed:',host.hostIdentity.slice(0,8),'isUs=',isNpcHost);
-          if(isNpcHost&&npcs.length>0)pushNPCsToServer();
+          console.log('[STDB-NPC] Host set:',host.hostIdentity.slice(0,8),'isUs=',isNpcHost);
+          if(isNpcHost&&!wasHost){
+            // We just became host — take over NPC AI
+            if(npcs.length>0)pushNPCsToServer();
+            else{spawnNPCs();pushNPCsToServer();}
+            npcServerMap.clear(); // host doesn't use server map
+          }else if(!isNpcHost&&wasHost){
+            // Lost host role — switch to server-driven NPCs
+            initialSyncNPCs();
+          }
         });
         conn.db.npc_host.onUpdate((ctx,oldHost,newHost)=>{
           const myHex=stdbConn&&stdbConn.identity?stdbConn.identity.toHexString():'';
+          const wasHost=isNpcHost;
           isNpcHost=newHost.hostIdentity===myHex;
           console.log('[STDB-NPC] Host updated:',newHost.hostIdentity.slice(0,8),'isUs=',isNpcHost);
-          if(isNpcHost&&npcs.length>0)pushNPCsToServer();
+          if(isNpcHost&&!wasHost){
+            if(npcs.length>0)pushNPCsToServer();
+            else{spawnNPCs();pushNPCsToServer();}
+            npcServerMap.clear();
+          }else if(!isNpcHost&&wasHost){
+            initialSyncNPCs();
+          }
         });
         conn.db.npc_host.onDelete((ctx,host)=>{
           const myHex=stdbConn&&stdbConn.identity?stdbConn.identity.toHexString():'';
@@ -2876,9 +2901,10 @@ function connectSTDB(){
         // NOW subscribe to all tables — listeners are ready
         conn.subscriptionBuilder()
           .onApplied(()=>{
-            console.log('[STDB] ✅ Subscriptions applied — syncing state');
+            console.log('[STDB] ✅ Subscriptions applied — initial snapshot sync');
             stdbSubscribed=true;
-            syncRemotePlayers();
+            // One-time snapshot sync using iter() (SpacetimeDB recommended)
+            initialSyncPlayers();
             // Check for world seed from initial data
             let seedFound=false;
             try{
@@ -2886,13 +2912,12 @@ function connectSTDB(){
                 if(worldSeed===null){
                   worldSeed=Number(ws.worldSeed);
                   console.log('[STDB] World seed from initial sync:',worldSeed);
-                  spawnAsteroids(); // re-generate with shared seed
+                  spawnAsteroids();
                 }
                 seedFound=true;
                 break;
               }
             }catch(e){console.warn('[STDB] world_state sync error:',e);}
-            // If no world seed exists, ask server to create one
             if(!seedFound){
               console.log('[STDB] No world seed found — calling seedWorld reducer');
               try{conn.reducers.seedWorld();}catch(e){console.warn('[STDB] seedWorld failed:',e);}
@@ -2902,22 +2927,28 @@ function connectSTDB(){
               console.log('[STDB] Joining game after subscription applied...');
               stdbJoinGame();
             }
-            // Attempt to claim NPC host role
+            // Check NPC host status from initial snapshot and claim if needed
             if(!npcHostCheckDone){
               npcHostCheckDone=true;
-              // Small delay to let join_game settle first
+              // Check if we're already host from npc_host callbacks that fired during snapshot
               setTimeout(()=>{
-                tryClaimNpcHost();
-                // After claiming, check if we got it
+                if(!isNpcHost){
+                  // Check if anyone is host
+                  let anyHost=false;
+                  try{for(const h of conn.db.npc_host.iter()){anyHost=true;break;}}catch(e){}
+                  if(!anyHost){
+                    tryClaimNpcHost();
+                  }
+                }
+                // After claim attempt, check result
                 setTimeout(()=>{
-                  isNpcHost=checkIfNpcHost();
                   if(isNpcHost){
                     console.log('[STDB-NPC] ✅ We are the NPC host!');
                     if(npcs.length>0)pushNPCsToServer();
                     else{spawnNPCs();pushNPCsToServer();}
                   }else{
-                    console.log('[STDB-NPC] Another client is NPC host — syncing from server');
-                    syncNPCsFromServer();
+                    console.log('[STDB-NPC] Another client is NPC host — synced',npcServerMap.size,'NPCs from server');
+                    initialSyncNPCs();
                   }
                 },500);
               },300);
@@ -2933,7 +2964,9 @@ function connectSTDB(){
         stdbSubscribed=false;
         isNpcHost=false;
         npcHostCheckDone=false;
+        remotePlayerMap.clear();
         remotePlayers=[];
+        npcServerMap.clear();
         remoteProjectiles=[];
         const oc=document.getElementById('onlineCount');
         if(oc)oc.textContent='🌐 offline';
@@ -2973,85 +3006,174 @@ function stdbJoinGame(){
   }catch(e){console.error('[STDB] ❌ join_game failed:',e);}
 }
 
-let _syncLogTimer=0;
-function syncRemotePlayers(){
-  if(!stdbConn||!stdbConnected)return;
-  try{
-    const myIdentity=stdbConn.identity;
-    const oldMap={};
-    remotePlayers.forEach(rp=>{oldMap[rp.id]=rp;});
-    const allPlayers=[];
-    for(const p of stdbConn.db.player.iter()){
-      // Skip self — but sync our own HP/shield from server (authoritative)
-      if(myIdentity&&p.identity.toHexString()===myIdentity.toHexString()){
-        // Server-authoritative HP sync: update local player HP from server
-        if(player){
-          player.hp=p.hp;
-          player.shield=p.shield;
-          if(p.dead&&!player.dead){
-            // Server says we're dead — trigger death locally
-            player.dead=true;player.hp=0;player.shield=0;
-            gameState='dead';
-            document.getElementById('deathScreen').style.display='flex';
-            document.getElementById('lostInfo').textContent='You were destroyed by another player.';
-            SFX.death();killStreak=0;shake(8);
-            emitBurst(player.x,player.y,30,150,player.color||'#ff5555',3,.7,12);
-            emitBurst(player.x,player.y,15,80,'#fff',2,.4,8);
-          }
-        }
-        continue;
-      }
-      const id=p.identity.toHexString();
-      const old=oldMap[id];
-      const now=performance.now()/1000;
-      // Check if remote player just died (transition from alive to dead)
-      const wasDead=old?old.dead:p.dead;
-      if(p.dead&&!wasDead){
-        // Remote player just died — show explosion FX
-        const dx=p.x-(player?player.x:0),dy=p.y-(player?player.y:0);
-        if(Math.sqrt(dx*dx+dy*dy)<FX_RANGE){
-          emitBurst(p.x,p.y,30,150,p.color||'#ff5555',3,.7,12);
-          emitBurst(p.x,p.y,15,80,'#fff',2,.4,8);
-          SFX.explode();shake(4);
-        }
-        minimapEvents.push({x:p.x,y:p.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
-      }
-      allPlayers.push({
-        id:id,isRemotePlayer:true,
-        name:p.name,
-        // Interpolation: store previous + target positions
-        x:old?old.x:p.x, y:old?old.y:p.y, angle:old?old.angle:p.angle,
-        targetX:p.x, targetY:p.y, targetAngle:p.angle,
-        // Velocity for dead-reckoning extrapolation
-        vx:p.vx||0, vy:p.vy||0,
-        interpStart:now,
-        interpDur:0.08, // smooth over 80ms (tighter for 20Hz)
-        startX:old?old.x:p.x, startY:old?old.y:p.y, startAngle:old?old.angle:p.angle,
-        ship:p.ship,color:p.color,
-        hp:p.hp,maxHp:p.maxHp,
-        shield:p.shield,maxShield:p.maxShield,
-        cargo:p.cargoUsed,
-        dead:p.dead,cloaked:p.cloaked,bounty:p.bounty,
-        kills:p.kills,earned:Number(p.earned)
-      });
+// ── Event-driven remote player sync (SpacetimeDB recommended pattern) ──
+// Each callback updates ONLY the affected row in the map, not the entire table.
+// The remotePlayers array is rebuilt from the map only when players join/leave.
+
+function handlePlayerInsert(p){
+  if(!stdbConn)return;
+  const myIdentity=stdbConn.identity;
+  const id=p.identity.toHexString();
+  // Self — sync server-authoritative HP/shield
+  if(myIdentity&&id===myIdentity.toHexString()){
+    syncSelfFromServer(p);
+    return;
+  }
+  const now=performance.now()/1000;
+  console.log('[STDB] player.onInsert:',p.name,id.slice(0,8));
+  const rp={
+    id:id,isRemotePlayer:true,
+    name:p.name,
+    x:p.x,y:p.y,angle:p.angle,
+    targetX:p.x,targetY:p.y,targetAngle:p.angle,
+    vx:p.vx||0,vy:p.vy||0,
+    interpStart:now,interpDur:0.08,
+    startX:p.x,startY:p.y,startAngle:p.angle,
+    ship:p.ship,color:p.color,
+    hp:p.hp,maxHp:p.maxHp,
+    shield:p.shield,maxShield:p.maxShield,
+    cargo:p.cargoUsed,
+    dead:p.dead,cloaked:p.cloaked,bounty:p.bounty,
+    kills:p.kills,earned:Number(p.earned)
+  };
+  remotePlayerMap.set(id,rp);
+  rebuildRemotePlayers();
+}
+
+function handlePlayerUpdate(oldP,newP){
+  if(!stdbConn)return;
+  const myIdentity=stdbConn.identity;
+  const id=newP.identity.toHexString();
+  // Self — sync server-authoritative HP/shield
+  if(myIdentity&&id===myIdentity.toHexString()){
+    syncSelfFromServer(newP);
+    return;
+  }
+  const now=performance.now()/1000;
+  const existing=remotePlayerMap.get(id);
+  if(!existing){
+    // Doesn't exist yet — treat as insert
+    handlePlayerInsert(newP);
+    return;
+  }
+  // Check if remote player just died (transition from alive to dead)
+  if(newP.dead&&!existing.dead){
+    const dx=newP.x-(player?player.x:0),dy=newP.y-(player?player.y:0);
+    if(Math.sqrt(dx*dx+dy*dy)<FX_RANGE){
+      emitBurst(newP.x,newP.y,30,150,newP.color||'#ff5555',3,.7,12);
+      emitBurst(newP.x,newP.y,15,80,'#fff',2,.4,8);
+      SFX.explode();shake(4);
     }
-    remotePlayers=allPlayers;
-    
-    // Periodic debug logging (every 5s)
-    const now2=Date.now();
-    if(now2-_syncLogTimer>5000){
-      _syncLogTimer=now2;
-      let totalInTable=0;
-      for(const p of stdbConn.db.player.iter())totalInTable++;
-      console.log(`[STDB] Sync: ${totalInTable} in player table, ${allPlayers.length} remote, myId=${myIdentity?myIdentity.toHexString().slice(0,8):'?'}`);
+    minimapEvents.push({x:newP.x,y:newP.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
+  }
+  // Set interpolation targets (current visual pos → new server pos)
+  existing.startX=existing.x;existing.startY=existing.y;existing.startAngle=existing.angle;
+  existing.targetX=newP.x;existing.targetY=newP.y;existing.targetAngle=newP.angle;
+  existing.vx=newP.vx||0;existing.vy=newP.vy||0;
+  existing.interpStart=now;existing.interpDur=0.08;
+  // Update non-interpolated fields directly
+  existing.name=newP.name;existing.ship=newP.ship;existing.color=newP.color;
+  existing.hp=newP.hp;existing.maxHp=newP.maxHp;
+  existing.shield=newP.shield;existing.maxShield=newP.maxShield;
+  existing.cargo=newP.cargoUsed;
+  existing.dead=newP.dead;existing.cloaked=newP.cloaked;existing.bounty=newP.bounty;
+  existing.kills=newP.kills;existing.earned=Number(newP.earned);
+}
+
+function handlePlayerDelete(p){
+  const id=p.identity.toHexString();
+  console.log('[STDB] player.onDelete:',p.name);
+  remotePlayerMap.delete(id);
+  rebuildRemotePlayers();
+}
+
+// Rebuild the remotePlayers array from the map (only on join/leave, not every update)
+function rebuildRemotePlayers(){
+  remotePlayers=Array.from(remotePlayerMap.values());
+  // Update player count HUD
+  const total=remotePlayers.length+1;
+  document.getElementById('playerCount').textContent=`${total} player${total!==1?'s':''} online`;
+  const oc=document.getElementById('onlineCount');
+  if(oc)oc.textContent=`🌐 ${total} online`;
+}
+
+// Sync our own HP/shield from server (server-authoritative combat)
+function syncSelfFromServer(p){
+  if(!player)return;
+  player.hp=p.hp;
+  player.shield=p.shield;
+  if(p.dead&&!player.dead){
+    player.dead=true;player.hp=0;player.shield=0;
+    gameState='dead';
+    document.getElementById('deathScreen').style.display='flex';
+    document.getElementById('lostInfo').textContent='You were destroyed by another player.';
+    SFX.death();killStreak=0;shake(8);
+    emitBurst(player.x,player.y,30,150,player.color||'#ff5555',3,.7,12);
+    emitBurst(player.x,player.y,15,80,'#fff',2,.4,8);
+  }
+}
+
+// Initial snapshot sync — called ONCE from onApplied, uses iter() as SpacetimeDB recommends
+function initialSyncPlayers(){
+  if(!stdbConn)return;
+  const myIdentity=stdbConn.identity;
+  remotePlayerMap.clear();
+  for(const p of stdbConn.db.player.iter()){
+    const id=p.identity.toHexString();
+    if(myIdentity&&id===myIdentity.toHexString()){
+      syncSelfFromServer(p);
+      continue;
     }
-    
-    // Update player count on start screen and in-game HUD
-    const total=allPlayers.length+1;
-    document.getElementById('playerCount').textContent=`${total} player${total!==1?'s':''} online`;
-    const oc=document.getElementById('onlineCount');
-    if(oc)oc.textContent=`🌐 ${total} online`;
-  }catch(e){console.error('[STDB] syncRemotePlayers error:',e);}
+    const now=performance.now()/1000;
+    remotePlayerMap.set(id,{
+      id:id,isRemotePlayer:true,
+      name:p.name,
+      x:p.x,y:p.y,angle:p.angle,
+      targetX:p.x,targetY:p.y,targetAngle:p.angle,
+      vx:p.vx||0,vy:p.vy||0,
+      interpStart:now,interpDur:0.08,
+      startX:p.x,startY:p.y,startAngle:p.angle,
+      ship:p.ship,color:p.color,
+      hp:p.hp,maxHp:p.maxHp,
+      shield:p.shield,maxShield:p.maxShield,
+      cargo:p.cargoUsed,
+      dead:p.dead,cloaked:p.cloaked,bounty:p.bounty,
+      kills:p.kills,earned:Number(p.earned)
+    });
+  }
+  rebuildRemotePlayers();
+}
+
+// Initial snapshot sync for NPCs — called ONCE from onApplied
+function initialSyncNPCs(){
+  if(isNpcHost)return;
+  npcServerMap.clear();
+  if(!stdbConn)return;
+  const now=performance.now()/1000;
+  let count=0;
+  for(const sn of stdbConn.db.npc.iter()){
+    const obj={
+      npcId:sn.id,id:'npc_'+sn.id,name:sn.name,
+      x:sn.x,y:sn.y,vx:sn.vx||0,vy:sn.vy||0,angle:sn.angle||0,
+      targetX:sn.x,targetY:sn.y,targetAngle:sn.angle||0,
+      startX:sn.x,startY:sn.y,startAngle:sn.angle||0,
+      interpStart:now,interpDur:NPC_SYNC_RATE,
+      hp:sn.hp,maxHp:sn.maxHp,shield:sn.shield,maxShield:sn.maxShield,
+      ship:sn.ship,credits:0,cargo:{},
+      upgrades:{engine:1,laser:1,shields:1,cargo:1,scanner:0},
+      shootCD:0,dead:sn.dead||false,respawnTimer:0,cloaked:false,bounty:0,
+      personality:sn.personality,state:sn.state||'idle',target:null,stateTimer:1,
+      thinkTimer:1,fleeHP:.25,isPlayer:false,isNPC:true,
+      color:sn.color,stunTimer:sn.stunTimer||0,
+      totalKills:sn.totalKills||0,totalMined:sn.totalMined||0,totalEarned:sn.totalEarned||0
+    };
+    npcServerMap.set(sn.id,obj);
+    count++;
+  }
+  if(count>0){
+    npcs=Array.from(npcServerMap.values());
+    console.log('[STDB-NPC] Initial sync:',count,'NPCs from server');
+  }
 }
 
 // Interpolate remote player positions each frame for smooth movement
