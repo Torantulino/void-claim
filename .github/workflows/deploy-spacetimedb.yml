@@ -1,21 +1,29 @@
 name: Deploy SpacetimeDB Module
 
+# Deploys the multiplayer server module to SpacetimeDB Maincloud
+# and generates client bindings for the browser.
+#
+# Triggers on push to main when the spacetimedb/ directory changes.
+# Also supports manual trigger for first-time setup.
+
 on:
   push:
     branches: [main]
     paths:
       - 'spacetimedb/**'
       - '.github/workflows/deploy-spacetimedb.yml'
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger button in GitHub UI
 
 env:
+  # Database name on SpacetimeDB Maincloud
+  # Change this to your own unique name!
   STDB_DATABASE: void-claim
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write  # Needed to push generated bindings back to repo
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -27,7 +35,7 @@ jobs:
 
       - name: Install SpacetimeDB CLI
         run: |
-          curl -sSf https://install.spacetimedb.com | sh
+          curl -sSf https://install.spacetimedb.com | sh -s -- -y
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Authenticate with SpacetimeDB
@@ -37,8 +45,8 @@ jobs:
         run: |
           spacetime publish "${{ env.STDB_DATABASE }}" \
             --server maincloud \
-            --module-path ./spacetimedb \
-            --delete-data on-conflict \
+            --project-path ./spacetimedb \
+            -y \
             2>&1
           echo "✅ Module published to Maincloud"
 
@@ -47,12 +55,14 @@ jobs:
           spacetime generate \
             --lang typescript \
             --out-dir ./client-bindings/src \
-            --module-path ./spacetimedb
+            --project-path ./spacetimedb
           echo "✅ Client bindings generated"
 
       - name: Build IIFE bundle for browser
         run: |
           cd client-bindings
+          
+          # Create package.json for the bindings bundle
           cat > package.json << 'EOF'
           {
             "name": "void-claim-bindings",
@@ -70,6 +80,7 @@ jobs:
             }
           }
           EOF
+          
           npm install
           npm run build
           echo "✅ IIFE bundle built at dist/bindings.iife.js"
