@@ -166,6 +166,15 @@ section { padding:5rem 2rem; max-width:1100px; margin:0 auto; }
 /* ===== FOOTER ===== */
 footer { text-align:center; padding:3rem 2rem; border-top:1px solid rgba(255,255,255,.05); position:relative; z-index:1; }
 footer h2 { margin-bottom:1rem; }
+/* Void whisper — corrupted signal flicker */
+.void-whisper { animation: voidFlicker 4s ease-in-out infinite; }
+@keyframes voidFlicker {
+  0%,100% { opacity:.5; }
+  30% { opacity:.3; }
+  50% { opacity:.7; text-shadow:0 0 8px rgba(204,51,255,.3); }
+  70% { opacity:.2; }
+  85% { opacity:.6; }
+}
 footer p { color:#556677; font-size:.8rem; margin-top:1.5rem; letter-spacing:.1em; }
 .footer-links { display:flex; gap:1.5rem; justify-content:center; margin-top:1rem; }
 .footer-links a { color:#556677; text-decoration:none; font-size:.75rem; letter-spacing:.15em; text-transform:uppercase; transition:color .3s; }
@@ -251,6 +260,7 @@ footer p { color:#556677; font-size:.8rem; margin-top:1.5rem; letter-spacing:.1e
   <p class="about-text reveal">Choose a ship, pick a callsign, and launch into a persistent multiplayer world powered by <em>SpacetimeDB</em>. Mine asteroids, sell at Earth's shield station, upgrade your rig, hire wingmen, and decide: push deeper for richer ore, or play it safe?</p>
   <div class="about-quote reveal">
     <p>"The deeper you go, the richer the ore — and the more dangerous the competition. Greed is your greatest enemy."</p>
+    <p style="margin-top:.8rem;font-size:.75rem;color:rgba(204,51,255,.3);letter-spacing:.15em">— Though some veterans whisper that greed isn't the only thing waiting in the dark.</p>
   </div>
   <div class="stat-row reveal">
     <div class="stat-box"><span class="num">6</span><span class="label">Ships</span></div>
@@ -290,6 +300,7 @@ footer p { color:#556677; font-size:.8rem; margin-top:1.5rem; letter-spacing:.1e
     <div class="zone-card void">
       <h3>💀 THE VOID</h3>
       <p>Voidstone — $200 per unit. The rarest ore in the cosmos. Reach it and you're rich. If you make it back alive.</p>
+      <p style="margin-top:.7rem;font-size:.7rem;color:rgba(204,51,255,.35);letter-spacing:.2em;font-style:italic" class="void-whisper">Miners report strange radar signatures in the deep void. Most dismiss them. Most don't come back.</p>
     </div>
   </div>
 </section>
@@ -465,7 +476,7 @@ footer p { color:#556677; font-size:.8rem; margin-top:1.5rem; letter-spacing:.1e
     <span class="section-label">PvP & PvE</span>
     <h2>Combat System</h2>
     <div class="section-rule"></div>
-    <p class="about-text" style="margin-bottom:2rem">Every ship has a laser. Every player is a potential threat. The deeper you go, the more violent it gets.</p>
+    <p class="about-text" style="margin-bottom:2rem">Every ship has a laser. Every player is a potential threat. The deeper you go, the more violent it gets. And sometimes… your scanner picks up something that isn't a player at all.</p>
   </div>
   <div class="combat-grid reveal">
     <div class="combat-card">
@@ -595,6 +606,7 @@ footer p { color:#556677; font-size:.8rem; margin-top:1.5rem; letter-spacing:.1e
   <span class="section-label">Ready?</span>
   <h2>The Void Is Calling</h2>
   <div class="section-rule"></div>
+  <p style="font-size:.75rem;color:rgba(204,51,255,.25);letter-spacing:.3em;margin-bottom:1.5rem;font-style:italic" class="void-whisper">Something stirs in the deepest dark. Can you hear it?</p>
   <div class="cta-group">
     <a href="./index.html" class="btn-primary">▶ LAUNCH GAME</a>
   </div>
