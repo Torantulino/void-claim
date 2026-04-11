@@ -2612,6 +2612,7 @@ function connectSTDB(){
             stdbSubscribed=true;
             syncRemotePlayers();
             // Check for world seed from initial data
+            let seedFound=false;
             try{
               for(const ws of conn.db.world_state.iter()){
                 if(worldSeed===null){
@@ -2619,9 +2620,15 @@ function connectSTDB(){
                   console.log('[STDB] World seed from initial sync:',worldSeed);
                   spawnAsteroids(); // re-generate with shared seed
                 }
+                seedFound=true;
                 break;
               }
             }catch(e){console.warn('[STDB] world_state sync error:',e);}
+            // If no world seed exists, ask server to create one
+            if(!seedFound){
+              console.log('[STDB] No world seed found — calling seedWorld reducer');
+              try{conn.reducers.seedWorld();}catch(e){console.warn('[STDB] seedWorld failed:',e);}
+            }
             // Join game AFTER subscriptions are ready (critical!)
             if(player){
               console.log('[STDB] Joining game after subscription applied...');

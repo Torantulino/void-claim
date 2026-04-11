@@ -109,11 +109,21 @@ export default spacetimedb;
 // (NOT spacetimedb.reducer — that creates a regular reducer, not a lifecycle hook!)
 // ═══════════════════════════════════════════
 
+// Helper: generate a seed from identity hex string (deterministic, no Math.random)
+function seedFromIdentity(hexStr: string): bigint {
+  let hash = 0;
+  for (let i = 0; i < hexStr.length; i++) {
+    const ch = hexStr.charCodeAt(i);
+    hash = ((hash << 5) - hash + ch) | 0;
+  }
+  return BigInt(Math.abs(hash) || 42);
+}
+
 // init runs once when the module is first published (or after --delete-data)
 spacetimedb.init(
   (ctx) => {
-    // Generate world seed (singleton row id=0)
-    const seed = BigInt(Math.floor(Math.random() * 2147483647));
+    // Generate world seed using owner identity (deterministic)
+    const seed = seedFromIdentity(ctx.sender.toHexString());
     ctx.db.world_state.insert({ id: 0, world_seed: seed });
     console.log(`World initialized with seed: ${seed}`);
   }
@@ -125,7 +135,7 @@ spacetimedb.clientConnected(
     // Ensure world seed exists (safety net — init should have created it)
     const ws = ctx.db.world_state.id.find(0);
     if (!ws) {
-      const seed = BigInt(Math.floor(Math.random() * 2147483647));
+      const seed = seedFromIdentity(ctx.sender.toHexString());
       ctx.db.world_state.insert({ id: 0, world_seed: seed });
       console.log(`World seed initialized (fallback): ${seed}`);
     }
@@ -138,6 +148,18 @@ spacetimedb.clientDisconnected(
     if (existing) {
       ctx.db.player.identity.delete(ctx.sender);
       console.log(`Player left: ${existing.name}`);
+    }
+  }
+);
+
+// seed_world — callable fallback in case init/clientConnected didn't seed
+export const seed_world = spacetimedb.reducer(
+  (ctx) => {
+    const ws = ctx.db.world_state.id.find(0);
+    if (!ws) {
+      const seed = seedFromIdentity(ctx.sender.toHexString());
+      ctx.db.world_state.insert({ id: 0, world_seed: seed });
+      console.log(`World seeded by client: ${seed}`);
     }
   }
 );
