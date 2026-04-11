@@ -57,10 +57,10 @@ jobs:
 
       - name: Generate TypeScript client bindings
         run: |
-          cd spacetimedb
           spacetime generate \
             --lang typescript \
-            --out-dir ../client-bindings/src
+            --out-dir ./client-bindings/src \
+            --module-path ./spacetimedb
           echo "✅ Client bindings generated"
 
       - name: Build IIFE bundle for browser
