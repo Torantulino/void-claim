@@ -582,6 +582,284 @@ let wingmanRallyTimer=0; // seconds remaining for Rally ability
 let wingmanRallyTarget=null; // focused attack target during Rally
 let wmSyncTimer=0; // Timer for syncing wingmen state to server
 
+// ═══════════════════════════════════════════
+// Police System — Law enforcement in the safe zone
+// ═══════════════════════════════════════════
+let policeUnits=[]; // Array of police entities (carriers + fighters)
+const POLICE_COLOR='#4488ff'; // Distinctive blue
+const POLICE_CARRIER_COLOR='#3366dd';
+const POLICE_PATROL_R=CFG.EARTH_SHIELD_R*0.75; // Patrol orbit radius within safe zone
+const POLICE_CHASE_MAX=CFG.GREEN_R+500; // How far police will chase into green zone
+const POLICE_RETURN_R=CFG.EARTH_SHIELD_R+200; // When to start returning
+
+// Aggressor tracking: entity id → {until: timestamp}
+// An aggressor is someone who attacks a non-aggressor inside safe zone, or attacks police anywhere
+const aggressorMap=new Map(); // id → true (for quick lookup during combat)
+
+function isAggressor(entity){
+  if(!entity)return false;
+  if(entity.isPolice)return false; // Police are never aggressors
+  return entity.aggressor===true||aggressorMap.has(entity.id);
+}
+
+function markAggressor(entity){
+  if(!entity||entity.isPolice)return;
+  entity.aggressor=true;
+  aggressorMap.set(entity.id,true);
+  if(entity.isPlayer){
+    notify('⚠ AGGRESSOR — Police are hunting you!','#ff4444');
+    SFX.shieldHit();haptic(40);
+  }
+}
+
+function clearAggressor(entity){
+  if(!entity)return;
+  entity.aggressor=false;
+  aggressorMap.delete(entity.id);
+}
+
+// Check if an attack should mark the attacker as aggressor
+// attacker: entity that fired, victim: entity that got hit
+function checkAggressionRules(attacker,victim){
+  if(!attacker||!victim)return;
+  if(attacker.isPolice)return; // Police enforcing law is never aggression
+  // Rule: attacking police anywhere = aggression
+  if(victim.isPolice){markAggressor(attacker);return;}
+  // Rule: attacking a non-aggressor who is inside the safe zone = aggression
+  const victimZone=getZone(victim.x,victim.y);
+  if(victimZone==='safe'&&!isAggressor(victim)){
+    markAggressor(attacker);return;
+  }
+  // Retaliation: if victim is an aggressor, attacker is NOT marked
+  // Attacking outside safe zone: NOT aggression
+}
+
+function createPoliceCarrier(patrolIndex){
+  const patrolAngle=(patrolIndex/2)*Math.PI; // 0 and PI (opposite sides)
+  const px=Math.cos(patrolAngle)*POLICE_PATROL_R;
+  const py=Math.sin(patrolAngle)*POLICE_PATROL_R;
+  const base=SHIPS.carrier;
+  return{
+    id:'police_carrier_'+patrolIndex,name:'SSPD Carrier '+(patrolIndex+1),
+    x:px,y:py,vx:0,vy:0,angle:patrolAngle+Math.PI/2,
+    hp:base.hull*2,maxHp:base.hull*2,shield:base.shield*2,maxShield:base.shield*2,
+    ship:'carrier',color:POLICE_CARRIER_COLOR,
+    upgrades:{engine:3,laser:4,shields:4,cargo:0,scanner:3},
+    shootCD:0,dead:false,respawnTimer:0,cloaked:false,bounty:0,
+    personality:'police',state:'patrol',target:null,stateTimer:rand(2,5),
+    thinkTimer:0,isPlayer:false,isNPC:false,isPolice:true,isWingman:false,
+    patrolIndex,patrolAngle,
+    stunTimer:0,aggressor:false,
+    totalKills:0,totalMined:0,totalEarned:0,cargo:{},credits:0
+  };
+}
+
+function createPoliceFighter(carrierRef,fighterIndex){
+  const offset=((fighterIndex+1)/4)*Math.PI*2;
+  const px=carrierRef.x+Math.cos(offset)*100;
+  const py=carrierRef.y+Math.sin(offset)*100;
+  const base=SHIPS.corsair;
+  return{
+    id:'police_fighter_'+carrierRef.patrolIndex+'_'+fighterIndex,
+    name:'SSPD Wing '+(carrierRef.patrolIndex+1)+'-'+(fighterIndex+1),
+    x:px,y:py,vx:0,vy:0,angle:carrierRef.angle,
+    hp:base.hull*1.5,maxHp:base.hull*1.5,shield:base.shield*2,maxShield:base.shield*2,
+    ship:'corsair',color:POLICE_COLOR,
+    upgrades:{engine:3,laser:4,shields:3,cargo:0,scanner:2},
+    shootCD:0,dead:false,respawnTimer:0,cloaked:false,bounty:0,
+    personality:'police',state:'escort',target:null,stateTimer:rand(1,3),
+    thinkTimer:0,isPlayer:false,isNPC:false,isPolice:true,isWingman:false,
+    carrierRef,fighterIndex,
+    stunTimer:0,aggressor:false,
+    totalKills:0,totalMined:0,totalEarned:0,cargo:{},credits:0
+  };
+}
+
+function spawnPolice(){
+  policeUnits=[];
+  for(let i=0;i<2;i++){
+    const carrier=createPoliceCarrier(i);
+    policeUnits.push(carrier);
+    for(let j=0;j<3;j++){
+      const fighter=createPoliceFighter(carrier,j);
+      policeUnits.push(fighter);
+    }
+  }
+}
+
+function findNearestAggressor(entity,maxRange){
+  let best=null,bestD=maxRange;
+  // Check player
+  if(player&&!player.dead&&isAggressor(player)){
+    const d=dist(entity.x,entity.y,player.x,player.y);
+    if(d<bestD){bestD=d;best=player;}
+  }
+  // Check NPCs
+  npcs.forEach(n=>{
+    if(n.dead||!isAggressor(n))return;
+    const d=dist(entity.x,entity.y,n.x,n.y);
+    if(d<bestD){bestD=d;best=n;}
+  });
+  // Check remote players
+  remotePlayers.forEach(rp=>{
+    if(rp.dead||!isAggressor(rp))return;
+    const d=dist(entity.x,entity.y,rp.x,rp.y);
+    if(d<bestD){bestD=d;best=rp;}
+  });
+  return best;
+}
+
+function policeThink(p){
+  const dToEarth=dist(p.x,p.y,0,0);
+  
+  // If stunned, do nothing
+  if(p.stunTimer>0)return;
+  
+  // Priority 1: Hunt aggressors
+  const aggressor=findNearestAggressor(p,3000);
+  if(aggressor){
+    p.state='hunt';p.target=aggressor;return;
+  }
+  
+  // Priority 2: If too far from safe zone, return
+  if(dToEarth>POLICE_CHASE_MAX){
+    p.state='return';p.target=null;return;
+  }
+  
+  // Default: patrol
+  if(p.ship==='carrier'){
+    p.state='patrol';
+  }else{
+    // Fighters escort their carrier
+    p.state='escort';
+  }
+}
+
+function policeAct(p,dt){
+  const spd=shipSpeed(p)*(p.ship==='carrier'?1:1.3); // fighters are faster
+  const thrust=CFG.THRUST*(spd/CFG.BASE_SPEED);
+  
+  switch(p.state){
+    case 'patrol':{
+      // Carrier: orbit around Earth inside safe zone
+      p.patrolAngle+=dt*0.15; // slow orbit
+      const targetX=Math.cos(p.patrolAngle)*POLICE_PATROL_R;
+      const targetY=Math.sin(p.patrolAngle)*POLICE_PATROL_R;
+      const d=dist(p.x,p.y,targetX,targetY);
+      if(d>50)moveToward(p,targetX,targetY,thrust*0.6,dt);
+      else{
+        p.vx*=.95;p.vy*=.95;
+        p.angle=p.patrolAngle+Math.PI/2;
+      }
+      break;
+    }
+    case 'escort':{
+      // Fighter: orbit around assigned carrier
+      if(!p.carrierRef||p.carrierRef.dead){
+        // Carrier destroyed — orbit Earth instead
+        const orbitA=performance.now()*.001*.5+p.fighterIndex*Math.PI*2/3;
+        const tx=Math.cos(orbitA)*POLICE_PATROL_R*.8;
+        const ty=Math.sin(orbitA)*POLICE_PATROL_R*.8;
+        moveToward(p,tx,ty,thrust*.5,dt);
+        break;
+      }
+      const c=p.carrierRef;
+      const escortDist=150;
+      const escortAngle=performance.now()*.001*.4+p.fighterIndex*Math.PI*2/3;
+      const tx=c.x+Math.cos(escortAngle)*escortDist;
+      const ty=c.y+Math.sin(escortAngle)*escortDist;
+      const d=dist(p.x,p.y,tx,ty);
+      if(d>30)moveToward(p,tx,ty,thrust*.8,dt);
+      // Match carrier velocity
+      p.vx=lerp(p.vx,c.vx,.05);p.vy=lerp(p.vy,c.vy,.05);
+      break;
+    }
+    case 'hunt':{
+      if(!p.target||p.target.dead||!isAggressor(p.target)){
+        p.state='patrol';p.target=null;break;
+      }
+      const d=dist(p.x,p.y,p.target.x,p.target.y);
+      if(d>200){
+        moveToward(p,p.target.x,p.target.y,thrust*1.2,dt);
+      }else{
+        // In firing range
+        p.angle=angle(p.x,p.y,p.target.x,p.target.y);
+        if(p.shootCD<=0){
+          fireProjectile(p);p.shootCD=CFG.SHOOT_CD*(p.ship==='carrier'?1.5:0.8);
+        }
+        // Strafe
+        const strafeA=p.angle+Math.PI/2*(Math.sin(performance.now()*.002+p.x)>0?1:-1);
+        p.vx+=Math.cos(strafeA)*thrust*.3*dt;p.vy+=Math.sin(strafeA)*thrust*.3*dt;
+      }
+      // Don't chase beyond green zone
+      if(dist(p.x,p.y,0,0)>POLICE_CHASE_MAX&&dist(p.target.x,p.target.y,0,0)>POLICE_CHASE_MAX){
+        p.state='return';p.target=null;
+      }
+      break;
+    }
+    case 'return':{
+      // Return to safe zone
+      const targetR=POLICE_PATROL_R;
+      const retAngle=p.patrolAngle||angle(0,0,p.x,p.y);
+      const tx=Math.cos(retAngle)*targetR;
+      const ty=Math.sin(retAngle)*targetR;
+      moveToward(p,tx,ty,thrust,dt);
+      if(dist(p.x,p.y,0,0)<POLICE_RETURN_R)p.state=p.ship==='carrier'?'patrol':'escort';
+      break;
+    }
+  }
+  
+  // Physics
+  p.vx*=Math.pow(CFG.DRAG,dt*60);p.vy*=Math.pow(CFG.DRAG,dt*60);
+  const v=Math.sqrt(p.vx*p.vx+p.vy*p.vy);
+  if(v>spd){p.vx*=spd/v;p.vy*=spd/v;}
+  p.x+=p.vx*dt;p.y+=p.vy*dt;
+  
+  // Face movement direction when not attacking
+  if(p.state!=='hunt'){
+    if(v>5)p.angle=lerp(p.angle,Math.atan2(p.vy,p.vx),.05);
+  }
+  if(v>30&&Math.random()<.3&&distToPlayer(p.x,p.y)<FX_RANGE)emitThrust(p.x,p.y,p.angle,spd,p.color);
+}
+
+function updatePolice(dt){
+  policeUnits.forEach(p=>{
+    if(p.dead){
+      p.respawnTimer-=dt;
+      if(p.respawnTimer<=0){
+        // Respawn at patrol position
+        const pa=p.patrolAngle||(p.carrierRef?p.carrierRef.patrolAngle:0)||0;
+        p.x=Math.cos(pa)*POLICE_PATROL_R+(p.ship!=='carrier'?rand(-100,100):0);
+        p.y=Math.sin(pa)*POLICE_PATROL_R+(p.ship!=='carrier'?rand(-100,100):0);
+        p.vx=0;p.vy=0;
+        p.hp=p.maxHp;p.shield=p.maxShield;
+        p.dead=false;p.state=p.ship==='carrier'?'patrol':'escort';
+        p.target=null;p.stunTimer=0;
+        // Re-link fighters to carrier
+        if(p.ship!=='carrier'&&p.carrierRef&&!p.carrierRef.dead){
+          p.x=p.carrierRef.x+rand(-100,100);
+          p.y=p.carrierRef.y+rand(-100,100);
+        }
+      }
+      return;
+    }
+    
+    // Stun
+    if(p.stunTimer>0){
+      p.stunTimer-=dt;p.vx*=.9;p.vy*=.9;
+      if(Math.random()<.2&&distToPlayer(p.x,p.y)<FX_RANGE)
+        spawnParticle(p.x+rand(-20,20),p.y+rand(-20,20),0,-20,'#44ddff',1.5,.3,4);
+      return;
+    }
+    
+    p.shootCD-=dt;p.thinkTimer-=dt;p.stateTimer-=dt;
+    if(p.shield<p.maxShield)p.shield=Math.min(p.maxShield,p.shield+4*dt); // Faster shield regen
+    
+    if(p.thinkTimer<=0){p.thinkTimer=rand(.5,1.2);policeThink(p);}
+    policeAct(p,dt);
+  });
+}
+
 // Seeded PRNG (mulberry32)
 function seededRng(seed){
   let s=seed|0;
@@ -710,7 +988,8 @@ function createPlayer(name,color){
     abilityCD:0,abilityActive:false,abilityTimer:0,
     stunTimer:0, // for EMP stun
     tractorActive:false, afterburnerTimer:0,
-    invulnTimer:0 // post-respawn invulnerability countdown (seconds)
+    invulnTimer:0, // post-respawn invulnerability countdown (seconds)
+    aggressor:false // police aggressor flag
   };
 }
 
@@ -743,12 +1022,13 @@ function createAsteroid(id,rng){
 
 function createProjectile(owner,x,y,ang,dmg){
   const isAllied=!!owner.isPlayer||!!owner.isWingman; // Wingmen are friendly — their projectiles skip player/other wingmen
+  const isPoliceProj=!!owner.isPolice;
   return{
     id:uid(),ownerId:owner.id,ownerName:owner.name||'Unknown',
     x,y,vx:Math.cos(ang)*CFG.PROJ_SPEED+owner.vx*.3,vy:Math.sin(ang)*CFG.PROJ_SPEED+owner.vy*.3,
     angle:ang,dmg,ttl:CFG.PROJ_TTL,
-    color:isAllied?owner.color||'#66aaff':'#ff6644',
-    isPlayerOwned:isAllied
+    color:isPoliceProj?'#4488ff':isAllied?owner.color||'#66aaff':'#ff6644',
+    isPlayerOwned:isAllied,isPoliceOwned:isPoliceProj
   };
 }
 
@@ -1122,8 +1402,7 @@ function wingmanAct(w,dt){
     }
     case 'attack':{
       if(!w.target||w.target.dead){w.state='follow';break;}
-      const zone=getZone(w.x,w.y);
-      if(zone==='safe'){w.state='follow';break;}
+      // Wingmen can now attack in safe zone (police will handle law enforcement)
       const d=dist(w.x,w.y,w.target.x,w.target.y);
       if(d>220){moveToward(w,w.target.x,w.target.y,thrust,dt);}
       else{
@@ -1216,7 +1495,7 @@ function createNPC(npcIndex){
     shootCD:0,dead:false,respawnTimer:0,cloaked:false,bounty:0,
     personality,state:'idle',target:null,stateTimer:rand(1,3),
     thinkTimer:0,fleeHP:.25,isPlayer:false,isNPC:true,
-    color:pick(SHIP_COLORS),stunTimer:0,
+    color:pick(SHIP_COLORS),stunTimer:0,aggressor:false,
     totalKills:randInt(0,5),totalMined:randInt(50,500),totalEarned:randInt(100,3000)
   };
 }
@@ -1484,6 +1763,7 @@ function updateNPCs(dt){
         n.x=Math.cos(a)*d;n.y=Math.sin(a)*d;n.vx=0;n.vy=0;
         n.hp=SHIPS[n.ship].hull;n.shield=SHIPS[n.ship].shield;
         n.dead=false;n.cargo={};n.state='idle';n.bounty=0;n.stunTimer=0;
+        clearAggressor(n);
         serverRespawnNPC(n);
       }
       return;
@@ -1585,8 +1865,7 @@ function npcAct(n,dt){
     }
     case 'attack':{
       if(!n.target||n.target.dead){n.state='idle';break;}
-      const zone=getZone(n.x,n.y);
-      if(zone==='safe'){n.state='idle';break;}
+      // NPCs can now attack in safe zone (police will enforce law)
       const d=dist(n.x,n.y,n.target.x,n.target.y);
       if(d>200){moveToward(n,n.target.x,n.target.y,thrust,dt);}
       else{
@@ -2078,6 +2357,19 @@ function drawShipEntity(e){
     ctx.strokeStyle='#88ddff';ctx.lineWidth=2;
     ctx.beginPath();ctx.arc(0,0,sz+10,0,Math.PI*2);ctx.stroke();
   }
+  // Police siren lights (flashing red/blue)
+  if(e.isPolice){
+    const sirenT=performance.now()*.006;
+    const sirenPhase=Math.sin(sirenT+e.x)>.0;
+    const leftCol=sirenPhase?'rgba(255,50,50,.7)':'rgba(50,80,255,.3)';
+    const rightCol=sirenPhase?'rgba(50,80,255,.3)':'rgba(255,50,50,.7)';
+    ctx.globalAlpha=.6;
+    ctx.fillStyle=leftCol;ctx.beginPath();ctx.arc(-sz*.4,-sz*.2,3,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=rightCol;ctx.beginPath();ctx.arc(sz*.4,-sz*.2,3,0,Math.PI*2);ctx.fill();
+    // Siren glow aura
+    const auraCol=sirenPhase?'rgba(255,50,50,.08)':'rgba(50,100,255,.08)';
+    ctx.fillStyle=auraCol;ctx.beginPath();ctx.arc(0,0,sz+15,0,Math.PI*2);ctx.fill();
+  }
   ctx.shadowBlur=0;ctx.globalAlpha=1;ctx.restore();
   
   // Shield bubble
@@ -2092,7 +2384,9 @@ function drawShipEntity(e){
     ctx.font='bold 11px Courier New';ctx.textAlign='center';
     ctx.strokeStyle='rgba(0,0,0,.85)';ctx.lineWidth=3;ctx.strokeText(e.name,s.x,s.y-sz-10);
     ctx.fillText(e.name,s.x,s.y-sz-10);
-    if(e.bounty>0){ctx.fillStyle='rgba(255,70,70,.85)';ctx.fillText('☠ BOUNTY',s.x,s.y-sz-20);}
+    if(e.isPolice){ctx.fillStyle='rgba(68,136,255,.9)';ctx.fillText('⛨ SSPD',s.x,s.y-sz-20);}
+    else if(e.bounty>0){ctx.fillStyle='rgba(255,70,70,.85)';ctx.fillText('☠ BOUNTY',s.x,s.y-sz-20);}
+    if(isAggressor(e)&&!e.isPolice){ctx.fillStyle='rgba(255,50,50,.85)';ctx.fillText('⚠ AGGRESSOR',s.x,s.y-sz-30);}
     // Cargo indicator (diamond if carrying)
     if(totalCargo(e.cargo||{})>0&&!e.isPlayer){
       ctx.fillStyle='rgba(255,210,80,.9)';ctx.font='9px Courier New';
@@ -2272,6 +2566,26 @@ function drawMinimap(){
           ctx.globalAlpha=1;
         }
       }
+    }
+  });
+
+  // ── Police (blue shield markers) ──
+  policeUnits.forEach(p=>{
+    if(p.dead)return;
+    const px2=mx+(p.x-player.x)*scale,py2=my+(p.y-player.y)*scale;
+    if(dist(px2,py2,mx,my)<mr){
+      // Blue pulsing glow
+      const pulse=.4+Math.sin(t*2+p.x)*.15;
+      ctx.fillStyle=POLICE_COLOR;
+      ctx.globalAlpha=pulse;
+      ctx.beginPath();ctx.arc(px2,py2,p.ship==='carrier'?6:4,0,Math.PI*2);ctx.fill();
+      ctx.globalAlpha=1;
+      ctx.fillStyle=POLICE_COLOR;
+      ctx.beginPath();ctx.arc(px2,py2,p.ship==='carrier'?3.5:2,0,Math.PI*2);ctx.fill();
+      // Shield shape for police
+      ctx.strokeStyle='rgba(68,136,255,.6)';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(px2,py2-4);ctx.lineTo(px2+3,py2-1);ctx.lineTo(px2+2,py2+3);
+      ctx.lineTo(px2,py2+4.5);ctx.lineTo(px2-2,py2+3);ctx.lineTo(px2-3,py2-1);ctx.closePath();ctx.stroke();
     }
   });
 
@@ -2758,8 +3072,7 @@ function updatePlayer(dt){
   player.shootCD-=dt;
   const wantsShoot=input.mouseDown||input.spaceDown;
   if(wantsShoot&&player.shootCD<=0&&!miningTarget){
-    const zone=getZone(player.x,player.y);
-    if(zone!=='safe'){fireProjectile(player);player.shootCD=CFG.SHOOT_CD;}
+    fireProjectile(player);player.shootCD=CFG.SHOOT_CD;
   }
   if(player.shield<player.maxShield)player.shield=Math.min(player.maxShield,player.shield+2*dt);
   if(player.bounty>0)player.bounty-=dt;
@@ -2831,7 +3144,11 @@ function updateProjectiles(dt){
     if(p.ttl<=0){projectiles.splice(i,1);continue;}
     // Only spawn trail particles if near player
     if(Math.random()<.3&&distToPlayer(p.x,p.y)<FX_RANGE)spawnParticle(p.x,p.y,rand(-10,10),rand(-10,10),p.color,1,.15,4);
-    const targets=p.isPlayerOwned?[...npcs,...remotePlayers.filter(rp=>rp.id!==p.ownerId)]:[player,...npcs.filter(n=>n.id!==p.ownerId),...wingmen.filter(w=>w.id!==p.ownerId),...remotePlayers.filter(rp=>rp.id!==p.ownerId)];
+    // Build target list: include police units as potential targets (non-police can hit police & vice versa)
+    const isPoliceProj=policeUnits.some(pu=>pu.id===p.ownerId);
+    const targets=p.isPlayerOwned?[...npcs,...policeUnits.filter(pu=>pu.id!==p.ownerId),...remotePlayers.filter(rp=>rp.id!==p.ownerId)]
+      :isPoliceProj?[player,...npcs,...wingmen,...remotePlayers].filter(t=>t&&t.id!==p.ownerId)
+      :[player,...npcs.filter(n=>n.id!==p.ownerId),...policeUnits,...wingmen.filter(w=>w.id!==p.ownerId),...remotePlayers.filter(rp=>rp.id!==p.ownerId)];
     let hit=false;
     targets.forEach(t=>{
       if(!t||t.dead||t.cloaked||hit)return;
@@ -2843,7 +3160,19 @@ function updateProjectiles(dt){
       if(dist(p.x,p.y,t.x,t.y)<sz+8){
         const nearPlayer=distToPlayer(p.x,p.y)<FX_RANGE;
         const hitsPlayer=t.isPlayer||t.isRemotePlayer;
-        if(t.isRemotePlayer){
+        // ── Aggression check: find attacker entity and check rules ──
+        const attacker=player&&player.id===p.ownerId?player:
+          npcs.find(n=>n.id===p.ownerId)||
+          policeUnits.find(pu=>pu.id===p.ownerId)||
+          wingmen.find(w=>w.id===p.ownerId)||null;
+        checkAggressionRules(attacker,t);
+        if(t.isPolice){
+          // Police take damage locally (they're client-side entities like NPCs on host)
+          applyDamage(t,p.dmg,p.ownerId,nearPlayer);
+          if(nearPlayer)emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
+          minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
+          if(nearPlayer){SFX.hit();shake(Math.max(0,1.5-distToPlayer(p.x,p.y)/FX_RANGE*1.5));}
+        }else if(t.isRemotePlayer){
           // Server-authoritative: tell server to apply damage to remote player
           if(stdbConn&&stdbConnected&&p.isPlayerOwned){
             try{stdbConn.reducers.dealDamage({
@@ -2868,7 +3197,7 @@ function updateProjectiles(dt){
           minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
           if(nearPlayer){SFX.hit();shake(Math.max(0,1.5-distToPlayer(p.x,p.y)/FX_RANGE*1.5));}
         }else if(t.isPlayer&&stdbConn&&stdbConnected){
-          // NPC bullet hitting local player — route through server dealDamage reducer
+          // NPC/Police bullet hitting local player — route through server dealDamage reducer
           // Skip if player has post-respawn invulnerability
           if(player&&player.invulnTimer>0){hit=true;return;}
           const myHex=stdbConn.identity?stdbConn.identity.toHexString():'';
@@ -2876,7 +3205,7 @@ function updateProjectiles(dt){
             try{stdbConn.reducers.dealDamage({
               victimIdentityHex:myHex,
               damage:p.dmg,
-              attackerName:p.ownerName||'NPC'
+              attackerName:p.ownerName||'SSPD'
             });}catch(e){console.warn('[STDB] deal_damage (NPC→Player) failed:',e);}
           }
           // Local FX immediately (HP will come from server via syncSelfFromServer)
@@ -2915,6 +3244,25 @@ function applyDamage(target,dmg,attackerId,playFX){
 function killEntity(target,attackerId){
   // Wingmen die permanently — use dedicated handler
   if(target.isWingman){killWingman(target,attackerId);return;}
+  // Clear aggressor status on death
+  clearAggressor(target);
+  // Police respawn slower
+  if(target.isPolice){
+    target.dead=true;target.respawnTimer=8+Math.random()*4;
+    const near=distToPlayer(target.x,target.y)<FX_RANGE;
+    if(near){
+      emitBurst(target.x,target.y,30,150,POLICE_COLOR,3,.7,12);
+      emitBurst(target.x,target.y,15,80,'#fff',2,.4,8);
+      SFX.explode();shake(4);
+    }
+    minimapEvents.push({x:target.x,y:target.y,color:'#4444ff',t:0,maxT:1.5,type:'explosion'});
+    if(attackerId===player?.id){
+      notify('☠ Destroyed '+target.name,'#ff6644');
+      player.totalKills++;killStreak++;killStreakTimer=8;
+      reportKill(player.name,target.name);
+    }
+    return;
+  }
   target.dead=true;target.respawnTimer=CFG.RESPAWN_TIME;
   const near=target.isPlayer||distToPlayer(target.x,target.y)<FX_RANGE;
   if(near){
@@ -4538,8 +4886,15 @@ function updateHUD(){
     if(danger)zoneText+=' '+danger;
     if(leviathan&&!leviathan.dead)zoneText=' ◈ LEVIATHAN NEARBY';
   }
-  zi.textContent=zoneText;zi.style.color=leviathan&&!leviathan?.dead&&zone==='void'?'#cc44ff':zoneTextColor(zone);
-  zi.style.background=zoneColor(zone);zi.style.border='1px solid '+zoneTextColor(zone)+'33';
+  // Aggressor warning overrides zone indicator
+  if(isAggressor(player)){
+    zoneText='⚠ AGGRESSOR — POLICE HUNTING YOU';
+    zi.textContent=zoneText;zi.style.color='#ff4444';
+    zi.style.background='rgba(255,0,0,.15)';zi.style.border='1px solid rgba(255,68,68,.4)';
+  }else{
+    zi.textContent=zoneText;zi.style.color=leviathan&&!leviathan?.dead&&zone==='void'?'#cc44ff':zoneTextColor(zone);
+    zi.style.background=zoneColor(zone);zi.style.border='1px solid '+zoneTextColor(zone)+'33';
+  }
   const tc=totalCargo(player.cargo);const mc=maxCargo(player);const pct=Math.round(tc/mc*100);
   document.querySelector('.cargo-inner').style.width=pct+'%';
   document.querySelector('.cargo-label').textContent=`CARGO ${tc}/${mc}`;
@@ -4723,7 +5078,7 @@ function gameLoop(timestamp){
     }
     if(gameState==='dead'&&player)player.respawnTimer-=dt;
     
-    updateNPCs(dt);updateWingmen(dt);updateProjectiles(dt);updateLeviathan(dt);updateRemotePlayers(dt);updateRemoteProjectiles(dt);
+    updateNPCs(dt);updateWingmen(dt);updatePolice(dt);updateProjectiles(dt);updateLeviathan(dt);updateRemotePlayers(dt);updateRemoteProjectiles(dt);
     // Decay minimap events
     for(let i=minimapEvents.length-1;i>=0;i--){minimapEvents[i].t+=dt;if(minimapEvents[i].t>=minimapEvents[i].maxT)minimapEvents.splice(i,1);}updateLoot(dt);
     updateAsteroidRespawn(dt);updateParticles(dt);updateCamera(dt);
@@ -4745,6 +5100,7 @@ function gameLoop(timestamp){
     loot.forEach(l=>drawLootEntity(l));
     drawMiningBeam();
     npcs.forEach(n=>drawShipEntity(n));
+    policeUnits.forEach(p=>{if(!p.dead)drawShipEntity(p);});
     wingmen.forEach(w=>{if(!w.dead)drawShipEntity(w);});
     // Draw remote players' wingmen too
     if(window._remoteWingmanMap){
@@ -4899,7 +5255,7 @@ function startGame(name,color,saved){
     // Spawn return portal near Earth so the traveler can go back
     if(portalParams.ref)returnPortal={x:200,y:-(CFG.EARTH_SHIELD_R-300),size:50,pulse:0};
   }
-  spawnAsteroids();spawnNPCs();
+  spawnAsteroids();spawnNPCs();spawnPolice();
   gameState='playing';
   document.getElementById('startScreen').style.display='none';
   document.getElementById('hud').style.display='block';
@@ -4931,6 +5287,8 @@ function respawn(){
   player.cargo={};player.abilityCD=0;player.cloaked=false;player.cloakTimer=0;
   player.stunTimer=0;player.tractorActive=false;player.afterburnerTimer=0;
   player.invulnTimer=2.0; // 2 seconds of post-respawn invulnerability
+  // Reset aggressor status on respawn
+  clearAggressor(player);
   // Wingmen are already destroyed on death — ensure clean state
   wingmen=[];wingmanRallyTimer=0;wingmanRallyTarget=null;
   // Clear any in-flight projectiles targeting us (NPC bullets etc.)
