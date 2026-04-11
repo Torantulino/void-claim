@@ -8,7 +8,9 @@ import { type Infer as __Infer } from "spacetimedb";
 // Import all reducer arg schemas
 import ClaimNpcHostReducer from "../claim_npc_host_reducer";
 import DamageNpcReducer from "../damage_npc_reducer";
+import DamageWingmanReducer from "../damage_wingman_reducer";
 import DealDamageReducer from "../deal_damage_reducer";
+import DeleteWingmanReducer from "../delete_wingman_reducer";
 import FireProjectileReducer from "../fire_projectile_reducer";
 import HealPlayerReducer from "../heal_player_reducer";
 import JoinGameReducer from "../join_game_reducer";
@@ -21,13 +23,17 @@ import RespawnPlayerReducer from "../respawn_player_reducer";
 import SeedWorldReducer from "../seed_world_reducer";
 import SendChatReducer from "../send_chat_reducer";
 import SpawnNpcReducer from "../spawn_npc_reducer";
+import SpawnWingmanReducer from "../spawn_wingman_reducer";
 import SubmitScoreReducer from "../submit_score_reducer";
 import UpdateNpcReducer from "../update_npc_reducer";
 import UpdatePlayerReducer from "../update_player_reducer";
+import UpdateWingmanReducer from "../update_wingman_reducer";
 
 export type ClaimNpcHostParams = __Infer<typeof ClaimNpcHostReducer>;
 export type DamageNpcParams = __Infer<typeof DamageNpcReducer>;
+export type DamageWingmanParams = __Infer<typeof DamageWingmanReducer>;
 export type DealDamageParams = __Infer<typeof DealDamageReducer>;
+export type DeleteWingmanParams = __Infer<typeof DeleteWingmanReducer>;
 export type FireProjectileParams = __Infer<typeof FireProjectileReducer>;
 export type HealPlayerParams = __Infer<typeof HealPlayerReducer>;
 export type JoinGameParams = __Infer<typeof JoinGameReducer>;
@@ -40,7 +46,9 @@ export type RespawnPlayerParams = __Infer<typeof RespawnPlayerReducer>;
 export type SeedWorldParams = __Infer<typeof SeedWorldReducer>;
 export type SendChatParams = __Infer<typeof SendChatReducer>;
 export type SpawnNpcParams = __Infer<typeof SpawnNpcReducer>;
+export type SpawnWingmanParams = __Infer<typeof SpawnWingmanReducer>;
 export type SubmitScoreParams = __Infer<typeof SubmitScoreReducer>;
 export type UpdateNpcParams = __Infer<typeof UpdateNpcReducer>;
 export type UpdatePlayerParams = __Infer<typeof UpdatePlayerReducer>;
+export type UpdateWingmanParams = __Infer<typeof UpdateWingmanReducer>;
 

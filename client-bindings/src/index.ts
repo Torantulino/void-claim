@@ -36,7 +36,9 @@ import {
 // Import all reducer arg schemas
 import ClaimNpcHostReducer from "./claim_npc_host_reducer";
 import DamageNpcReducer from "./damage_npc_reducer";
+import DamageWingmanReducer from "./damage_wingman_reducer";
 import DealDamageReducer from "./deal_damage_reducer";
+import DeleteWingmanReducer from "./delete_wingman_reducer";
 import FireProjectileReducer from "./fire_projectile_reducer";
 import HealPlayerReducer from "./heal_player_reducer";
 import JoinGameReducer from "./join_game_reducer";
@@ -49,9 +51,11 @@ import RespawnPlayerReducer from "./respawn_player_reducer";
 import SeedWorldReducer from "./seed_world_reducer";
 import SendChatReducer from "./send_chat_reducer";
 import SpawnNpcReducer from "./spawn_npc_reducer";
+import SpawnWingmanReducer from "./spawn_wingman_reducer";
 import SubmitScoreReducer from "./submit_score_reducer";
 import UpdateNpcReducer from "./update_npc_reducer";
 import UpdatePlayerReducer from "./update_player_reducer";
+import UpdateWingmanReducer from "./update_wingman_reducer";
 
 // Import all procedure arg schemas
 
@@ -63,6 +67,7 @@ import NpcRow from "./npc_table";
 import NpcHostRow from "./npc_host_table";
 import PlayerRow from "./player_table";
 import ProjectileRow from "./projectile_table";
+import WingmanRow from "./wingman_table";
 import WorldStateRow from "./world_state_table";
 
 /** Type-only namespace exports for generated type groups. */
@@ -146,6 +151,17 @@ const tablesSchema = __schema({
       { name: 'projectile_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, ProjectileRow),
+  wingman: __table({
+    name: 'wingman',
+    indexes: [
+      { accessor: 'id', name: 'wingman_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'wingman_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, WingmanRow),
   world_state: __table({
     name: 'world_state',
     indexes: [
@@ -163,7 +179,9 @@ const tablesSchema = __schema({
 const reducersSchema = __reducers(
   __reducerSchema("claim_npc_host", ClaimNpcHostReducer),
   __reducerSchema("damage_npc", DamageNpcReducer),
+  __reducerSchema("damage_wingman", DamageWingmanReducer),
   __reducerSchema("deal_damage", DealDamageReducer),
+  __reducerSchema("delete_wingman", DeleteWingmanReducer),
   __reducerSchema("fire_projectile", FireProjectileReducer),
   __reducerSchema("heal_player", HealPlayerReducer),
   __reducerSchema("join_game", JoinGameReducer),
@@ -176,9 +194,11 @@ const reducersSchema = __reducers(
   __reducerSchema("seed_world", SeedWorldReducer),
   __reducerSchema("send_chat", SendChatReducer),
   __reducerSchema("spawn_npc", SpawnNpcReducer),
+  __reducerSchema("spawn_wingman", SpawnWingmanReducer),
   __reducerSchema("submit_score", SubmitScoreReducer),
   __reducerSchema("update_npc", UpdateNpcReducer),
   __reducerSchema("update_player", UpdatePlayerReducer),
+  __reducerSchema("update_wingman", UpdateWingmanReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */

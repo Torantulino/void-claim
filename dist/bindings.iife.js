@@ -7910,11 +7910,23 @@ ${ty.variants.map(
     attackerName: t.string()
   };
 
+  // src/damage_wingman_reducer.ts
+  var damage_wingman_reducer_default = {
+    wingmanId: t.string(),
+    damage: t.f32(),
+    attackerName: t.string()
+  };
+
   // src/deal_damage_reducer.ts
   var deal_damage_reducer_default = {
     victimIdentityHex: t.string(),
     damage: t.f32(),
     attackerName: t.string()
+  };
+
+  // src/delete_wingman_reducer.ts
+  var delete_wingman_reducer_default = {
+    wingmanId: t.string()
   };
 
   // src/fire_projectile_reducer.ts
@@ -7998,6 +8010,19 @@ ${ty.variants.map(
     totalEarned: t.u32()
   };
 
+  // src/spawn_wingman_reducer.ts
+  var spawn_wingman_reducer_default = {
+    wingmanId: t.string(),
+    name: t.string(),
+    ship: t.string(),
+    color: t.string(),
+    wmType: t.string(),
+    hp: t.f32(),
+    maxHp: t.f32(),
+    shield: t.f32(),
+    maxShield: t.f32()
+  };
+
   // src/submit_score_reducer.ts
   var submit_score_reducer_default = {
     name: t.string(),
@@ -8044,6 +8069,19 @@ ${ty.variants.map(
     color: t.string(),
     maxHp: t.f32(),
     maxShield: t.f32()
+  };
+
+  // src/update_wingman_reducer.ts
+  var update_wingman_reducer_default = {
+    wingmanId: t.string(),
+    x: t.f32(),
+    y: t.f32(),
+    vx: t.f32(),
+    vy: t.f32(),
+    angle: t.f32(),
+    state: t.string(),
+    hp: t.f32(),
+    shield: t.f32()
   };
 
   // src/chat_message_table.ts
@@ -8147,6 +8185,28 @@ ${ty.variants.map(
     ttlMs: t.u32().name("ttl_ms")
   });
 
+  // src/wingman_table.ts
+  var wingman_table_default = t.row({
+    id: t.string().primaryKey(),
+    ownerIdentityHex: t.string().name("owner_identity_hex"),
+    name: t.string(),
+    ship: t.string(),
+    color: t.string(),
+    wmType: t.string().name("wm_type"),
+    x: t.f32(),
+    y: t.f32(),
+    vx: t.f32(),
+    vy: t.f32(),
+    angle: t.f32(),
+    hp: t.f32(),
+    maxHp: t.f32().name("max_hp"),
+    shield: t.f32(),
+    maxShield: t.f32().name("max_shield"),
+    dead: t.bool(),
+    state: t.string(),
+    lastUpdate: t.u64().name("last_update")
+  });
+
   // src/world_state_table.ts
   var world_state_table_default = t.row({
     id: t.u32().primaryKey(),
@@ -8232,6 +8292,17 @@ ${ty.variants.map(
         { name: "projectile_id_key", constraint: "unique", columns: ["id"] }
       ]
     }, projectile_table_default),
+    wingman: table({
+      name: "wingman",
+      indexes: [
+        { accessor: "id", name: "wingman_id_idx_btree", algorithm: "btree", columns: [
+          "id"
+        ] }
+      ],
+      constraints: [
+        { name: "wingman_id_key", constraint: "unique", columns: ["id"] }
+      ]
+    }, wingman_table_default),
     world_state: table({
       name: "world_state",
       indexes: [
@@ -8247,7 +8318,9 @@ ${ty.variants.map(
   var reducersSchema = reducers(
     reducerSchema("claim_npc_host", claim_npc_host_reducer_default),
     reducerSchema("damage_npc", damage_npc_reducer_default),
+    reducerSchema("damage_wingman", damage_wingman_reducer_default),
     reducerSchema("deal_damage", deal_damage_reducer_default),
+    reducerSchema("delete_wingman", delete_wingman_reducer_default),
     reducerSchema("fire_projectile", fire_projectile_reducer_default),
     reducerSchema("heal_player", heal_player_reducer_default),
     reducerSchema("join_game", join_game_reducer_default),
@@ -8260,9 +8333,11 @@ ${ty.variants.map(
     reducerSchema("seed_world", seed_world_reducer_default),
     reducerSchema("send_chat", send_chat_reducer_default),
     reducerSchema("spawn_npc", spawn_npc_reducer_default),
+    reducerSchema("spawn_wingman", spawn_wingman_reducer_default),
     reducerSchema("submit_score", submit_score_reducer_default),
     reducerSchema("update_npc", update_npc_reducer_default),
-    reducerSchema("update_player", update_player_reducer_default)
+    reducerSchema("update_player", update_player_reducer_default),
+    reducerSchema("update_wingman", update_wingman_reducer_default)
   );
   var proceduresSchema = procedures();
   var REMOTE_MODULE = {

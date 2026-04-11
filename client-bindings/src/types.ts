@@ -111,6 +111,28 @@ export const Projectile = __t.object("Projectile", {
 });
 export type Projectile = __Infer<typeof Projectile>;
 
+export const Wingman = __t.object("Wingman", {
+  id: __t.string(),
+  ownerIdentityHex: __t.string(),
+  name: __t.string(),
+  ship: __t.string(),
+  color: __t.string(),
+  wmType: __t.string(),
+  x: __t.f32(),
+  y: __t.f32(),
+  vx: __t.f32(),
+  vy: __t.f32(),
+  angle: __t.f32(),
+  hp: __t.f32(),
+  maxHp: __t.f32(),
+  shield: __t.f32(),
+  maxShield: __t.f32(),
+  dead: __t.bool(),
+  state: __t.string(),
+  lastUpdate: __t.u64(),
+});
+export type Wingman = __Infer<typeof Wingman>;
+
 export const WorldState = __t.object("WorldState", {
   id: __t.u32(),
   worldSeed: __t.u64(),
