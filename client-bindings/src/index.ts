@@ -34,6 +34,8 @@ import {
 } from "spacetimedb";
 
 // Import all reducer arg schemas
+import ClaimNpcHostReducer from "./claim_npc_host_reducer";
+import DamageNpcReducer from "./damage_npc_reducer";
 import DealDamageReducer from "./deal_damage_reducer";
 import FireProjectileReducer from "./fire_projectile_reducer";
 import HealPlayerReducer from "./heal_player_reducer";
@@ -42,10 +44,13 @@ import LeaveGameReducer from "./leave_game_reducer";
 import PruneEventsReducer from "./prune_events_reducer";
 import PruneProjectilesReducer from "./prune_projectiles_reducer";
 import ReportKillReducer from "./report_kill_reducer";
+import RespawnNpcReducer from "./respawn_npc_reducer";
 import RespawnPlayerReducer from "./respawn_player_reducer";
 import SeedWorldReducer from "./seed_world_reducer";
 import SendChatReducer from "./send_chat_reducer";
+import SpawnNpcReducer from "./spawn_npc_reducer";
 import SubmitScoreReducer from "./submit_score_reducer";
+import UpdateNpcReducer from "./update_npc_reducer";
 import UpdatePlayerReducer from "./update_player_reducer";
 
 // Import all procedure arg schemas
@@ -54,6 +59,8 @@ import UpdatePlayerReducer from "./update_player_reducer";
 import ChatMessageRow from "./chat_message_table";
 import KillEventRow from "./kill_event_table";
 import LeaderboardEntryRow from "./leaderboard_entry_table";
+import NpcRow from "./npc_table";
+import NpcHostRow from "./npc_host_table";
 import PlayerRow from "./player_table";
 import ProjectileRow from "./projectile_table";
 import WorldStateRow from "./world_state_table";
@@ -95,6 +102,28 @@ const tablesSchema = __schema({
       { name: 'leaderboard_entry_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, LeaderboardEntryRow),
+  npc: __table({
+    name: 'npc',
+    indexes: [
+      { accessor: 'id', name: 'npc_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'npc_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, NpcRow),
+  npc_host: __table({
+    name: 'npc_host',
+    indexes: [
+      { accessor: 'id', name: 'npc_host_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'npc_host_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, NpcHostRow),
   player: __table({
     name: 'player',
     indexes: [
@@ -132,6 +161,8 @@ const tablesSchema = __schema({
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
+  __reducerSchema("claim_npc_host", ClaimNpcHostReducer),
+  __reducerSchema("damage_npc", DamageNpcReducer),
   __reducerSchema("deal_damage", DealDamageReducer),
   __reducerSchema("fire_projectile", FireProjectileReducer),
   __reducerSchema("heal_player", HealPlayerReducer),
@@ -140,10 +171,13 @@ const reducersSchema = __reducers(
   __reducerSchema("prune_events", PruneEventsReducer),
   __reducerSchema("prune_projectiles", PruneProjectilesReducer),
   __reducerSchema("report_kill", ReportKillReducer),
+  __reducerSchema("respawn_npc", RespawnNpcReducer),
   __reducerSchema("respawn_player", RespawnPlayerReducer),
   __reducerSchema("seed_world", SeedWorldReducer),
   __reducerSchema("send_chat", SendChatReducer),
+  __reducerSchema("spawn_npc", SpawnNpcReducer),
   __reducerSchema("submit_score", SubmitScoreReducer),
+  __reducerSchema("update_npc", UpdateNpcReducer),
   __reducerSchema("update_player", UpdatePlayerReducer),
 );
 

@@ -7900,6 +7900,16 @@ ${ty.variants.map(
     return { procedures: procedures2 };
   }
 
+  // src/claim_npc_host_reducer.ts
+  var claim_npc_host_reducer_default = {};
+
+  // src/damage_npc_reducer.ts
+  var damage_npc_reducer_default = {
+    npcId: t.u32(),
+    damage: t.f32(),
+    attackerName: t.string()
+  };
+
   // src/deal_damage_reducer.ts
   var deal_damage_reducer_default = {
     victimIdentityHex: t.string(),
@@ -7948,6 +7958,15 @@ ${ty.variants.map(
     victimName: t.string()
   };
 
+  // src/respawn_npc_reducer.ts
+  var respawn_npc_reducer_default = {
+    npcId: t.u32(),
+    x: t.f32(),
+    y: t.f32(),
+    hp: t.f32(),
+    shield: t.f32()
+  };
+
   // src/respawn_player_reducer.ts
   var respawn_player_reducer_default = {};
 
@@ -7960,6 +7979,25 @@ ${ty.variants.map(
     text: t.string()
   };
 
+  // src/spawn_npc_reducer.ts
+  var spawn_npc_reducer_default = {
+    npcId: t.u32(),
+    name: t.string(),
+    x: t.f32(),
+    y: t.f32(),
+    angle: t.f32(),
+    ship: t.string(),
+    color: t.string(),
+    personality: t.string(),
+    hp: t.f32(),
+    maxHp: t.f32(),
+    shield: t.f32(),
+    maxShield: t.f32(),
+    totalKills: t.u32(),
+    totalMined: t.u32(),
+    totalEarned: t.u32()
+  };
+
   // src/submit_score_reducer.ts
   var submit_score_reducer_default = {
     name: t.string(),
@@ -7968,6 +8006,25 @@ ${ty.variants.map(
     mined: t.u64(),
     ship: t.string(),
     color: t.string()
+  };
+
+  // src/update_npc_reducer.ts
+  var update_npc_reducer_default = {
+    npcId: t.u32(),
+    x: t.f32(),
+    y: t.f32(),
+    vx: t.f32(),
+    vy: t.f32(),
+    angle: t.f32(),
+    state: t.string(),
+    hp: t.f32(),
+    shield: t.f32(),
+    dead: t.bool(),
+    cargoUsed: t.u32(),
+    stunTimer: t.f32(),
+    totalKills: t.u32(),
+    totalMined: t.u32(),
+    totalEarned: t.u32()
   };
 
   // src/update_player_reducer.ts
@@ -8015,6 +8072,39 @@ ${ty.variants.map(
     ship: t.string(),
     color: t.string(),
     timestamp: t.u64()
+  });
+
+  // src/npc_table.ts
+  var npc_table_default = t.row({
+    id: t.u32().primaryKey(),
+    name: t.string(),
+    x: t.f32(),
+    y: t.f32(),
+    vx: t.f32(),
+    vy: t.f32(),
+    angle: t.f32(),
+    ship: t.string(),
+    color: t.string(),
+    personality: t.string(),
+    state: t.string(),
+    hp: t.f32(),
+    maxHp: t.f32().name("max_hp"),
+    shield: t.f32(),
+    maxShield: t.f32().name("max_shield"),
+    dead: t.bool(),
+    cargoUsed: t.u32().name("cargo_used"),
+    totalKills: t.u32().name("total_kills"),
+    totalMined: t.u32().name("total_mined"),
+    totalEarned: t.u32().name("total_earned"),
+    stunTimer: t.f32().name("stun_timer"),
+    lastUpdate: t.u64().name("last_update")
+  });
+
+  // src/npc_host_table.ts
+  var npc_host_table_default = t.row({
+    id: t.u32().primaryKey(),
+    hostIdentity: t.string().name("host_identity"),
+    claimedAt: t.u64().name("claimed_at")
   });
 
   // src/player_table.ts
@@ -8098,6 +8188,28 @@ ${ty.variants.map(
         { name: "leaderboard_entry_id_key", constraint: "unique", columns: ["id"] }
       ]
     }, leaderboard_entry_table_default),
+    npc: table({
+      name: "npc",
+      indexes: [
+        { accessor: "id", name: "npc_id_idx_btree", algorithm: "btree", columns: [
+          "id"
+        ] }
+      ],
+      constraints: [
+        { name: "npc_id_key", constraint: "unique", columns: ["id"] }
+      ]
+    }, npc_table_default),
+    npc_host: table({
+      name: "npc_host",
+      indexes: [
+        { accessor: "id", name: "npc_host_id_idx_btree", algorithm: "btree", columns: [
+          "id"
+        ] }
+      ],
+      constraints: [
+        { name: "npc_host_id_key", constraint: "unique", columns: ["id"] }
+      ]
+    }, npc_host_table_default),
     player: table({
       name: "player",
       indexes: [
@@ -8133,6 +8245,8 @@ ${ty.variants.map(
     }, world_state_table_default)
   });
   var reducersSchema = reducers(
+    reducerSchema("claim_npc_host", claim_npc_host_reducer_default),
+    reducerSchema("damage_npc", damage_npc_reducer_default),
     reducerSchema("deal_damage", deal_damage_reducer_default),
     reducerSchema("fire_projectile", fire_projectile_reducer_default),
     reducerSchema("heal_player", heal_player_reducer_default),
@@ -8141,10 +8255,13 @@ ${ty.variants.map(
     reducerSchema("prune_events", prune_events_reducer_default),
     reducerSchema("prune_projectiles", prune_projectiles_reducer_default),
     reducerSchema("report_kill", report_kill_reducer_default),
+    reducerSchema("respawn_npc", respawn_npc_reducer_default),
     reducerSchema("respawn_player", respawn_player_reducer_default),
     reducerSchema("seed_world", seed_world_reducer_default),
     reducerSchema("send_chat", send_chat_reducer_default),
+    reducerSchema("spawn_npc", spawn_npc_reducer_default),
     reducerSchema("submit_score", submit_score_reducer_default),
+    reducerSchema("update_npc", update_npc_reducer_default),
     reducerSchema("update_player", update_player_reducer_default)
   );
   var proceduresSchema = procedures();

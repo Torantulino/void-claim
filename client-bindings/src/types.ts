@@ -38,6 +38,39 @@ export const LeaderboardEntry = __t.object("LeaderboardEntry", {
 });
 export type LeaderboardEntry = __Infer<typeof LeaderboardEntry>;
 
+export const Npc = __t.object("Npc", {
+  id: __t.u32(),
+  name: __t.string(),
+  x: __t.f32(),
+  y: __t.f32(),
+  vx: __t.f32(),
+  vy: __t.f32(),
+  angle: __t.f32(),
+  ship: __t.string(),
+  color: __t.string(),
+  personality: __t.string(),
+  state: __t.string(),
+  hp: __t.f32(),
+  maxHp: __t.f32(),
+  shield: __t.f32(),
+  maxShield: __t.f32(),
+  dead: __t.bool(),
+  cargoUsed: __t.u32(),
+  totalKills: __t.u32(),
+  totalMined: __t.u32(),
+  totalEarned: __t.u32(),
+  stunTimer: __t.f32(),
+  lastUpdate: __t.u64(),
+});
+export type Npc = __Infer<typeof Npc>;
+
+export const NpcHost = __t.object("NpcHost", {
+  id: __t.u32(),
+  hostIdentity: __t.string(),
+  claimedAt: __t.u64(),
+});
+export type NpcHost = __Infer<typeof NpcHost>;
+
 export const Player = __t.object("Player", {
   identity: __t.identity(),
   name: __t.string(),
