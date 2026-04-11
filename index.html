@@ -82,6 +82,7 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 <input type="text" id="nameInput" placeholder="Enter callsign..." maxlength="16" autofocus>
 <div class="color-row" id="colorRow"></div>
 <button class="btn" id="launchBtn">▶ LAUNCH</button>
+<button class="btn" id="continueBtn" style="display:none;background:rgba(40,180,100,.25);border-color:rgba(40,180,100,.5)">▶ CONTINUE</button>
 <div id="playerCount">Initializing deep space...</div>
 <div class="jam-footer">Built for Vibe Jam 2026</div>
 </div>
@@ -339,6 +340,7 @@ let leaderboard=[];
 let killStreak=0;
 let killStreakTimer=0;
 let pruneTimer=60;
+let autoSaveTimer=30;
 
 // ═══════════════════════════════════════════
 // Utilities
@@ -1430,6 +1432,7 @@ function sellAllOre(){
     addFloatingText(player.x,player.y-30,`+${val} ⬡`,'#ffcc44');
     notify(`Sold ore for ${val} credits!`,'#ffcc44');
     player.cargo={};updateHUD();SFX.sell();
+    saveGame(); // Persist progress
     // Submit to leaderboard
     submitLeaderboard();
   }
@@ -1493,6 +1496,7 @@ function renderMarket(){
         player.shield=Math.min(player.shield,player.maxShield);
         renderMarket();updateHUD();SFX.upgrade();
         notify(`Upgraded ${UPGRADES[k].name} to Mk ${player.upgrades[k]+1}`,'#44ff88');
+        saveGame();
       };})();
     }
     ugrid.appendChild(card);
@@ -1512,6 +1516,7 @@ function renderMarket(){
         player.abilityCD=0;
         renderMarket();updateHUD();SFX.upgrade();
         notify(`Switched to ${SHIPS[k].name}${sellBack>0?' (+'+sellBack+' from trade-in)':''}`,'#44ff88');
+        saveGame();
       };})();
     }
     sgrid.appendChild(card);
@@ -1561,6 +1566,41 @@ function submitLeaderboard(){
   try{localStorage.setItem('vc_lb',JSON.stringify(leaderboard));}catch(e){}
   renderLeaderboard();
   submitScore(); // Sync to SpacetimeDB leaderboard
+}
+
+// ═══════════════════════════════════════════
+// Save / Load Progress (localStorage)
+// ═══════════════════════════════════════════
+
+const SAVE_KEY='vc_save';
+
+function saveGame(){
+  if(!player)return;
+  try{
+    const data={
+      name:player.name,color:player.color,ship:player.ship,
+      credits:player.credits,upgrades:{...player.upgrades},
+      totalKills:player.totalKills,totalMined:player.totalMined,
+      totalEarned:player.totalEarned,kills:player.kills,
+      ts:Date.now()
+    };
+    localStorage.setItem(SAVE_KEY,JSON.stringify(data));
+  }catch(e){}
+}
+
+function loadSave(){
+  try{
+    const raw=localStorage.getItem(SAVE_KEY);
+    if(!raw)return null;
+    const d=JSON.parse(raw);
+    // Validate essential fields
+    if(!d.name||typeof d.credits!=='number')return null;
+    return d;
+  }catch(e){return null;}
+}
+
+function clearSave(){
+  try{localStorage.removeItem(SAVE_KEY);}catch(e){}
 }
 
 function renderLeaderboard(){
@@ -1995,6 +2035,7 @@ function gameLoop(timestamp){
     hudTimer-=dt;if(hudTimer<=0){updateHUD();hudTimer=.15;}
     wsTimer-=dt;if(wsTimer<=0){sendState();wsTimer=.1;} // 10Hz net tick
     pruneTimer-=dt;if(pruneTimer<=0&&stdbConn&&stdbConnected){try{stdbConn.reducers.prune_events();}catch(e){}pruneTimer=60;}
+    autoSaveTimer-=dt;if(autoSaveTimer<=0){saveGame();autoSaveTimer=30;}
     
     if(hintTimer>0){hintTimer-=dt;const hint=document.getElementById('controls-hint');
       if(hint){if(hintTimer<=2)hint.style.opacity=hintTimer/2;if(hintTimer<=0)hint.style.display='none';}}
@@ -2040,8 +2081,18 @@ function gameLoop(timestamp){
 // Start & Respawn
 // ═══════════════════════════════════════════
 
-function startGame(name,color){
+function startGame(name,color,saved){
   player=createPlayer(name,color);
+  // Restore saved progress if available
+  if(saved){
+    player.ship=saved.ship||player.ship;
+    player.credits=saved.credits||0;
+    if(saved.upgrades){for(let k in saved.upgrades)player.upgrades[k]=saved.upgrades[k];}
+    player.totalKills=saved.totalKills||0;
+    player.totalMined=saved.totalMined||0;
+    player.totalEarned=saved.totalEarned||0;
+    player.kills=saved.kills||0;
+  }
   player.maxShield=maxShield(player);player.maxHp=maxHull(player);
   player.shield=player.maxShield;player.hp=player.maxHp;
   if(portalParams){
@@ -2066,6 +2117,7 @@ function startGame(name,color){
   });
   leaderboard.sort((a,b)=>b.credits-a.credits);leaderboard=leaderboard.slice(0,20);
   renderLeaderboard();
+  saveGame(); // Save initial state
 }
 
 function respawn(){
@@ -2084,8 +2136,13 @@ function respawn(){
 // ═══════════════════════════════════════════
 
 document.getElementById('launchBtn').onclick=()=>{
+  clearSave(); // New game clears old save
   const name=document.getElementById('nameInput').value.trim()||'Pilot_'+randInt(100,999);
   startGame(name,selectedColor);
+};
+document.getElementById('continueBtn').onclick=()=>{
+  const saved=loadSave();
+  if(saved)startGame(saved.name,saved.color,saved);
 };
 document.getElementById('nameInput').addEventListener('keydown',e=>{
   if(e.key==='Enter')document.getElementById('launchBtn').click();
@@ -2106,6 +2163,26 @@ function init(){
     const color=portalParams.color||SHIP_COLORS[0];
     document.getElementById('nameInput').value=name;
     startGame(name,color);
+  }else{
+    // Check for saved progress
+    const saved=loadSave();
+    if(saved){
+      document.getElementById('nameInput').value=saved.name;
+      // Pre-select saved color
+      const swatches=document.querySelectorAll('.color-swatch');
+      swatches.forEach(s=>{
+        if(s.style.background===saved.color||s.style.backgroundColor===saved.color){
+          s.click();
+        }
+      });
+      selectedColor=saved.color||SHIP_COLORS[0];
+      // Show continue button with save info
+      const contBtn=document.getElementById('continueBtn');
+      const shipName=(SHIPS[saved.ship]||{}).name||saved.ship;
+      contBtn.textContent=`▶ CONTINUE — ${saved.name} · ${shipName} · ⬡${saved.credits}`;
+      contBtn.style.display='block';
+      document.getElementById('launchBtn').textContent='⟳ NEW GAME';
+    }
   }
   document.getElementById('playerCount').textContent=CFG.STDB_ENABLED&&!window.__STDB_UNAVAILABLE?'Connecting to multiplayer...':'NPC-only mode';
   requestAnimationFrame(gameLoop);
