@@ -553,7 +553,8 @@ function createPlayer(name,color){
     // Ability state
     abilityCD:0,abilityActive:false,abilityTimer:0,
     stunTimer:0, // for EMP stun
-    tractorActive:false, afterburnerTimer:0
+    tractorActive:false, afterburnerTimer:0,
+    invulnTimer:0 // post-respawn invulnerability countdown (seconds)
   };
 }
 
@@ -706,6 +707,8 @@ function updateAbilities(dt){
   
   // Stun (from EMP)
   if(player.stunTimer>0){player.stunTimer-=dt;}
+  // Post-respawn invulnerability countdown
+  if(player.invulnTimer>0){player.invulnTimer-=dt;if(player.invulnTimer<0)player.invulnTimer=0;}
   
   // Hauler tractor beam
   if(player.tractorActive){
@@ -1478,8 +1481,16 @@ function drawShipEntity(e){
   
   ctx.save();ctx.translate(s.x,s.y);ctx.rotate(e.angle);
   if(e.cloaked){ctx.globalAlpha=e.isPlayer?.2:.05;}
-  ctx.fillStyle=col;ctx.globalAlpha=e.cloaked?(e.isPlayer?.2:.05):1;
+  // Post-respawn invulnerability: flash the ship
+  const invulnAlpha=(e.isPlayer&&e.invulnTimer>0)?(.4+.6*Math.abs(Math.sin(performance.now()/100))):1;
+  ctx.fillStyle=col;ctx.globalAlpha=e.cloaked?(e.isPlayer?.2:.05):invulnAlpha;
   drawShipHull(ctx,e.ship,sz,col);
+  // Invulnerability shield glow
+  if(e.isPlayer&&e.invulnTimer>0){
+    ctx.globalAlpha=.3+.2*Math.sin(performance.now()/150);
+    ctx.strokeStyle='#88ddff';ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(0,0,sz+10,0,Math.PI*2);ctx.stroke();
+  }
   ctx.shadowBlur=0;ctx.globalAlpha=1;ctx.restore();
   
   // Shield bubble
@@ -2030,6 +2041,8 @@ function updateProjectiles(dt){
     targets.forEach(t=>{
       if(!t||t.dead||t.cloaked||hit)return;
       if(t.id===p.ownerId)return;
+      // Skip invulnerable player (post-respawn grace period)
+      if(t.isPlayer&&t.invulnTimer>0)return;
       const shipDef=SHIPS[t.ship]||SHIPS.prospector;
       const sz=12+(shipDef.hull/30);
       if(dist(p.x,p.y,t.x,t.y)<sz+8){
@@ -2061,7 +2074,8 @@ function updateProjectiles(dt){
           if(nearPlayer){SFX.hit();shake(Math.max(0,1.5-distToPlayer(p.x,p.y)/FX_RANGE*1.5));}
         }else if(t.isPlayer&&stdbConn&&stdbConnected){
           // NPC bullet hitting local player — route through server dealDamage reducer
-          // so syncSelfFromServer() sees the updated HP (not stale pre-damage value)
+          // Skip if player has post-respawn invulnerability
+          if(player&&player.invulnTimer>0){hit=true;return;}
           const myHex=stdbConn.identity?stdbConn.identity.toHexString():'';
           if(myHex){
             try{stdbConn.reducers.dealDamage({
@@ -3147,6 +3161,16 @@ function rebuildRemotePlayers(){
 // Sync our own HP/shield from server (server-authoritative combat)
 function syncSelfFromServer(p){
   if(!player)return;
+  // During post-respawn invulnerability, ignore stale server states
+  // Only accept server updates that confirm we're alive with full/higher HP
+  if(player.invulnTimer>0){
+    // Accept the respawn confirmation (alive, full HP) but ignore stale death/damage
+    if(!p.dead&&p.hp>=player.maxHp*.9){
+      player.hp=p.hp;player.shield=p.shield;
+    }
+    // Ignore dead=true during invuln — it's a stale pre-respawn state
+    return;
+  }
   player.hp=p.hp;
   player.shield=p.shield;
   if(p.dead&&!player.dead){
@@ -3705,6 +3729,11 @@ function respawn(){
   player.vx=0;player.vy=0;player.hp=player.maxHp;player.shield=player.maxShield;
   player.cargo={};player.abilityCD=0;player.cloaked=false;player.cloakTimer=0;
   player.stunTimer=0;player.tractorActive=false;player.afterburnerTimer=0;
+  player.invulnTimer=2.0; // 2 seconds of post-respawn invulnerability
+  // Clear any in-flight projectiles targeting us (NPC bullets etc.)
+  for(let i=projectiles.length-1;i>=0;i--){
+    if(!projectiles[i].isPlayerOwned)projectiles.splice(i,1);
+  }
   // Reset leviathan on respawn (you escaped it)
   leviathan=null;voidTimeAccum=0;leviathanWarnPhase=0;
   leviathanScreenFX={darkness:0,distortion:0,tint:0};
