@@ -101,8 +101,7 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 #mb-market{width:52px;height:52px;bottom:260px;right:24px}
 #mb-chat{width:52px;height:52px;bottom:260px;right:84px}
 #mb-portal{width:52px;height:52px;bottom:180px;right:92px;border-color:rgba(187,102,255,.5);display:none}
-#mb-strafe-l{width:52px;height:52px;bottom:90px;left:20px;font-size:1.5rem}
-#mb-strafe-r{width:52px;height:52px;bottom:90px;left:82px;font-size:1.5rem}
+
 
 /* Mobile HUD adjustments */
 @media(max-width:768px),(pointer:coarse){
@@ -138,7 +137,7 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 </style>
 </head>
 <body>
-<canvas id="game"></canvas>
+<canvas id="game" style="touch-action:none"></canvas>
 <div id="startScreen" class="screen-overlay">
 <h1>VOID CLAIM</h1>
 <p class="subtitle">Mine · Steal · Survive</p>
@@ -172,8 +171,7 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
   <div id="mb-market" class="mobile-btn">⬡<span class="btn-label">MARKET</span></div>
   <div id="mb-chat" class="mobile-btn">💬<span class="btn-label">CHAT</span></div>
   <div id="mb-portal" class="mobile-btn">🌀<span class="btn-label">ENTER</span></div>
-  <div id="mb-strafe-l" class="mobile-btn">◁</div>
-  <div id="mb-strafe-r" class="mobile-btn">▷</div>
+
 </div>
 </div>
 <div id="leaderboard"><h4>⬡ LEADERBOARD</h4><div id="lbList"></div></div>
@@ -527,23 +525,24 @@ let floatingTexts=[];
 let stars=[];
 let camera={x:0,y:0,shakeX:0,shakeY:0,shakeAmt:0};
 let input={keys:{},mx:0,my:0,mouseDown:false,mouseWorld:{x:0,y:0},lastMouseMoveTime:0};
-// Mobile detection — true on phones/tablets with touch screens
+// Mobile detection — true on any device with touch capability
 const isMobile=(function(){
   const touch='ontouchstart' in window||navigator.maxTouchPoints>0;
-  const small=window.innerWidth<=900||window.innerHeight<=500;
   const coarse=window.matchMedia('(pointer:coarse)').matches;
-  return touch&&(small||coarse);
+  // Any touch-capable device with coarse pointer, OR any small-screen touch device
+  return touch&&(coarse||window.innerWidth<=1024);
 })();
 if(isMobile){
   // Prevent pull-to-refresh, pinch zoom, overscroll
   document.addEventListener('touchmove',e=>{if(e.touches.length>1||e.target===canvas)e.preventDefault();},{passive:false});
   document.body.style.overscrollBehavior='none';
   document.body.style.touchAction='none';
+  document.documentElement.style.touchAction='none';
   // Lock to landscape on mobile (suggestion only)
   if(screen.orientation&&screen.orientation.lock)try{screen.orientation.lock('landscape-primary').catch(()=>{});}catch(e){}
 }
 // Haptic feedback helper (mobile only)
-function haptic(ms){if(isMobile&&navigator.vibrate)try{navigator.vibrate(ms);}catch(e){}}
+function haptic(ms){if((isMobile||mobileFallbackActivated)&&navigator.vibrate)try{navigator.vibrate(ms);}catch(e){}}
 let hintTimer=12;
 let portalParams=null;
 let portalPromptActive=false; // true when player is inside exit portal zone
@@ -2600,10 +2599,38 @@ canvas.addEventListener('contextmenu',e=>e.preventDefault());
 let touchMove=null,touchShoot=null;
 // Enhanced mobile joystick config
 const JOY_DEAD=14,JOY_MAX=60,JOY_OUTER=JOY_MAX+10;
-let mobileStrafing={left:false,right:false}; // strafe button state
+
+// Fallback: activate mobile mode on first touch if detection missed it
+let mobileFallbackActivated=false;
+function activateMobileFallback(){
+  if(mobileFallbackActivated)return;
+  mobileFallbackActivated=true;
+  document.body.style.overscrollBehavior='none';
+  document.body.style.touchAction='none';
+  document.documentElement.style.touchAction='none';
+  document.addEventListener('touchmove',e=>{if(e.touches.length>1||e.target===canvas)e.preventDefault();},{passive:false});
+  const mc=document.getElementById('mobileControls');
+  if(mc&&gameState==='playing')mc.style.display='block';
+  document.getElementById('controls-hint').style.display='none';
+  // Bind mobile button handlers if not already bound
+  if(!isMobile){
+    const mbAbility=document.getElementById('mb-ability');
+    const mbMarket=document.getElementById('mb-market');
+    const mbChat=document.getElementById('mb-chat');
+    const mbPortal=document.getElementById('mb-portal');
+    if(mbAbility){
+      mbAbility.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();useAbility();haptic(20);mbAbility.classList.add('pressed');},{passive:false});
+      mbAbility.addEventListener('touchend',e=>{mbAbility.classList.remove('pressed');});
+    }
+    if(mbMarket)mbMarket.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();toggleMarket();haptic(12);},{passive:false});
+    if(mbChat)mbChat.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();if(chatOpen)closeChat();else openChat();haptic(12);},{passive:false});
+    if(mbPortal)mbPortal.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();portalConfirmKey=true;haptic(30);},{passive:false});
+  }
+}
 
 canvas.addEventListener('touchstart',e=>{
   e.preventDefault();resumeAudio();
+  activateMobileFallback();
   for(let t of e.changedTouches){
     // Left 40% of screen = movement joystick (dynamic origin)
     if(t.clientX<W*0.4&&!touchMove){
@@ -2647,9 +2674,6 @@ if(isMobile){
   const mbMarket=document.getElementById('mb-market');
   const mbChat=document.getElementById('mb-chat');
   const mbPortal=document.getElementById('mb-portal');
-  const mbStrafeL=document.getElementById('mb-strafe-l');
-  const mbStrafeR=document.getElementById('mb-strafe-r');
-  
   mbAbility.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();useAbility();haptic(20);mbAbility.classList.add('pressed');},{passive:false});
   mbAbility.addEventListener('touchend',e=>{mbAbility.classList.remove('pressed');});
   
@@ -2660,14 +2684,6 @@ if(isMobile){
   },{passive:false});
   
   mbPortal.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();portalConfirmKey=true;haptic(30);},{passive:false});
-  
-  mbStrafeL.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();mobileStrafing.left=true;haptic(6);mbStrafeL.classList.add('pressed');},{passive:false});
-  mbStrafeL.addEventListener('touchend',e=>{mobileStrafing.left=false;mbStrafeL.classList.remove('pressed');});
-  mbStrafeL.addEventListener('touchcancel',e=>{mobileStrafing.left=false;mbStrafeL.classList.remove('pressed');});
-  
-  mbStrafeR.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();mobileStrafing.right=true;haptic(6);mbStrafeR.classList.add('pressed');},{passive:false});
-  mbStrafeR.addEventListener('touchend',e=>{mobileStrafing.right=false;mbStrafeR.classList.remove('pressed');});
-  mbStrafeR.addEventListener('touchcancel',e=>{mobileStrafing.right=false;mbStrafeR.classList.remove('pressed');});
   
   // Show mobile controls when game starts
   document.getElementById('mobileControls').style.display='block';
@@ -2688,7 +2704,7 @@ function updatePlayer(dt){
   if(input.keys['a']||input.keys['arrowleft'])player.angle-=ROT_SPEED*dt;
   if(input.keys['d']||input.keys['arrowright'])player.angle+=ROT_SPEED*dt;
   // Aim: mouse (PC) or right joystick (mobile)
-  if(isMobile&&touchShoot){
+  if((isMobile||mobileFallbackActivated)&&touchShoot){
     // On mobile, aim direction from right joystick drag vector
     const adx=touchShoot.cx-touchShoot.sx,ady=touchShoot.cy-touchShoot.sy;
     const adist=Math.sqrt(adx*adx+ady*ady);
@@ -2707,8 +2723,8 @@ function updatePlayer(dt){
   let fwd=0,strafe=0;
   if(input.keys['w']||input.keys['arrowup'])fwd+=1;
   if(input.keys['s']||input.keys['arrowdown'])fwd-=1;
-  if(input.keys['q']||mobileStrafing.left)strafe-=1; // strafe left
-  if(input.keys['e']||mobileStrafing.right)strafe+=1; // strafe right
+  if(input.keys['q'])strafe-=1; // strafe left (PC only)
+  if(input.keys['e'])strafe+=1; // strafe right (PC only)
   // Forward direction is along player.angle
   let tx=fwd*Math.cos(player.angle)+strafe*Math.cos(player.angle+Math.PI/2);
   let ty=fwd*Math.sin(player.angle)+strafe*Math.sin(player.angle+Math.PI/2);
@@ -4535,7 +4551,7 @@ function updateHUD(){
 }
 
 function updateMobileHUD(){
-  if(!isMobile||!player)return;
+  if((!isMobile&&!mobileFallbackActivated)||!player)return;
   // Ability cooldown ring
   const abBtn=document.getElementById('mb-ability');
   const ring=document.getElementById('abilityCdRing');
@@ -4712,7 +4728,7 @@ function gameLoop(timestamp){
     for(let i=minimapEvents.length-1;i>=0;i--){minimapEvents[i].t+=dt;if(minimapEvents[i].t>=minimapEvents[i].maxT)minimapEvents.splice(i,1);}updateLoot(dt);
     updateAsteroidRespawn(dt);updateParticles(dt);updateCamera(dt);
     
-    hudTimer-=dt;if(hudTimer<=0){updateHUD();updateChatFade();if(isMobile)updateMobileHUD();hudTimer=.15;}
+    hudTimer-=dt;if(hudTimer<=0){updateHUD();updateChatFade();if(isMobile||mobileFallbackActivated)updateMobileHUD();hudTimer=.15;}
     wsTimer-=dt;if(wsTimer<=0){sendState();wsTimer=.05;} // 20Hz net tick
     projPruneTimer-=dt;if(projPruneTimer<=0&&stdbConn&&stdbConnected){try{stdbConn.reducers.pruneProjectiles();}catch(e){}projPruneTimer=2;}
     pruneTimer-=dt;if(pruneTimer<=0&&stdbConn&&stdbConnected){try{stdbConn.reducers.pruneEvents();}catch(e){}pruneTimer=60;}
@@ -4774,7 +4790,7 @@ function gameLoop(timestamp){
       if(cv>0){ctx.fillStyle='rgba(255,225,100,1)';ctx.fillText(`VALUE: ⬡${cv}`,20,H-32);}
       
       // Mobile HP/Shield bars at top-center
-      if(isMobile){
+      if(isMobile||mobileFallbackActivated){
         const bw=Math.min(180,W*.3),bx=(W-bw)/2,by=38;
         // Shield bar
         if(player.maxShield>0){
@@ -4887,7 +4903,7 @@ function startGame(name,color,saved){
   gameState='playing';
   document.getElementById('startScreen').style.display='none';
   document.getElementById('hud').style.display='block';
-  if(isMobile)document.getElementById('mobileControls').style.display='block';
+  if(isMobile||mobileFallbackActivated)document.getElementById('mobileControls').style.display='block';
   updateHUD();
   initAudio();resumeAudio();startDrone();
   loadLeaderboard();renderLeaderboard();
@@ -4954,7 +4970,7 @@ document.getElementById('respawnBtn').onclick=respawn;
 function resize(){
   W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;generateStars();
   // On mobile, adjust minimap size for small screens
-  if(isMobile){CFG.MINIMAP_R=Math.min(90,Math.floor(Math.min(W,H)*.14));}
+  if(isMobile||mobileFallbackActivated){CFG.MINIMAP_R=Math.min(90,Math.floor(Math.min(W,H)*.14));}
 }
 window.addEventListener('resize',resize);
 
