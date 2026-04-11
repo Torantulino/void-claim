@@ -141,6 +141,33 @@ const spacetimedb = schema({
       claimed_at:      t.u64(),
     }
   ),
+
+  // Wingmen — loyal AI escorts owned by carrier pilots
+  // Each wingman belongs to a specific player (owner_identity_hex).
+  // When a wingman dies, it's deleted permanently from this table.
+  wingman: table(
+    { public: true },
+    {
+      id:                t.string().primaryKey(),  // unique wingman ID (e.g. "wm_abc123")
+      owner_identity_hex:t.string(),               // hex identity of the carrier pilot
+      name:              t.string(),
+      ship:              t.string(),
+      color:             t.string(),
+      wm_type:           t.string(),               // 'fighter', 'defender', 'miner'
+      x:                 t.f32(),
+      y:                 t.f32(),
+      vx:                t.f32(),
+      vy:                t.f32(),
+      angle:             t.f32(),
+      hp:                t.f32(),
+      max_hp:            t.f32(),
+      shield:            t.f32(),
+      max_shield:        t.f32(),
+      dead:              t.bool(),
+      state:             t.string(),
+      last_update:       t.u64(),
+    }
+  ),
 });
 
 export default spacetimedb;
@@ -195,6 +222,15 @@ spacetimedb.clientDisconnected(
     if (host && host.host_identity === ctx.sender.toHexString()) {
       ctx.db.npc_host.id.delete(0);
       console.log(`NPC host disconnected: ${ctx.sender.toHexString().slice(0,8)} — host slot open`);
+    }
+
+    // Clean up any wingmen owned by this player
+    const myHex = ctx.sender.toHexString();
+    for (const wm of ctx.db.wingman.iter()) {
+      if (wm.owner_identity_hex === myHex) {
+        ctx.db.wingman.id.delete(wm.id);
+        console.log(`Wingman cleaned up on disconnect: ${wm.name}`);
+      }
     }
   }
 );
@@ -804,5 +840,148 @@ export const respawn_npc = spacetimedb.reducer(
       stun_timer:  0,
       last_update: BigInt(Date.now()),
     });
+  }
+);
+
+// ═══════════════════════════════════════════
+// Reducers — Wingmen (Carrier AI Escorts)
+// ═══════════════════════════════════════════
+// Wingmen are owned by a specific player. Only the owner can spawn/update them.
+// Any player can damage them. When they die, they are permanently deleted.
+
+export const spawn_wingman = spacetimedb.reducer(
+  {
+    wingman_id:  t.string(),
+    name:        t.string(),
+    ship:        t.string(),
+    color:       t.string(),
+    wm_type:     t.string(),
+    hp:          t.f32(),
+    max_hp:      t.f32(),
+    shield:      t.f32(),
+    max_shield:  t.f32(),
+  },
+  (ctx, args) => {
+    const ownerHex = ctx.sender.toHexString();
+    
+    // Delete existing wingman with this ID if present (shouldn't happen but safety)
+    const existing = ctx.db.wingman.id.find(args.wingman_id);
+    if (existing) {
+      ctx.db.wingman.id.delete(args.wingman_id);
+    }
+
+    ctx.db.wingman.insert({
+      id:                 args.wingman_id,
+      owner_identity_hex: ownerHex,
+      name:               args.name,
+      ship:               args.ship,
+      color:              args.color,
+      wm_type:            args.wm_type,
+      x:                  0,
+      y:                  -280,
+      vx:                 0,
+      vy:                 0,
+      angle:              0,
+      hp:                 args.hp,
+      max_hp:             args.max_hp,
+      shield:             args.shield,
+      max_shield:         args.max_shield,
+      dead:               false,
+      state:              'follow',
+      last_update:        BigInt(Date.now()),
+    });
+    console.log(`Wingman spawned: ${args.name} for ${ownerHex.slice(0,8)}`);
+  }
+);
+
+// update_wingman — owner pushes position/state updates
+export const update_wingman = spacetimedb.reducer(
+  {
+    wingman_id: t.string(),
+    x:          t.f32(),
+    y:          t.f32(),
+    vx:         t.f32(),
+    vy:         t.f32(),
+    angle:      t.f32(),
+    state:      t.string(),
+    hp:         t.f32(),
+    shield:     t.f32(),
+  },
+  (ctx, args) => {
+    const wm = ctx.db.wingman.id.find(args.wingman_id);
+    if (!wm) return;
+    // Only the owner can update their wingmen
+    if (wm.owner_identity_hex !== ctx.sender.toHexString()) return;
+
+    ctx.db.wingman.id.update({
+      ...wm,
+      x:           args.x,
+      y:           args.y,
+      vx:          args.vx,
+      vy:          args.vy,
+      angle:       args.angle,
+      state:       args.state,
+      hp:          args.hp,
+      shield:      args.shield,
+      last_update: BigInt(Date.now()),
+    });
+  }
+);
+
+// damage_wingman — any player can deal damage to a wingman (server-authoritative)
+export const damage_wingman = spacetimedb.reducer(
+  {
+    wingman_id:    t.string(),
+    damage:        t.f32(),
+    attacker_name: t.string(),
+  },
+  (ctx, args) => {
+    const wm = ctx.db.wingman.id.find(args.wingman_id);
+    if (!wm || wm.dead) return;
+
+    // Shield absorption (70%)
+    let dmg = args.damage;
+    let newShield = wm.shield;
+    let newHp = wm.hp;
+
+    if (newShield > 0) {
+      const shieldAbsorb = Math.min(newShield, dmg * 0.7);
+      newShield -= shieldAbsorb;
+      dmg -= shieldAbsorb;
+    }
+    newHp -= dmg;
+
+    if (newHp <= 0) {
+      // Wingman is dead — permanently delete
+      ctx.db.wingman.id.delete(args.wingman_id);
+      // Record kill event
+      ctx.db.kill_event.insert({
+        id: BigInt(0),
+        killer: args.attacker_name,
+        victim: wm.name,
+        timestamp: BigInt(Date.now()),
+      });
+      console.log(`${args.attacker_name} destroyed wingman ${wm.name} (permanent)`);
+    } else {
+      ctx.db.wingman.id.update({
+        ...wm,
+        hp: newHp,
+        shield: Math.max(0, newShield),
+        last_update: BigInt(Date.now()),
+      });
+    }
+  }
+);
+
+// delete_wingman — owner or system permanently removes a wingman
+export const delete_wingman = spacetimedb.reducer(
+  {
+    wingman_id: t.string(),
+  },
+  (ctx, args) => {
+    const wm = ctx.db.wingman.id.find(args.wingman_id);
+    if (!wm) return;
+    ctx.db.wingman.id.delete(args.wingman_id);
+    console.log(`Wingman deleted: ${wm.name}`);
   }
 );
