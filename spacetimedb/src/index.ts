@@ -337,10 +337,8 @@ export const deal_damage = spacetimedb.reducer(
     }
     if (!victim || victim.dead) return;
 
-    // Post-respawn invulnerability: ignore damage within 2s of respawn
-    // (last_update is set to Date.now() on respawn, and HP is reset to max)
-    const timeSinceUpdate = Date.now() - Number(victim.last_update);
-    if (victim.hp >= victim.max_hp && victim.shield >= victim.max_shield && timeSinceUpdate < 2000) return;
+    // Post-respawn invulnerability is handled client-side (2s invulnTimer).
+    // The client won't call dealDamage during that window, so no server check needed.
 
     // Shield absorption (70% of damage absorbed by shield)
     let dmg = args.damage;
