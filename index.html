@@ -127,7 +127,7 @@ const CFG={
   PROJ_SPEED:700,PROJ_TTL:1.2,PROJ_DMG:8,
   MINE_RANGE:120,MINE_RATE:25,COLLECT_RANGE:60,SHOOT_CD:.35,
   RESPAWN_TIME:3,NPC_COUNT:14,AST_COUNT:350,LOOT_TTL:25,BOUNTY_TIME:90,
-  CAM_LERP:.08,SHAKE_DECAY:.9,MINIMAP_R:140,MINIMAP_SCALE:0.003,
+  CAM_LERP:.08,SHAKE_DECAY:.9,MINIMAP_R:140,MINIMAP_SCALE:0.008,
   STAR_LAYERS:[{count:200,size:1,speed:.05,alpha:.3},{count:150,size:1.5,speed:.15,alpha:.5},{count:80,size:2,speed:.3,alpha:.8}],
   WS_URL:null, // legacy — kept for backwards compat
   LB_URL:null, // legacy — kept for backwards compat
@@ -1118,7 +1118,7 @@ function drawMinimap(){
     if(!a.alive)return;
     const ax=mx+(a.x-player.x)*scale,ay=my+(a.y-player.y)*scale;
     if(dist(ax,ay,mx,my)<mr){
-      const ore=ORES[a.ore];
+      const ore=ORES[a.oreType];
       ctx.fillStyle=ore?ore.color+'99':'rgba(190,190,220,.5)';
       const sz=a.hp>60?1.5:1;
       ctx.beginPath();ctx.arc(ax,ay,sz,0,Math.PI*2);ctx.fill();
@@ -1776,7 +1776,8 @@ function renderLeaderboard(){
   const top=leaderboard.slice(0,8);
   el.innerHTML=top.map((e,i)=>{
     const isYou=player&&e.name===player.name;
-    return `<div class="lb-row${isYou?' lb-you':''}"><span>${i+1}. ${e.name}</span><span>⬡${e.credits}</span></div>`;
+    const killTxt=e.kills?` ☠${e.kills}`:'';
+    return `<div class="lb-row${isYou?' lb-you':''}"><span>${i+1}. ${e.name}${killTxt}</span><span>⬡${e.credits}</span></div>`;
   }).join('');
   document.getElementById('leaderboard').style.display=leaderboard.length>0?'block':'none';
 }
