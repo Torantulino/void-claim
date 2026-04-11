@@ -407,6 +407,8 @@ let camera={x:0,y:0,shakeX:0,shakeY:0,shakeAmt:0};
 let input={keys:{},mx:0,my:0,mouseDown:false,mouseWorld:{x:0,y:0},lastMouseMoveTime:0};
 let hintTimer=12;
 let portalParams=null;
+let portalPromptActive=false; // true when player is inside exit portal zone
+let portalConfirmKey=false; // set true when E pressed while in portal zone
 let miningTarget=null;
 let selectedColor=SHIP_COLORS[0];
 let ws=null;
@@ -1779,6 +1781,15 @@ function drawMinimap(){
       ctx.fillStyle='#bb66ff';ctx.beginPath();ctx.arc(px,py,pr,0,Math.PI*2);ctx.fill();
     }
   }
+  // ── Return portal ──
+  if(returnPortal){
+    const rpx=mx+(returnPortal.x-player.x)*scale,rpy=my+(returnPortal.y-player.y)*scale;
+    if(dist(rpx,rpy,mx,my)<mr){
+      const rpr=3+Math.sin(t*3)*.8;
+      ctx.fillStyle='rgba(100,200,255,.3)';ctx.beginPath();ctx.arc(rpx,rpy,rpr+3,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#64c8ff';ctx.beginPath();ctx.arc(rpx,rpy,rpr,0,Math.PI*2);ctx.fill();
+    }
+  }
 
   // ── Player dot with heading arrow ──
   ctx.fillStyle='#ffffff';
@@ -1841,7 +1852,7 @@ function drawMinimap(){
 let vibePortal={x:0,y:-(CFG.EARTH_SHIELD_R-200),size:50,pulse:0};
 let returnPortal=null;
 
-function drawPortal(portal,label,color){
+function drawPortal(portal,label,color,showPrompt){
   const s=worldToScreen(portal.x,portal.y);
   if(!inView(portal.x,portal.y,100))return;
   portal.pulse+=.03;const r=portal.size+Math.sin(portal.pulse)*5;
@@ -1857,10 +1868,22 @@ function drawPortal(portal,label,color){
   ctx.globalAlpha=.5+Math.sin(portal.pulse)*.2;ctx.fillStyle=grad;
   ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.fill();
   ctx.globalAlpha=1;ctx.restore();
+  // Label
   ctx.fillStyle=color;ctx.globalAlpha=.85+Math.sin(portal.pulse)*.15;
   ctx.font='bold 11px Courier New';ctx.textAlign='center';
   ctx.strokeStyle='rgba(0,0,0,.8)';ctx.lineWidth=3;ctx.strokeText(label,s.x,s.y-r-8);
   ctx.fillText(label,s.x,s.y-r-8);ctx.globalAlpha=1;
+  // Confirmation prompt when player is near
+  if(showPrompt){
+    const promptY=s.y+r+20;
+    const pulseBright=.7+Math.sin(portal.pulse*3)*.3;
+    ctx.globalAlpha=pulseBright;
+    ctx.font='bold 14px Courier New';ctx.textAlign='center';
+    ctx.fillStyle='#fff';ctx.strokeStyle='rgba(0,0,0,.9)';ctx.lineWidth=4;
+    const promptText='[ Press E to enter portal ]';
+    ctx.strokeText(promptText,s.x,promptY);ctx.fillText(promptText,s.x,promptY);
+    ctx.globalAlpha=1;
+  }
 }
 
 // ═══════════════════════════════════════════
@@ -1872,6 +1895,7 @@ document.addEventListener('keydown',e=>{
   if(e.key===' '&&gameState==='playing'){input.spaceDown=true;e.preventDefault();}
   if(e.key.toLowerCase()==='m'&&gameState==='playing'){toggleMarket();e.preventDefault();}
   if(e.key.toLowerCase()==='r'&&gameState==='playing'){useAbility();e.preventDefault();}
+  if(e.key.toLowerCase()==='e'&&gameState==='playing'&&portalPromptActive){portalConfirmKey=true;e.preventDefault();}
   if(e.key==='Escape')document.getElementById('market').style.display='none';
 });
 document.addEventListener('keyup',e=>{
@@ -3562,24 +3586,43 @@ function updateEarthProximity(){
 function parsePortalParams(){
   const params=new URLSearchParams(window.location.search);
   if(params.get('portal')==='true'){
-    portalParams={username:params.get('username')||'',color:params.get('color')||'',ref:params.get('ref')||'',speed:params.get('speed')||'',hp:params.get('hp')||''};
+    // Capture ALL query params so we forward everything back through the return portal
+    portalParams={};
+    for(const[k,v] of params.entries()){
+      if(k!=='portal')portalParams[k]=v;
+    }
   }
 }
 
 function checkPortalCollision(){
   if(!player||player.dead)return;
-  if(vibePortal&&dist(player.x,player.y,vibePortal.x,vibePortal.y)<vibePortal.size){
-    SFX.warp();
-    const params=new URLSearchParams();
-    params.set('username',player.name);params.set('color',player.color);
-    params.set('speed',Math.round(shipSpeed(player)));params.set('ref',window.location.href);
-    window.location.href='https://vibej.am/portal/2026?'+params.toString();
+  // Exit portal → vibej.am (requires E key confirmation)
+  if(vibePortal){
+    const inZone=dist(player.x,player.y,vibePortal.x,vibePortal.y)<vibePortal.size*1.5;
+    portalPromptActive=inZone;
+    if(inZone&&portalConfirmKey){
+      portalConfirmKey=false;portalPromptActive=false;
+      SFX.warp();
+      const params=new URLSearchParams();
+      params.set('username',player.name);params.set('color',player.color);
+      params.set('speed',String(Math.round(shipSpeed(player))));
+      params.set('hp',String(Math.round(player.hp)));
+      params.set('ref',window.location.href);
+      window.location.href='https://vibej.am/portal/2026?'+params.toString();
+    }
+    if(!inZone)portalConfirmKey=false;
   }
+  // Return portal → back to referring game (instant, no confirm needed)
   if(returnPortal&&dist(player.x,player.y,returnPortal.x,returnPortal.y)<returnPortal.size){
     SFX.warp();
     const params=new URLSearchParams();
+    // Forward all incoming query params
     if(portalParams){for(let k in portalParams){if(portalParams[k])params.set(k,portalParams[k]);}}
     params.set('portal','true');
+    // Update dynamic stats before leaving
+    params.set('username',player.name);
+    params.set('speed',String(Math.round(shipSpeed(player))));
+    params.set('hp',String(Math.round(player.hp)));
     const ref=portalParams?.ref||'';
     if(ref){const url=ref.startsWith('http')?ref:'https://'+ref;
       window.location.href=url+(url.includes('?')?'&':'?')+params.toString();}
@@ -3638,8 +3681,8 @@ function gameLoop(timestamp){
     
     // Render
     drawBackground();drawZoneRings();drawEarth();
-    if(vibePortal)drawPortal(vibePortal,'VIBE JAM PORTAL','rgb(187,102,255)');
-    if(returnPortal)drawPortal(returnPortal,'← RETURN','rgb(100,200,255)');
+    if(vibePortal)drawPortal(vibePortal,'VIBE JAM PORTAL','rgb(187,102,255)',portalPromptActive);
+    if(returnPortal)drawPortal(returnPortal,'← RETURN','rgb(100,200,255)',false);
     asteroids.forEach(a=>drawAsteroidEntity(a));
     loot.forEach(l=>drawLootEntity(l));
     drawMiningBeam();
@@ -3697,6 +3740,9 @@ function startGame(name,color,saved){
   if(portalParams){
     if(portalParams.username&&!name)player.name=portalParams.username;
     if(portalParams.color)player.color=portalParams.color;
+    // Apply incoming HP from the previous game (clamped to our max)
+    if(portalParams.hp){const inHp=parseFloat(portalParams.hp);if(inHp>0)player.hp=Math.min(inHp,player.maxHp);}
+    // Spawn return portal near Earth so the traveler can go back
     if(portalParams.ref)returnPortal={x:200,y:-(CFG.EARTH_SHIELD_R-300),size:50,pulse:0};
   }
   spawnAsteroids();spawnNPCs();
