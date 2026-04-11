@@ -288,6 +288,72 @@ const SFX={
     o.frequency.exponentialRampToValueAtTime(2000,ac.currentTime+.35);
     g.gain.setValueAtTime(.15,ac.currentTime);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.4);
     o.connect(g);g.connect(out);o.start();o.stop(ac.currentTime+.4);
+  }),
+  // Void Leviathan SFX
+  leviathanPing:()=>snd((ac,out)=>{
+    const o=ac.createOscillator(),o2=ac.createOscillator(),g=ac.createGain(),f=ac.createBiquadFilter();
+    o.type='sine';o.frequency.setValueAtTime(40,ac.currentTime);
+    o.frequency.exponentialRampToValueAtTime(25,ac.currentTime+1.5);
+    o2.type='sine';o2.frequency.setValueAtTime(2200,ac.currentTime);
+    o2.frequency.exponentialRampToValueAtTime(800,ac.currentTime+1.2);
+    f.type='bandpass';f.frequency.value=1000;f.Q.value=8;
+    g.gain.setValueAtTime(.18,ac.currentTime);
+    g.gain.linearRampToValueAtTime(.22,ac.currentTime+.05);
+    g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+1.5);
+    o.connect(g);o2.connect(f);f.connect(g);g.connect(out);
+    o.start();o2.start();o.stop(ac.currentTime+1.5);o2.stop(ac.currentTime+1.5);
+  }),
+  leviathanRoar:()=>snd((ac,out)=>{
+    const dur=1.2;
+    const o=ac.createOscillator(),o2=ac.createOscillator(),g=ac.createGain();
+    const dist3=ac.createWaveShaper?ac.createWaveShaper():null;
+    o.type='sawtooth';o.frequency.setValueAtTime(35,ac.currentTime);
+    o.frequency.linearRampToValueAtTime(28,ac.currentTime+dur);
+    o2.type='square';o2.frequency.setValueAtTime(42,ac.currentTime);
+    o2.frequency.linearRampToValueAtTime(20,ac.currentTime+dur);
+    g.gain.setValueAtTime(.2,ac.currentTime);
+    g.gain.linearRampToValueAtTime(.28,ac.currentTime+.2);
+    g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);
+    if(dist3){
+      const curve=new Float32Array(256);
+      for(let i=0;i<256;i++){const x=i*2/256-1;curve[i]=Math.tanh(x*3);}
+      dist3.curve=curve;o.connect(dist3);o2.connect(dist3);dist3.connect(g);
+    }else{o.connect(g);o2.connect(g);}
+    g.connect(out);o.start();o2.start();o.stop(ac.currentTime+dur);o2.stop(ac.currentTime+dur);
+    const nBuf=ac.createBuffer(1,ac.sampleRate*dur,ac.sampleRate);
+    const nd=nBuf.getChannelData(0);
+    for(let i2=0;i2<nd.length;i2++){nd[i2]=(Math.random()*2-1)*Math.pow(1-i2/nd.length,.8)*.3;}
+    const ns=ac.createBufferSource(),ng=ac.createGain(),nf=ac.createBiquadFilter();
+    nf.type='lowpass';nf.frequency.value=120;
+    ng.gain.setValueAtTime(.12,ac.currentTime);ng.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);
+    ns.buffer=nBuf;ns.connect(nf);nf.connect(ng);ng.connect(out);ns.start();
+  }),
+  leviathanAmbient:()=>snd((ac,out)=>{
+    const dur=2.5;
+    const o=ac.createOscillator(),g=ac.createGain();
+    o.type='sine';o.frequency.setValueAtTime(55,ac.currentTime);
+    o.detune.setValueAtTime(-15,ac.currentTime);
+    o.detune.linearRampToValueAtTime(15,ac.currentTime+dur);
+    g.gain.setValueAtTime(0,ac.currentTime);
+    g.gain.linearRampToValueAtTime(.06,ac.currentTime+.5);
+    g.gain.linearRampToValueAtTime(.08,ac.currentTime+dur-.5);
+    g.gain.linearRampToValueAtTime(0,ac.currentTime+dur);
+    o.connect(g);g.connect(out);o.start();o.stop(ac.currentTime+dur);
+  }),
+  leviathanBite:()=>snd((ac,out)=>{
+    const dur=.25;
+    const o=ac.createOscillator(),g=ac.createGain();
+    o.type='sawtooth';o.frequency.setValueAtTime(200,ac.currentTime);
+    o.frequency.exponentialRampToValueAtTime(30,ac.currentTime+dur);
+    g.gain.setValueAtTime(.3,ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);
+    o.connect(g);g.connect(out);o.start();o.stop(ac.currentTime+dur);
+    const buf=ac.createBuffer(1,ac.sampleRate*.05,ac.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<d.length;i++){d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,4);}
+    const s2=ac.createBufferSource(),sg=ac.createGain();
+    sg.gain.setValueAtTime(.2,ac.currentTime);sg.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.05);
+    s2.buffer=buf;s2.connect(sg);sg.connect(out);s2.start();
   })
 };
 
@@ -343,6 +409,13 @@ let minimapEvents=[]; // {x,y,color,t,maxT,type}
 let killStreakTimer=0;
 let pruneTimer=60;
 let autoSaveTimer=30;
+
+// Void Leviathan state
+let leviathan=null;
+let voidTimeAccum=0;
+let leviathanWarnPhase=0;
+let leviathanPingTimer=0;
+let leviathanScreenFX={darkness:0,distortion:0,tint:0};
 
 // ═══════════════════════════════════════════
 // Utilities
@@ -1335,6 +1408,9 @@ function drawMinimap(){
     if(dist(lx,ly,mx,my)<mr){ctx.beginPath();ctx.arc(lx,ly,1.8,0,Math.PI*2);ctx.fill();}
   });
 
+  // ── Void Leviathan ──
+  drawLeviathanMinimap(mx,my,scale);
+
   // ── Projectiles on minimap (weapon fire trails) ──
   projectiles.forEach(p=>{
     const px=mx+(p.x-player.x)*scale,py=my+(p.y-player.y)*scale;
@@ -1374,6 +1450,16 @@ function drawMinimap(){
         const r=2+prog*8;
         ctx.fillStyle=ev.color;ctx.globalAlpha=fade*.6;
         ctx.beginPath();ctx.arc(ex,ey,r,0,Math.PI*2);ctx.fill();
+      }else if(ev.type==='leviathanPing'){
+        // Eerie expanding sonar ring
+        const r=5+prog*35;
+        ctx.strokeStyle='#aa33ff';ctx.lineWidth=2.5*(1-prog);ctx.globalAlpha=fade*.7;
+        ctx.beginPath();ctx.arc(ex,ey,r,0,Math.PI*2);ctx.stroke();
+        // Inner dark pulse
+        if(prog<.4){
+          ctx.fillStyle='rgba(100,20,180,.3)';ctx.globalAlpha=(1-prog/.4)*.4;
+          ctx.beginPath();ctx.arc(ex,ey,r*.5,0,Math.PI*2);ctx.fill();
+        }
       }else if(ev.type==='shot'){
         // Tiny flash
         ctx.fillStyle=ev.color;ctx.globalAlpha=fade*.5;
@@ -1724,11 +1810,16 @@ function killEntity(target,attackerId){
     gameState='dead';
     document.getElementById('deathScreen').style.display='flex';
     const val=cargoValue(target.cargo);
-    document.getElementById('lostInfo').textContent=val>0?`You lost ${val} credits worth of ore.`:'Your empty ship was destroyed.';
+    const killedByLeviathan=leviathan&&attackerId===leviathan.id;
+    if(killedByLeviathan){
+      document.getElementById('lostInfo').textContent='The Void Leviathan consumed you'+(val>0?` and ${val} credits worth of ore.`:'.');
+    }else{
+      document.getElementById('lostInfo').textContent=val>0?`You lost ${val} credits worth of ore.`:'Your empty ship was destroyed.';
+    }
     SFX.death();killStreak=0;
     // Report player death to SpacetimeDB
     const killerNpc=npcs.find(n=>n.id===attackerId);
-    reportKill(killerNpc?killerNpc.name:'Unknown',target.name);
+    reportKill(killedByLeviathan?'Void Leviathan':(killerNpc?killerNpc.name:'Unknown'),target.name);
   }
 }
 
@@ -1774,6 +1865,383 @@ function updateLoot(dt){
   }
 }
 
+
+// ═══════════════════════════════════════════
+// Void Leviathan — The Terror of Deep Space
+// ═══════════════════════════════════════════
+
+function createLeviathan(px,py){
+  const spawnDist=3500+Math.random()*2000;
+  const spawnAngle=Math.random()*Math.PI*2;
+  let sx=px+Math.cos(spawnAngle)*spawnDist;
+  let sy=py+Math.sin(spawnAngle)*spawnDist;
+  const dToCenter=dist(sx,sy,0,0);
+  if(dToCenter<CFG.RED_R){sx=(sx/dToCenter)*(CFG.RED_R+2000);sy=(sy/dToCenter)*(CFG.RED_R+2000);}
+  const tentacles=[];
+  for(let i=0;i<6;i++){
+    const baseAngle=(i/6)*Math.PI*2;
+    const segs=[];
+    for(let j=0;j<8+Math.floor(Math.random()*4);j++){
+      segs.push({angle:baseAngle,len:18+Math.random()*8,phase:Math.random()*Math.PI*2});
+    }
+    tentacles.push({segs,baseAngle,waveSpeed:1.5+Math.random()*.8,waveAmp:.3+Math.random()*.2});
+  }
+  return{
+    id:uid(),x:sx,y:sy,vx:0,vy:0,angle:angle(sx,sy,px,py),
+    hp:800,maxHp:800,bodyRadius:60,
+    state:'lurk',stateTimer:8+Math.random()*5,
+    tentacles,jawOpen:0,jawTimer:0,eyeGlow:0,eyePulse:0,
+    speed:140,chargeSpeed:450,dmg:35,biteCooldown:0,
+    phase:0,ambientTimer:0,
+    dead:false,deathTimer:0,retreatAngle:0,lastSeenDist:99999
+  };
+}
+
+function updateLeviathan(dt){
+  if(!player||player.dead)return;
+  const zone=getZone(player.x,player.y);
+  
+  // Track void time
+  if(zone==='void'){voidTimeAccum+=dt;}
+  else{
+    voidTimeAccum=Math.max(0,voidTimeAccum-dt*3);
+    if(leviathan&&!leviathan.dead){
+      leviathan.state='retreat';leviathan.stateTimer=8;
+      leviathan.retreatAngle=angle(leviathan.x,leviathan.y,0,0)+Math.PI;
+    }
+  }
+  
+  // Spawn logic
+  if(!leviathan&&zone==='void'){
+    const minTime=30;
+    if(voidTimeAccum>minTime){
+      const t2=voidTimeAccum-minTime;
+      const spawnChance=(0.003+t2*0.00025)*dt;
+      if(Math.random()<spawnChance){
+        leviathan=createLeviathan(player.x,player.y);
+        leviathanWarnPhase=1;leviathanPingTimer=0;
+        SFX.leviathanPing();
+        notify('◈ Something stirs in the void...','#8833cc');
+      }
+    }
+    // Warning pings before spawn
+    if(voidTimeAccum>20){
+      leviathanPingTimer-=dt;
+      if(leviathanPingTimer<=0){
+        leviathanPingTimer=Math.max(4,15-voidTimeAccum*.08);
+        if(voidTimeAccum>minTime*.6){
+          SFX.leviathanPing();
+          const pa=Math.random()*Math.PI*2,pd=1500+Math.random()*2000;
+          minimapEvents.push({x:player.x+Math.cos(pa)*pd,y:player.y+Math.sin(pa)*pd,
+            color:'#8833cc',t:0,maxT:2,type:'leviathanPing'});
+        }
+      }
+    }
+  }
+  
+  if(!leviathan||leviathan.dead){
+    if(leviathan&&leviathan.dead){leviathan.deathTimer-=dt;if(leviathan.deathTimer<=0){leviathan=null;leviathanWarnPhase=0;}}
+    leviathanScreenFX.darkness=Math.max(0,leviathanScreenFX.darkness-dt*.5);
+    leviathanScreenFX.distortion=Math.max(0,leviathanScreenFX.distortion-dt*2);
+    leviathanScreenFX.tint=Math.max(0,leviathanScreenFX.tint-dt*.5);
+    return;
+  }
+  
+  const lev=leviathan;
+  lev.phase+=dt;
+  const dToPlayer=dist(lev.x,lev.y,player.x,player.y);
+  lev.lastSeenDist=dToPlayer;
+  
+  // Ambient sound
+  lev.ambientTimer-=dt;
+  if(lev.ambientTimer<=0&&dToPlayer<2500){SFX.leviathanAmbient();lev.ambientTimer=3+Math.random()*2;}
+  
+  // Screen effects
+  const proximity=1-clamp(dToPlayer/2000,0,1);
+  leviathanScreenFX.darkness=lerp(leviathanScreenFX.darkness,proximity*.35,dt*2);
+  leviathanScreenFX.distortion=lerp(leviathanScreenFX.distortion,proximity*.5,dt*3);
+  leviathanScreenFX.tint=lerp(leviathanScreenFX.tint,proximity*.4,dt*2);
+  
+  // Eye + jaw animation
+  lev.eyePulse+=dt*3;
+  lev.eyeGlow=lerp(lev.eyeGlow,lev.state==='charge'||lev.state==='attack'?1:.4+Math.sin(lev.eyePulse)*.2,dt*4);
+  if(lev.jawTimer>0){lev.jawTimer-=dt;lev.jawOpen=Math.min(1,lev.jawOpen+dt*6);}
+  else{lev.jawOpen=Math.max(0,lev.jawOpen-dt*3);}
+  if(lev.biteCooldown>0)lev.biteCooldown-=dt;
+  lev.stateTimer-=dt;
+  
+  switch(lev.state){
+    case 'lurk':{
+      const orbitAngle=angle(player.x,player.y,lev.x,lev.y)+.15*dt;
+      const orbitR=1800+Math.sin(lev.phase*.3)*400;
+      moveLeviathan(lev,player.x+Math.cos(orbitAngle)*orbitR,player.y+Math.sin(orbitAngle)*orbitR,lev.speed*.5,dt);
+      leviathanPingTimer-=dt;
+      if(leviathanPingTimer<=0){
+        leviathanPingTimer=3+Math.random()*2;
+        SFX.leviathanPing();
+        minimapEvents.push({x:lev.x,y:lev.y,color:'#8833cc',t:0,maxT:2.5,type:'leviathanPing'});
+        leviathanWarnPhase=2;
+      }
+      if(lev.stateTimer<=0){lev.state='stalk';lev.stateTimer=8+Math.random()*6;notify('◈ It draws closer...','#aa44dd');}
+      break;
+    }
+    case 'stalk':{
+      const behindAngle=player.angle+Math.PI;
+      const stalkDist=600+Math.sin(lev.phase*.5)*200;
+      moveLeviathan(lev,player.x+Math.cos(behindAngle)*stalkDist,player.y+Math.sin(behindAngle)*stalkDist,lev.speed*.7,dt);
+      leviathanPingTimer-=dt;
+      if(leviathanPingTimer<=0){
+        leviathanPingTimer=2;SFX.leviathanPing();
+        minimapEvents.push({x:lev.x,y:lev.y,color:'#cc33ff',t:0,maxT:2,type:'leviathanPing'});
+      }
+      if(lev.stateTimer<=0){
+        lev.state='charge';lev.stateTimer=2.5;
+        SFX.leviathanRoar();shake(12);
+        notify('◈ THE LEVIATHAN ATTACKS!','#ff33aa');leviathanWarnPhase=3;
+        for(let i=0;i<60;i++){const a=(i/60)*Math.PI*2;spawnParticle(lev.x,lev.y,Math.cos(a)*300,Math.sin(a)*300,'#8822aa',3,.8,12);}
+      }
+      break;
+    }
+    case 'charge':{
+      moveLeviathan(lev,player.x,player.y,lev.chargeSpeed,dt);
+      lev.jawTimer=.5;
+      for(let i=0;i<3;i++){spawnParticle(lev.x+rand(-30,30),lev.y+rand(-30,30),rand(-40,40),rand(-40,40),'#6611aa',rand(2,5),rand(.3,.6),8);}
+      if(dToPlayer<lev.bodyRadius+30&&lev.biteCooldown<=0){
+        applyDamage(player,lev.dmg,lev.id);lev.biteCooldown=1.5;
+        SFX.leviathanBite();shake(15);
+        emitBurst(player.x,player.y,20,120,'#aa22cc',4,.5,12);
+        addFloatingText(player.x,player.y-20,'LEVIATHAN BITE!','#ff33aa');
+        leviathanScreenFX.distortion=1;
+      }
+      if(lev.stateTimer<=0){lev.state='attack';lev.stateTimer=6+Math.random()*4;}
+      break;
+    }
+    case 'attack':{
+      const circleA=angle(player.x,player.y,lev.x,lev.y)+1.2*dt;
+      const circleR=300+Math.sin(lev.phase*1.5)*100;
+      moveLeviathan(lev,player.x+Math.cos(circleA)*circleR,player.y+Math.sin(circleA)*circleR,lev.speed*1.2,dt);
+      if(lev.biteCooldown<=0&&dToPlayer<400){
+        const lungeA=angle(lev.x,lev.y,player.x,player.y);
+        lev.vx+=Math.cos(lungeA)*600;lev.vy+=Math.sin(lungeA)*600;
+        lev.jawTimer=.8;SFX.leviathanBite();
+      }
+      if(dToPlayer<lev.bodyRadius+30&&lev.biteCooldown<=0){
+        applyDamage(player,lev.dmg,lev.id);lev.biteCooldown=1.5;
+        shake(12);emitBurst(player.x,player.y,15,100,'#aa22cc',3,.4,10);
+        addFloatingText(player.x,player.y-20,'CHOMP!','#ff33aa');
+        leviathanScreenFX.distortion=.8;
+      }
+      if(Math.random()<.3){const a=Math.random()*Math.PI*2;
+        spawnParticle(lev.x+Math.cos(a)*lev.bodyRadius,lev.y+Math.sin(a)*lev.bodyRadius,Math.cos(a)*30,Math.sin(a)*30,'#5511aa',2,.5,6);}
+      if(lev.stateTimer<=0){
+        if(lev.hp<lev.maxHp*.3||Math.random()<.3){
+          lev.state='retreat';lev.stateTimer=6;lev.retreatAngle=angle(player.x,player.y,lev.x,lev.y);
+        }else{lev.state='charge';lev.stateTimer=2;SFX.leviathanRoar();shake(8);}
+      }
+      break;
+    }
+    case 'retreat':{
+      moveLeviathan(lev,lev.x+Math.cos(lev.retreatAngle)*2000,lev.y+Math.sin(lev.retreatAngle)*2000,lev.speed*1.5,dt);
+      if(lev.stateTimer<=0||dToPlayer>4000){
+        if(dToPlayer>3500){leviathan=null;leviathanWarnPhase=0;voidTimeAccum=Math.max(0,voidTimeAccum-60);return;}
+        lev.state='lurk';lev.stateTimer=10+Math.random()*5;
+      }
+      break;
+    }
+  }
+  
+  // Tentacle physics
+  lev.tentacles.forEach(tent=>{
+    const base=lev.angle+tent.baseAngle;
+    tent.segs.forEach((seg,i)=>{
+      const wave=Math.sin(lev.phase*tent.waveSpeed+seg.phase+i*.4)*tent.waveAmp;
+      const targetAngle=base+Math.PI+wave+(lev.state==='charge'?Math.sin(lev.phase*8+i)*.15:0);
+      seg.angle=lerp(seg.angle,targetAngle,dt*5);
+    });
+  });
+  
+  lev.vx*=Math.pow(.95,dt*60);lev.vy*=Math.pow(.95,dt*60);
+  lev.x+=lev.vx*dt;lev.y+=lev.vy*dt;
+  
+  // Take damage from player projectiles
+  for(let i=projectiles.length-1;i>=0;i--){
+    const p=projectiles[i];
+    if(!p.isPlayerOwned)continue;
+    if(dist(p.x,p.y,lev.x,lev.y)<lev.bodyRadius+15){
+      lev.hp-=p.dmg;emitBurst(p.x,p.y,6,60,'#aa44ff',2,.3,8);projectiles.splice(i,1);
+      if(lev.hp<=0){killLeviathan(lev);return;}
+      if(lev.state==='lurk'||lev.state==='stalk'){
+        lev.state='charge';lev.stateTimer=2;SFX.leviathanRoar();shake(8);notify('◈ YOU ANGERED IT!','#ff2255');
+      }
+    }
+  }
+}
+
+function moveLeviathan(lev,tx,ty,speed,dt){
+  const a=angle(lev.x,lev.y,tx,ty);
+  lev.angle=lerp(lev.angle,a,dt*2.5);
+  lev.vx+=Math.cos(a)*speed*dt*3;lev.vy+=Math.sin(a)*speed*dt*3;
+  const v=Math.sqrt(lev.vx*lev.vx+lev.vy*lev.vy);
+  if(v>speed){lev.vx*=speed/v;lev.vy*=speed/v;}
+}
+
+function killLeviathan(lev){
+  lev.dead=true;lev.deathTimer=3;
+  emitBurst(lev.x,lev.y,80,400,'#aa22ff',5,1.2,15);
+  emitBurst(lev.x,lev.y,40,200,'#ff44aa',4,.8,12);
+  emitBurst(lev.x,lev.y,20,100,'#fff',3,.5,10);
+  for(let i=0;i<30;i++){const a=Math.random()*Math.PI*2,s=rand(20,80);
+    spawnParticle(lev.x,lev.y,Math.cos(a)*s,Math.sin(a)*s,'#6622cc',rand(3,7),rand(1,2.5),10);}
+  SFX.leviathanRoar();SFX.explode();shake(20);
+  notify('◈ LEVIATHAN SLAIN! +500⬡','#ff44ff');
+  addFloatingText(lev.x,lev.y,'+500 CREDITS','#ff44ff');
+  if(player){player.credits+=500;player.totalEarned+=500;}
+  const voidLoot=createLoot(lev.x,lev.y,{voidstone:randInt(5,12)});
+  if(voidLoot)loot.push(voidLoot);
+  voidTimeAccum=0;leviathanWarnPhase=0;
+  minimapEvents.push({x:lev.x,y:lev.y,color:'#cc33ff',t:0,maxT:3,type:'explosion'});
+}
+
+// ── Void Leviathan Rendering ──
+
+function drawLeviathan(){
+  if(!leviathan)return;
+  const lev=leviathan;
+  const s=worldToScreen(lev.x,lev.y);
+  if(!inView(lev.x,lev.y,300))return;
+  const t=performance.now()*.001;
+  const deathFade=lev.dead?clamp(lev.deathTimer/2,0,1):1;
+  ctx.save();ctx.globalAlpha=deathFade;
+  
+  // Dark aura
+  const auraR=lev.bodyRadius*3+Math.sin(t*2)*20;
+  const aura=ctx.createRadialGradient(s.x,s.y,lev.bodyRadius*.5,s.x,s.y,auraR);
+  aura.addColorStop(0,'rgba(40,0,80,.25)');aura.addColorStop(.5,'rgba(20,0,50,.12)');aura.addColorStop(1,'rgba(10,0,30,0)');
+  ctx.fillStyle=aura;ctx.beginPath();ctx.arc(s.x,s.y,auraR,0,Math.PI*2);ctx.fill();
+  
+  // Tentacles
+  lev.tentacles.forEach((tent,ti)=>{
+    let px=s.x-Math.cos(lev.angle)*lev.bodyRadius*.6;
+    let py=s.y-Math.sin(lev.angle)*lev.bodyRadius*.6;
+    ctx.beginPath();ctx.moveTo(px,py);
+    tent.segs.forEach((seg)=>{px+=Math.cos(seg.angle)*seg.len;py+=Math.sin(seg.angle)*seg.len;ctx.lineTo(px,py);});
+    ctx.strokeStyle=`rgba(100,30,180,${.7*deathFade})`;ctx.lineWidth=12;ctx.lineCap='round';ctx.stroke();
+    ctx.strokeStyle=`rgba(140,50,220,${.5*deathFade})`;ctx.lineWidth=7;ctx.stroke();
+    ctx.strokeStyle=`rgba(200,100,255,${.3*deathFade})`;ctx.lineWidth=3.5;ctx.stroke();
+    ctx.fillStyle=`rgba(200,80,255,${(.5+Math.sin(t*3+ti)*.3)*deathFade})`;
+    ctx.beginPath();ctx.arc(px,py,4+Math.sin(t*4+ti)*1.5,0,Math.PI*2);ctx.fill();
+  });
+  
+  // Body
+  ctx.save();ctx.translate(s.x,s.y);ctx.rotate(lev.angle);
+  const br=lev.bodyRadius;
+  const bodyGrad=ctx.createRadialGradient(0,0,br*.2,0,0,br);
+  bodyGrad.addColorStop(0,'rgba(80,20,120,1)');bodyGrad.addColorStop(.4,'rgba(50,10,90,1)');
+  bodyGrad.addColorStop(.8,'rgba(30,5,60,1)');bodyGrad.addColorStop(1,'rgba(15,0,35,.8)');
+  ctx.fillStyle=bodyGrad;
+  ctx.beginPath();
+  for(let i=0;i<=16;i++){
+    const a=(i/16)*Math.PI*2;
+    const rx=br*1.3+Math.sin(a*8+t*2)*5;const ry=br*.8+Math.sin(a*8+t*3)*4;
+    if(i===0)ctx.moveTo(Math.cos(a)*rx,Math.sin(a)*ry);
+    else ctx.lineTo(Math.cos(a)*rx,Math.sin(a)*ry);
+  }
+  ctx.closePath();ctx.fill();
+  ctx.strokeStyle=`rgba(140,50,220,${.6+Math.sin(t*2)*.2})`;ctx.lineWidth=3;ctx.stroke();
+  
+  // Bioluminescent spots
+  for(let i=0;i<6;i++){
+    const spotA=i/6*Math.PI*2+t*.5;
+    const pulse=.3+Math.sin(t*2+i*1.1)*.3;
+    ctx.fillStyle=`rgba(180,80,255,${pulse})`;
+    ctx.beginPath();ctx.arc(Math.cos(spotA)*br*.5,Math.sin(spotA)*br*.5*.6,5+Math.sin(t*3+i)*2,0,Math.PI*2);ctx.fill();
+  }
+  
+  // Jaw
+  const jawA=lev.jawOpen*.6;
+  ctx.fillStyle='rgba(60,15,100,1)';
+  ctx.beginPath();ctx.moveTo(br*.8,0);ctx.lineTo(br*1.5,-4-jawA*15);ctx.lineTo(br*1.8,0);ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.moveTo(br*.8,0);ctx.lineTo(br*1.5,4+jawA*15);ctx.lineTo(br*1.8,0);ctx.closePath();ctx.fill();
+  if(lev.jawOpen>.2){
+    ctx.fillStyle=`rgba(220,180,255,${lev.jawOpen})`;
+    for(let i=0;i<5;i++){
+      const tx2=br*1+i*br*.15;
+      ctx.beginPath();ctx.moveTo(tx2,-2-jawA*8+i*.5);ctx.lineTo(tx2+4,-2-jawA*8+i*.5+jawA*10);ctx.lineTo(tx2-4,-2-jawA*8+i*.5+jawA*10);ctx.closePath();ctx.fill();
+      ctx.beginPath();ctx.moveTo(tx2,2+jawA*8-i*.5);ctx.lineTo(tx2+4,2+jawA*8-i*.5-jawA*10);ctx.lineTo(tx2-4,2+jawA*8-i*.5-jawA*10);ctx.closePath();ctx.fill();
+    }
+  }
+  
+  // Eyes
+  [-1,1].forEach(side=>{
+    const ey=side*15;const eyeX=br*.4;
+    const eg=ctx.createRadialGradient(eyeX,ey,2,eyeX,ey,18);
+    eg.addColorStop(0,`rgba(255,50,200,${lev.eyeGlow*.6})`);
+    eg.addColorStop(.4,`rgba(200,30,150,${lev.eyeGlow*.3})`);
+    eg.addColorStop(1,'rgba(100,0,80,0)');
+    ctx.fillStyle=eg;ctx.beginPath();ctx.arc(eyeX,ey,18,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=`rgba(255,80,220,${lev.eyeGlow})`;ctx.beginPath();ctx.arc(eyeX,ey,7,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=`rgba(20,0,30,${lev.eyeGlow})`;
+    ctx.save();ctx.translate(eyeX,ey);ctx.rotate(Math.PI/2);
+    ctx.beginPath();ctx.ellipse(0,0,2,5+Math.sin(t*2)*1,0,0,Math.PI*2);ctx.fill();ctx.restore();
+    ctx.fillStyle=`rgba(255,200,255,${lev.eyeGlow*.5})`;ctx.beginPath();ctx.arc(eyeX-2,ey-2,2,0,Math.PI*2);ctx.fill();
+  });
+  ctx.restore(); // rotation
+  
+  // HP bar
+  if(lev.hp<lev.maxHp&&!lev.dead){
+    const hpPct=lev.hp/lev.maxHp;
+    ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(s.x-40,s.y-lev.bodyRadius-20,80,6);
+    ctx.fillStyle=hpPct>.5?'#aa44ff':hpPct>.25?'#ff44aa':'#ff2244';
+    ctx.fillRect(s.x-40,s.y-lev.bodyRadius-20,80*hpPct,6);
+    ctx.fillStyle='rgba(255,255,255,.9)';ctx.font='bold 10px Courier New';ctx.textAlign='center';
+    ctx.fillText('LEVIATHAN',s.x,s.y-lev.bodyRadius-24);
+  }
+  
+  // Name
+  if(!lev.dead&&lev.lastSeenDist<1200){
+    ctx.fillStyle='rgba(200,100,255,.8)';ctx.font='bold 11px Courier New';ctx.textAlign='center';
+    ctx.fillText('◈ VOID LEVIATHAN',s.x,s.y+lev.bodyRadius+16);
+  }
+  ctx.restore(); // globalAlpha
+}
+
+function drawLeviathanScreenFX(){
+  if(leviathanScreenFX.darkness<=0.01&&leviathanScreenFX.distortion<=0.01&&leviathanScreenFX.tint<=0.01)return;
+  if(leviathanScreenFX.darkness>0.01){
+    const vig=ctx.createRadialGradient(W/2,H/2,W*.15,W/2,H/2,W*.7);
+    vig.addColorStop(0,'rgba(15,0,30,0)');
+    vig.addColorStop(.6,`rgba(15,0,30,${leviathanScreenFX.darkness*.5})`);
+    vig.addColorStop(1,`rgba(5,0,15,${leviathanScreenFX.darkness})`);
+    ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
+  }
+  if(leviathanScreenFX.tint>0.01){
+    ctx.fillStyle=`rgba(60,0,80,${leviathanScreenFX.tint*.15})`;ctx.fillRect(0,0,W,H);
+  }
+  if(leviathanScreenFX.distortion>.3){
+    ctx.fillStyle=`rgba(120,30,160,${(leviathanScreenFX.distortion-.3)*.3})`;ctx.fillRect(0,0,W,H);
+  }
+}
+
+// Leviathan on minimap
+function drawLeviathanMinimap(mx,my,scale){
+  if(!leviathan||leviathan.dead)return;
+  const lev=leviathan;
+  const lx=mx+(lev.x-player.x)*scale,ly=my+(lev.y-player.y)*scale;
+  const mr=CFG.MINIMAP_R;
+  if(dist(lx,ly,mx,my)>=mr)return;
+  const t=performance.now()*.001;
+  // Pulsing threat marker
+  const pulse=.4+Math.sin(t*4)*.3;
+  ctx.fillStyle=`rgba(160,40,220,${pulse})`;
+  ctx.beginPath();ctx.arc(lx,ly,8,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#cc44ff';
+  ctx.beginPath();ctx.arc(lx,ly,4,0,Math.PI*2);ctx.fill();
+  // Direction indicator
+  ctx.strokeStyle='#cc44ff';ctx.lineWidth=1.5;ctx.globalAlpha=.7;
+  ctx.beginPath();ctx.moveTo(lx,ly);
+  ctx.lineTo(lx+Math.cos(lev.angle)*10,ly+Math.sin(lev.angle)*10);ctx.stroke();
+  ctx.globalAlpha=1;
+}
 
 // ═══════════════════════════════════════════
 // Economy
@@ -2267,7 +2735,13 @@ function updateHUD(){
   document.getElementById('credits').textContent='⬡ '+player.credits;
   const zone=getZone(player.x,player.y);
   const zi=document.getElementById('zoneIndicator');
-  zi.textContent=zoneName(zone);zi.style.color=zoneTextColor(zone);
+  let zoneText=zoneName(zone);
+  if(zone==='void'&&voidTimeAccum>15){
+    const danger=voidTimeAccum>60?'███':voidTimeAccum>40?'██':voidTimeAccum>20?'█':'';
+    if(danger)zoneText+=' '+danger;
+    if(leviathan&&!leviathan.dead)zoneText=' ◈ LEVIATHAN NEARBY';
+  }
+  zi.textContent=zoneText;zi.style.color=leviathan&&!leviathan?.dead&&zone==='void'?'#cc44ff':zoneTextColor(zone);
   zi.style.background=zoneColor(zone);zi.style.border='1px solid '+zoneTextColor(zone)+'33';
   const tc=totalCargo(player.cargo);const mc=maxCargo(player);const pct=Math.round(tc/mc*100);
   document.querySelector('.cargo-inner').style.width=pct+'%';
@@ -2389,7 +2863,7 @@ function gameLoop(timestamp){
     }
     if(gameState==='dead'&&player)player.respawnTimer-=dt;
     
-    updateNPCs(dt);updateProjectiles(dt);
+    updateNPCs(dt);updateProjectiles(dt);updateLeviathan(dt);
     // Decay minimap events
     for(let i=minimapEvents.length-1;i>=0;i--){minimapEvents[i].t+=dt;if(minimapEvents[i].t>=minimapEvents[i].maxT)minimapEvents.splice(i,1);}updateLoot(dt);
     updateAsteroidRespawn(dt);updateParticles(dt);updateCamera(dt);
@@ -2410,10 +2884,12 @@ function gameLoop(timestamp){
     loot.forEach(l=>drawLootEntity(l));
     drawMiningBeam();
     npcs.forEach(n=>drawShipEntity(n));
+    drawLeviathan();
     drawRemotePlayers();
     if(player&&!player.dead)drawShipEntity(player);
     projectiles.forEach(p=>drawProjectileEntity(p));
     drawParticles();drawFloatingTexts();drawMinimap();
+    drawLeviathanScreenFX();
     
     // HUD overlays
     if(player&&!player.dead){
@@ -2488,6 +2964,9 @@ function respawn(){
   player.vx=0;player.vy=0;player.hp=player.maxHp;player.shield=player.maxShield;
   player.cargo={};player.abilityCD=0;player.cloaked=false;player.cloakTimer=0;
   player.stunTimer=0;player.tractorActive=false;player.afterburnerTimer=0;
+  // Reset leviathan on respawn (you escaped it)
+  leviathan=null;voidTimeAccum=0;leviathanWarnPhase=0;
+  leviathanScreenFX={darkness:0,distortion:0,tint:0};
   gameState='playing';
   document.getElementById('deathScreen').style.display='none';
   updateHUD();
