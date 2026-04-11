@@ -586,7 +586,7 @@ function createAsteroid(id,rng){
 
 function createProjectile(owner,x,y,ang,dmg){
   return{
-    id:uid(),ownerId:owner.id,
+    id:uid(),ownerId:owner.id,ownerName:owner.name||'Unknown',
     x,y,vx:Math.cos(ang)*CFG.PROJ_SPEED+owner.vx*.3,vy:Math.sin(ang)*CFG.PROJ_SPEED+owner.vy*.3,
     angle:ang,dmg,ttl:CFG.PROJ_TTL,
     color:owner.isPlayer?owner.color||'#66aaff':'#ff6644',
@@ -825,7 +825,21 @@ function pushNPCsToServer(){
 // non-host NPC state via interpolation.
 
 function handleNpcInsert(sn){
-  if(isNpcHost)return; // host runs AI locally, ignores server NPC rows
+  if(isNpcHost){
+    // Host still needs to read back combat fields from server (damageNpc reducer results)
+    // But only for existing local NPCs — new inserts on the host are locally spawned
+    const localNpc=npcs.find(n=>n.npcId===sn.id);
+    if(localNpc){
+      localNpc.hp=sn.hp;localNpc.shield=sn.shield;
+      if(sn.dead&&!localNpc.dead){
+        localNpc.dead=true;localNpc.hp=0;localNpc.respawnTimer=CFG.RESPAWN_TIME;
+        const near=distToPlayer(localNpc.x,localNpc.y)<FX_RANGE;
+        if(near){emitBurst(localNpc.x,localNpc.y,30,150,localNpc.color||'#ff5555',3,.7,12);emitBurst(localNpc.x,localNpc.y,15,80,'#fff',2,.4,8);SFX.explode();}
+        minimapEvents.push({x:localNpc.x,y:localNpc.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
+      }
+    }
+    return;
+  }
   const npcId=sn.id;
   const now=performance.now()/1000;
   const existing=npcServerMap.get(npcId);
@@ -855,7 +869,25 @@ function handleNpcInsert(sn){
 }
 
 function handleNpcUpdate(oldNpc,newNpc){
-  if(isNpcHost)return;
+  if(isNpcHost){
+    // Host owns position/velocity/state but must accept combat fields from server
+    // (damageNpc reducer is server-authoritative for NPC HP)
+    const localNpc=npcs.find(n=>n.npcId===newNpc.id);
+    if(localNpc){
+      // Only sync combat fields if server HP is LOWER than local HP
+      // (server processed a damageNpc call that the host doesn't know about)
+      if(newNpc.hp<localNpc.hp||newNpc.shield<localNpc.shield){
+        localNpc.hp=newNpc.hp;localNpc.shield=Math.max(0,newNpc.shield);
+      }
+      if(newNpc.dead&&!localNpc.dead){
+        localNpc.dead=true;localNpc.hp=0;localNpc.shield=0;localNpc.respawnTimer=CFG.RESPAWN_TIME;
+        const near=distToPlayer(localNpc.x,localNpc.y)<FX_RANGE;
+        if(near){emitBurst(localNpc.x,localNpc.y,30,150,localNpc.color||'#ff5555',3,.7,12);emitBurst(localNpc.x,localNpc.y,15,80,'#fff',2,.4,8);SFX.explode();}
+        minimapEvents.push({x:localNpc.x,y:localNpc.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
+      }
+    }
+    return;
+  }
   const npcId=newNpc.id;
   const now=performance.now()/1000;
   const existing=npcServerMap.get(npcId);
@@ -2027,8 +2059,23 @@ function updateProjectiles(dt){
           if(nearPlayer)emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
           minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
           if(nearPlayer){SFX.hit();shake(Math.max(0,1.5-distToPlayer(p.x,p.y)/FX_RANGE*1.5));}
+        }else if(t.isPlayer&&stdbConn&&stdbConnected){
+          // NPC bullet hitting local player — route through server dealDamage reducer
+          // so syncSelfFromServer() sees the updated HP (not stale pre-damage value)
+          const myHex=stdbConn.identity?stdbConn.identity.toHexString():'';
+          if(myHex){
+            try{stdbConn.reducers.dealDamage({
+              victimIdentityHex:myHex,
+              damage:p.dmg,
+              attackerName:p.ownerName||'NPC'
+            });}catch(e){console.warn('[STDB] deal_damage (NPC→Player) failed:',e);}
+          }
+          // Local FX immediately (HP will come from server via syncSelfFromServer)
+          emitBurst(p.x,p.y,8,80,p.color,2,.3,8);SFX.hit();
+          minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
+          shake(4);
         }else{
-          // Local damage (single-player, or NPC-vs-NPC on host, or NPC hitting player)
+          // Local damage (single-player offline, or NPC-vs-NPC on host)
           applyDamage(t,p.dmg,p.ownerId,nearPlayer||hitsPlayer);
           if(nearPlayer||hitsPlayer)emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
           minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
