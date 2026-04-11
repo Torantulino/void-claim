@@ -1,0 +1,1830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>VOID CLAIM</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#06060f}
+body{font-family:'Courier New',monospace;color:#ddd}
+canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
+.screen-overlay{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;transition:opacity .5s}
+#startScreen{background:radial-gradient(ellipse at center,rgba(10,10,40,.95),rgba(6,6,15,.98))}
+#startScreen h1{font-size:clamp(2rem,8vw,4.5rem);letter-spacing:.5em;color:#fff;text-shadow:0 0 30px rgba(100,150,255,.8),0 0 60px rgba(100,150,255,.4);margin-bottom:.2em;text-indent:.5em}
+#startScreen .subtitle{font-size:clamp(.8rem,2.5vw,1.1rem);color:rgba(150,180,255,.7);letter-spacing:.3em;margin-bottom:2em}
+#startScreen input{background:rgba(255,255,255,.05);border:1px solid rgba(100,150,255,.3);color:#fff;padding:12px 24px;font-size:1.1rem;text-align:center;font-family:inherit;border-radius:4px;outline:none;width:280px;max-width:80vw;margin-bottom:1.5em}
+#startScreen input:focus{border-color:rgba(100,150,255,.6);box-shadow:0 0 20px rgba(100,150,255,.2)}
+#startScreen input::placeholder{color:rgba(150,180,255,.3)}
+.btn{background:rgba(100,150,255,.15);border:1px solid rgba(100,150,255,.4);color:#fff;padding:14px 48px;font-size:1.2rem;font-family:inherit;letter-spacing:.2em;cursor:pointer;border-radius:4px;transition:all .3s;text-transform:uppercase}
+.btn:hover{background:rgba(100,150,255,.3);border-color:rgba(100,150,255,.7);box-shadow:0 0 30px rgba(100,150,255,.3);transform:scale(1.02)}
+#playerCount{margin-top:2em;font-size:.85rem;color:rgba(150,180,255,.4);letter-spacing:.15em}
+.jam-footer{position:fixed;bottom:20px;font-size:.7rem;color:rgba(150,180,255,.2);letter-spacing:.1em}
+#hud{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:50;display:none}
+#hud>*{pointer-events:auto}
+#credits{position:absolute;top:20px;left:20px;font-size:1.3rem;color:#ffcc44;text-shadow:0 0 10px rgba(255,204,68,.5)}
+#zoneIndicator{position:absolute;top:20px;left:50%;transform:translateX(-50%);font-size:.8rem;letter-spacing:.2em;padding:4px 16px;border-radius:12px;transition:all .5s}
+#notifications{position:absolute;top:60px;left:50%;transform:translateX(-50%);text-align:center;pointer-events:none}
+.notification{font-size:.85rem;padding:6px 16px;margin-bottom:4px;border-radius:8px;animation:notifFade 2.5s forwards;background:rgba(0,0,0,.5);white-space:nowrap}
+@keyframes notifFade{0%{opacity:1;transform:translateY(0)}70%{opacity:1}100%{opacity:0;transform:translateY(-20px)}}
+#marketBtn{position:absolute;bottom:80px;left:50%;transform:translateX(-50%);padding:8px 24px;font-size:.8rem;display:none}
+#cargoBar{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);width:300px;max-width:80vw;pointer-events:none}
+.cargo-outer{background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.1);border-radius:10px;height:18px;overflow:hidden}
+.cargo-inner{height:100%;background:linear-gradient(90deg,#44ff88,#ffcc44);border-radius:10px;transition:width .3s;width:0%}
+.cargo-label{text-align:center;font-size:.7rem;margin-top:4px;color:rgba(255,255,255,.4)}
+#market{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(10,12,30,.96);border:1px solid rgba(100,150,255,.2);border-radius:12px;padding:30px;z-index:200;width:720px;max-width:95vw;max-height:85vh;overflow-y:auto;display:none;box-shadow:0 0 60px rgba(100,150,255,.1)}
+#market h2{text-align:center;font-size:1.4rem;letter-spacing:.3em;color:rgba(100,150,255,.8);margin-bottom:20px}
+.market-section{margin-bottom:20px}
+.market-section h3{font-size:.8rem;color:rgba(255,255,255,.35);letter-spacing:.2em;margin-bottom:10px;border-bottom:1px solid rgba(255,255,255,.05);padding-bottom:6px}
+.upgrade-grid,.ship-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.upgrade-card,.ship-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px;text-align:center;cursor:pointer;transition:all .2s}
+.upgrade-card:hover,.ship-card:hover{background:rgba(100,150,255,.1);border-color:rgba(100,150,255,.3)}
+.upgrade-card.maxed{border-color:rgba(68,255,136,.3);background:rgba(68,255,136,.05);cursor:default}
+.upgrade-card.locked,.ship-card.locked{opacity:.4;cursor:default}
+.card-name{font-size:.78rem;color:rgba(255,255,255,.7);margin-bottom:4px}
+.card-level{font-size:.65rem;color:rgba(100,150,255,.5);margin-bottom:4px}
+.card-cost{font-size:.82rem;color:#ffcc44}
+.ship-card.active{border-color:rgba(68,255,136,.5);background:rgba(68,255,136,.05)}
+.ship-stats{font-size:.6rem;color:rgba(255,255,255,.35);line-height:1.6;margin:6px 0}
+#closeMarket{position:absolute;top:12px;right:16px;background:none;border:none;color:rgba(255,255,255,.3);font-size:1.5rem;cursor:pointer;font-family:inherit}
+#closeMarket:hover{color:#fff}
+#sellRow{text-align:center;margin-top:16px}
+#deathScreen{background:rgba(15,0,0,.88);display:none}
+#deathScreen h2{font-size:clamp(1.8rem,6vw,3rem);color:#ff4444;letter-spacing:.4em;text-shadow:0 0 30px rgba(255,0,0,.5);margin-bottom:.5em;text-indent:.4em}
+#deathScreen .lost-info{color:rgba(255,150,150,.6);font-size:.9rem;margin-bottom:2em}
+#controls-hint{position:absolute;bottom:100px;left:50%;transform:translateX(-50%);font-size:.7rem;color:rgba(255,255,255,.2);letter-spacing:.1em;pointer-events:none;text-align:center;line-height:1.8;transition:opacity 1s}
+.hidden{display:none!important}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}::-webkit-scrollbar-thumb{background:rgba(100,150,255,.2);border-radius:2px}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="startScreen" class="screen-overlay">
+<h1>VOID CLAIM</h1>
+<p class="subtitle">Mine · Steal · Survive</p>
+<input type="text" id="nameInput" placeholder="Enter callsign..." maxlength="16" autofocus>
+<button class="btn" id="launchBtn">▶ LAUNCH</button>
+<div id="playerCount">Initializing deep space...</div>
+<div class="jam-footer">Built for Vibe Jam 2026</div>
+</div>
+<div id="hud">
+<div id="credits">⬡ 0</div>
+<div id="zoneIndicator">SAFE ZONE</div>
+<div id="notifications"></div>
+<button class="btn" id="marketBtn">⬡ MARKET</button>
+<div id="cargoBar"><div class="cargo-outer"><div class="cargo-inner"></div></div><div class="cargo-label">CARGO 0/0</div></div>
+<div id="controls-hint">WASD move · Mouse aim · Click shoot · Hold near asteroid to mine<br>Return to Earth to sell · Press M for market</div>
+</div>
+<div id="market">
+<button id="closeMarket">×</button>
+<h2>⬡ EARTH MARKET</h2>
+<div class="market-section"><h3>UPGRADES</h3><div id="upgradeGrid" class="upgrade-grid"></div></div>
+<div class="market-section"><h3>SHIPS</h3><div id="shipGrid" class="ship-grid"></div></div>
+<div id="sellRow"><button class="btn" id="sellAllBtn" style="font-size:.8rem;padding:10px 24px">SELL ALL ORE</button><span id="sellValue" style="margin-left:12px;color:#ffcc44;font-size:.85rem"></span></div>
+</div>
+<div id="deathScreen" class="screen-overlay">
+<h2>DESTROYED</h2>
+<p class="lost-info" id="lostInfo">Your cargo was scattered into space.</p>
+<button class="btn" id="respawnBtn">RESPAWN AT EARTH</button>
+</div>
+<script async src="https://vibej.am/2026/widget.js"></script>
+<script>
+(function(){'use strict';
+
+// ═══════════════════════════════════════════
+// VOID CLAIM — Configuration
+// ═══════════════════════════════════════════
+
+const CFG={
+  WORLD_R:25000,
+  EARTH_R:180,
+  EARTH_SHIELD_R:1800,
+  GREEN_R:2500,
+  YELLOW_R:6000,
+  RED_R:12000,
+  TICK:1000/60,
+  BASE_SPEED:220,
+  DRAG:.985,
+  THRUST:600,
+  PROJ_SPEED:700,
+  PROJ_TTL:1.2,
+  PROJ_DMG:8,
+  MINE_RANGE:120,
+  MINE_RATE:25,
+  COLLECT_RANGE:60,
+  SHOOT_CD:.35,
+  RESPAWN_TIME:3,
+  NPC_COUNT:10,
+  AST_COUNT:300,
+  LOOT_TTL:25,
+  BOUNTY_TIME:90,
+  CAM_LERP:.08,
+  SHAKE_DECAY:.9,
+  MINIMAP_R:80,
+  MINIMAP_SCALE:0.004,
+  STAR_LAYERS:[{count:200,size:1,speed:.05,alpha:.3},{count:150,size:1.5,speed:.15,alpha:.5},{count:80,size:2,speed:.3,alpha:.8}]
+};
+
+const ORES={
+  iron:{name:'Iron',color:'#8899aa',glow:'#6677aa',value:1,minR:800,maxR:CFG.GREEN_R},
+  copper:{name:'Copper',color:'#cc8844',glow:'#dd9955',value:3,minR:800,maxR:3500},
+  silver:{name:'Silver',color:'#bbbbdd',glow:'#ccccee',value:8,minR:2200,maxR:CFG.YELLOW_R},
+  gold:{name:'Gold',color:'#ffcc44',glow:'#ffdd66',value:18,minR:3500,maxR:8000},
+  platinum:{name:'Platinum',color:'#ddddf8',glow:'#eeeeff',value:35,minR:5500,maxR:CFG.RED_R},
+  titanium:{name:'Titanium',color:'#44ddcc',glow:'#66eedd',value:55,minR:8000,maxR:15000},
+  voidstone:{name:'Voidstone',color:'#bb44ff',glow:'#cc66ff',value:200,minR:12000,maxR:CFG.WORLD_R}
+};
+
+const SHIPS={
+  prospector:{name:'Prospector',speed:1,hull:100,cargo:20,dmg:1,mineRate:1,shield:30,cost:0,desc:'Balanced starter'},
+  hauler:{name:'Hauler',speed:.72,hull:140,cargo:45,dmg:.5,mineRate:1.3,shield:40,cost:500,desc:'Slow but massive cargo'},
+  corsair:{name:'Corsair',speed:1.4,hull:70,cargo:12,dmg:1.6,mineRate:.8,shield:20,cost:800,desc:'Fast & deadly'},
+  sentinel:{name:'Sentinel',speed:.88,hull:200,cargo:18,dmg:.9,mineRate:.9,shield:80,cost:1200,desc:'Tanky bodyguard'},
+  phantom:{name:'Phantom',speed:1.25,hull:90,cargo:15,dmg:1.3,mineRate:1,shield:50,cost:2000,desc:'Cloaking ability'}
+};
+
+const UPGRADES={
+  engine:{name:'Engine',icon:'⚡',levels:5,baseCost:100,mult:2.4,pct:12,desc:'Speed'},
+  laser:{name:'Laser',icon:'⚡',levels:5,baseCost:120,mult:2.4,pct:18,desc:'Damage & mining'},
+  shields:{name:'Shields',icon:'🛡',levels:5,baseCost:150,mult:2.4,pct:20,desc:'Shield HP'},
+  cargo:{name:'Cargo',icon:'📦',levels:5,baseCost:80,mult:2.4,pct:25,desc:'Capacity'},
+  scanner:{name:'Scanner',icon:'📡',levels:3,baseCost:200,mult:3,pct:40,desc:'Radar range'}
+};
+
+const NPC_NAMES=['StarMiner','CosmicDrift','NebulaNomad','VoidWalker','RockHound','OreLord','AstralPirate','DustRunner','DeepCore','BeltRider','MeteorJack','NovaBlade','CraterKing','SpaceHawk','IronClad','SolarFlare','DarkMatter','GravPull','PhotonAce','WarpDive','QuantumRex','OreThief','AsteroidAce','NightOwl','ZeroG','CometTail','Nebulous','RoidRage','GoldRush','ClaimJumper'];
+const NPC_SUFFIXES=['','42','_x','99','HD','','777','_','00','X'];
+
+// ═══════════════════════════════════════════
+// State
+// ═══════════════════════════════════════════
+
+const canvas=document.getElementById('game');
+const ctx=canvas.getContext('2d');
+let W,H;
+
+let gameState='menu'; // menu, playing, dead
+let player=null;
+let asteroids=[];
+let npcs=[];
+let projectiles=[];
+let loot=[];
+let particles=[];
+let floatingTexts=[];
+let stars=[];
+let camera={x:0,y:0,shakeX:0,shakeY:0,shakeAmt:0};
+let input={keys:{},mx:0,my:0,mouseDown:false,mouseWorld:{x:0,y:0}};
+let hintTimer=12;
+let portalParams=null;
+let miningTarget=null;
+let miningProgress=0;
+
+// ═══════════════════════════════════════════
+// Utilities
+// ═══════════════════════════════════════════
+
+function dist(ax,ay,bx,by){const dx=ax-bx,dy=ay-by;return Math.sqrt(dx*dx+dy*dy)}
+function distSq(ax,ay,bx,by){const dx=ax-bx,dy=ay-by;return dx*dx+dy*dy}
+function lerp(a,b,t){return a+(b-a)*t}
+function angle(ax,ay,bx,by){return Math.atan2(by-ay,bx-ax)}
+function clamp(v,mn,mx){return v<mn?mn:v>mx?mx:v}
+function rand(a,b){return a+Math.random()*(b-a)}
+function randInt(a,b){return Math.floor(rand(a,b+1))}
+function pick(arr){return arr[Math.floor(Math.random()*arr.length)]}
+function uid(){return Math.random().toString(36).substr(2,9)}
+function easeOut(t){return 1-(1-t)*(1-t)}
+function easeInOut(t){return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2}
+function worldToScreen(wx,wy){return{x:(wx-camera.x)+W/2+camera.shakeX,y:(wy-camera.y)+H/2+camera.shakeY}}
+function screenToWorld(sx,sy){return{x:sx-W/2+camera.x,y:sy-H/2+camera.y}}
+function inView(wx,wy,margin){const s=worldToScreen(wx,wy);return s.x>-margin&&s.x<W+margin&&s.y>-margin&&s.y<H+margin}
+function getZone(x,y){const d=dist(x,y,0,0);if(d<CFG.EARTH_SHIELD_R)return'safe';if(d<CFG.GREEN_R)return'green';if(d<CFG.YELLOW_R)return'yellow';if(d<CFG.RED_R)return'red';return'void'}
+function zoneColor(z){return{safe:'rgba(68,255,136,.12)',green:'rgba(68,200,100,.08)',yellow:'rgba(255,200,68,.08)',red:'rgba(255,80,60,.08)',void:'rgba(160,60,255,.08)'}[z]}
+function zoneName(z){return{safe:'⛨ SAFE ZONE',green:'GREEN ZONE',yellow:'⚠ YELLOW ZONE',red:'☠ RED ZONE',void:'◈ THE VOID'}[z]}
+function zoneTextColor(z){return{safe:'#44ff88',green:'#66cc88',yellow:'#ffcc44',red:'#ff5544',void:'#bb66ff'}[z]}
+
+function totalCargo(cargo){let t=0;for(let k in cargo)t+=cargo[k];return t}
+function maxCargo(p){const base=SHIPS[p.ship].cargo;const upg=1+p.upgrades.cargo*(UPGRADES.cargo.pct/100);return Math.floor(base*upg)}
+function maxShield(p){const base=SHIPS[p.ship].shield;const upg=1+p.upgrades.shields*(UPGRADES.shields.pct/100);return Math.floor(base*upg)}
+function maxHull(p){return SHIPS[p.ship].hull}
+function shipSpeed(p){const base=CFG.BASE_SPEED*SHIPS[p.ship].speed;const upg=1+p.upgrades.engine*(UPGRADES.engine.pct/100);return base*upg}
+function shipDmg(p){const base=CFG.PROJ_DMG*SHIPS[p.ship].dmg;const upg=1+p.upgrades.laser*(UPGRADES.laser.pct/100);return base*upg}
+function mineRate(p){const base=CFG.MINE_RATE*SHIPS[p.ship].mineRate;const upg=1+p.upgrades.laser*(UPGRADES.laser.pct/100);return base*upg}
+function scanRange(p){return(300+CFG.MINIMAP_R/.004)*(1+p.upgrades.scanner*(UPGRADES.scanner.pct/100))}
+function upgradeCost(type,lvl){const u=UPGRADES[type];return Math.floor(u.baseCost*Math.pow(u.mult,lvl))}
+function cargoValue(cargo){let v=0;for(let k in cargo)v+=cargo[k]*(ORES[k]?ORES[k].value:0);return v}
+
+// ═══════════════════════════════════════════
+// Particles
+// ═══════════════════════════════════════════
+
+function spawnParticle(x,y,vx,vy,color,size,life,glow){
+  particles.push({x,y,vx,vy,color,size,life,maxLife:life,glow:glow||0});
+}
+function emitBurst(x,y,count,speed,color,size,life,glow){
+  for(let i=0;i<count;i++){
+    const a=Math.random()*Math.PI*2,s=rand(.3,1)*speed;
+    spawnParticle(x,y,Math.cos(a)*s,Math.sin(a)*s,color,rand(size*.5,size),rand(life*.6,life),glow||0);
+  }
+}
+function emitThrust(x,y,angle,speed,color){
+  const spread=.4,s=rand(40,80);
+  const a=angle+Math.PI+rand(-spread,spread);
+  spawnParticle(x,y,Math.cos(a)*s+rand(-10,10),Math.sin(a)*s+rand(-10,10),color,rand(1.5,3),rand(.15,.35),4);
+}
+function emitMiningParticles(x,y,color){
+  for(let i=0;i<3;i++){
+    const a=Math.random()*Math.PI*2,s=rand(30,80);
+    spawnParticle(x,y,Math.cos(a)*s,Math.sin(a)*s,color,rand(1,3),rand(.3,.6),6);
+  }
+}
+function addFloatingText(x,y,text,color){
+  floatingTexts.push({x,y,text,color,life:1.5,maxLife:1.5});
+}
+function shake(amt){camera.shakeAmt=Math.max(camera.shakeAmt,amt)}
+
+
+// ═══════════════════════════════════════════
+// Stars (Background)
+// ═══════════════════════════════════════════
+
+function generateStars(){
+  stars=[];
+  CFG.STAR_LAYERS.forEach(layer=>{
+    for(let i=0;i<layer.count;i++){
+      stars.push({x:rand(-W*2,W*2),y:rand(-H*2,H*2),size:layer.size*rand(.7,1.3),alpha:layer.alpha*rand(.5,1),speed:layer.speed,twinkle:rand(0,Math.PI*2),twinkleSpeed:rand(.5,2)});
+    }
+  });
+}
+
+// ═══════════════════════════════════════════
+// Create Entities
+// ═══════════════════════════════════════════
+
+function createPlayer(name){
+  return{
+    id:uid(),name:name||'Pilot',x:0,y:-CFG.EARTH_R-100,vx:0,vy:0,angle:0,
+    hp:100,maxHp:100,shield:30,maxShield:30,
+    ship:'prospector',credits:0,cargo:{},
+    upgrades:{engine:0,laser:0,shields:0,cargo:0,scanner:0},
+    shootCD:0,dead:false,respawnTimer:0,
+    thrustTrail:[],cloaked:false,cloakEnergy:100,bounty:0,
+    kills:0,mined:0,isPlayer:true
+  };
+}
+
+function createAsteroid(id){
+  // pick ore type based on random distance
+  const oreKeys=Object.keys(ORES);
+  const oreType=pick(oreKeys);
+  const ore=ORES[oreType];
+  const d=rand(ore.minR,ore.maxR);
+  const a=rand(0,Math.PI*2);
+  const hp=rand(30,80)*(1+ore.value/20);
+  const size=rand(18,42)*(1+ore.value/80);
+  const verts=[];
+  const n=randInt(6,10);
+  for(let i=0;i<n;i++){
+    const ang=(i/n)*Math.PI*2;
+    const r=size*rand(.7,1.1);
+    verts.push({x:Math.cos(ang)*r,y:Math.sin(ang)*r});
+  }
+  return{
+    id:id||uid(),x:Math.cos(a)*d,y:Math.sin(a)*d,
+    oreType,size,hp,maxHp:hp,verts,
+    rotation:rand(0,Math.PI*2),rotSpeed:rand(-.3,.3),
+    respawnTimer:0,alive:true
+  };
+}
+
+function createProjectile(owner,x,y,angle,dmg){
+  return{
+    id:uid(),ownerId:owner.id,
+    x,y,vx:Math.cos(angle)*CFG.PROJ_SPEED+owner.vx*.3,vy:Math.sin(angle)*CFG.PROJ_SPEED+owner.vy*.3,
+    angle,dmg,ttl:CFG.PROJ_TTL,
+    color:owner.isPlayer?'#66aaff':'#ff6644',
+    isPlayerOwned:!!owner.isPlayer
+  };
+}
+
+function createLoot(x,y,cargo){
+  const items=[];
+  for(let k in cargo){
+    if(cargo[k]>0)items.push({ore:k,amount:cargo[k]});
+  }
+  if(items.length===0)return null;
+  return{id:uid(),x:x+rand(-20,20),y:y+rand(-20,20),items,ttl:CFG.LOOT_TTL,pulse:0};
+}
+
+function spawnAsteroids(){
+  asteroids=[];
+  for(let i=0;i<CFG.AST_COUNT;i++){
+    asteroids.push(createAsteroid());
+  }
+}
+
+// ═══════════════════════════════════════════
+// NPC System
+// ═══════════════════════════════════════════
+
+function createNPC(){
+  const isMiner=Math.random()>.35;
+  const personality=isMiner?'miner':'pirate';
+  const shipType=personality==='pirate'?pick(['corsair','corsair','prospector']):pick(['prospector','hauler','prospector','hauler']);
+  const name=pick(NPC_NAMES)+pick(NPC_SUFFIXES);
+  
+  // Spawn at random location
+  const d=rand(CFG.GREEN_R,CFG.RED_R);
+  const a=rand(0,Math.PI*2);
+  
+  const base=SHIPS[shipType];
+  const upgLvl=personality==='pirate'?randInt(1,3):randInt(0,2);
+  
+  return{
+    id:uid(),name,x:Math.cos(a)*d,y:Math.sin(a)*d,vx:0,vy:0,angle:rand(0,Math.PI*2),
+    hp:base.hull,maxHp:base.hull,shield:base.shield,maxShield:base.shield,
+    ship:shipType,credits:randInt(0,200),cargo:{},
+    upgrades:{engine:upgLvl,laser:upgLvl,shields:upgLvl,cargo:upgLvl,scanner:0},
+    shootCD:0,dead:false,respawnTimer:0,
+    thrustTrail:[],cloaked:false,bounty:0,
+    // AI state
+    personality,state:'idle',target:null,stateTimer:rand(1,3),
+    thinkTimer:0,fleeHP:.25,isPlayer:false,isNPC:true
+  };
+}
+
+function spawnNPCs(){
+  npcs=[];
+  for(let i=0;i<CFG.NPC_COUNT;i++){
+    npcs.push(createNPC());
+  }
+}
+
+// ═══════════════════════════════════════════
+// Rendering
+// ═══════════════════════════════════════════
+
+function drawBackground(){
+  ctx.fillStyle='#06060f';
+  ctx.fillRect(0,0,W,H);
+  
+  // Stars with parallax
+  const t=performance.now()*.001;
+  stars.forEach(s=>{
+    const px=((s.x-camera.x*s.speed)%W+W)%W;
+    const py=((s.y-camera.y*s.speed)%H+H)%H;
+    const tw=Math.sin(t*s.twinkleSpeed+s.twinkle)*.3+.7;
+    ctx.globalAlpha=s.alpha*tw;
+    ctx.fillStyle='#ccdeff';
+    ctx.beginPath();
+    ctx.arc(px,py,s.size,0,Math.PI*2);
+    ctx.fill();
+  });
+  ctx.globalAlpha=1;
+  
+  // Subtle nebula clouds
+  const nebulas=[
+    {x:5000,y:3000,r:2000,color:'rgba(60,30,100,'},
+    {x:-6000,y:-4000,r:2500,color:'rgba(30,60,100,'},
+    {x:8000,y:-7000,r:1800,color:'rgba(100,40,40,'}
+  ];
+  nebulas.forEach(n=>{
+    const s=worldToScreen(n.x,n.y);
+    if(s.x>-n.r*2&&s.x<W+n.r*2&&s.y>-n.r*2&&s.y<H+n.r*2){
+      const grad=ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,n.r);
+      grad.addColorStop(0,n.color+'.04)');
+      grad.addColorStop(.5,n.color+'.02)');
+      grad.addColorStop(1,n.color+'0)');
+      ctx.fillStyle=grad;
+      ctx.fillRect(s.x-n.r,s.y-n.r,n.r*2,n.r*2);
+    }
+  });
+}
+
+function drawZoneRings(){
+  const zones=[
+    {r:CFG.EARTH_SHIELD_R,color:'rgba(68,255,136,.06)',dash:[20,20]},
+    {r:CFG.GREEN_R,color:'rgba(68,200,100,.04)',dash:[10,20]},
+    {r:CFG.YELLOW_R,color:'rgba(255,200,68,.04)',dash:[10,20]},
+    {r:CFG.RED_R,color:'rgba(255,80,60,.04)',dash:[10,20]}
+  ];
+  zones.forEach(z=>{
+    const s=worldToScreen(0,0);
+    const sr=z.r;
+    ctx.strokeStyle=z.color;
+    ctx.lineWidth=1;
+    ctx.setLineDash(z.dash);
+    ctx.beginPath();
+    ctx.arc(s.x,s.y,sr,0,Math.PI*2);
+    ctx.stroke();
+  });
+  ctx.setLineDash([]);
+}
+
+function drawEarth(){
+  const s=worldToScreen(0,0);
+  const r=CFG.EARTH_R;
+  
+  // Atmosphere glow
+  const glowR=r*2.5;
+  const atmo=ctx.createRadialGradient(s.x,s.y,r*.8,s.x,s.y,glowR);
+  atmo.addColorStop(0,'rgba(60,140,255,.15)');
+  atmo.addColorStop(.4,'rgba(40,100,220,.06)');
+  atmo.addColorStop(1,'rgba(20,60,180,0)');
+  ctx.fillStyle=atmo;
+  ctx.beginPath();ctx.arc(s.x,s.y,glowR,0,Math.PI*2);ctx.fill();
+  
+  // Planet body
+  const bodyGrad=ctx.createRadialGradient(s.x-r*.3,s.y-r*.3,0,s.x,s.y,r);
+  bodyGrad.addColorStop(0,'#5599dd');
+  bodyGrad.addColorStop(.3,'#3377cc');
+  bodyGrad.addColorStop(.6,'#2266aa');
+  bodyGrad.addColorStop(1,'#114488');
+  ctx.fillStyle=bodyGrad;
+  ctx.beginPath();ctx.arc(s.x,s.y,r,0,Math.PI*2);ctx.fill();
+  
+  // Continents (subtle shapes)
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle='rgba(40,140,60,.3)';
+  const t=performance.now()*.00003;
+  for(let i=0;i<5;i++){
+    const cx=s.x+Math.cos(t+i*1.3)*r*.5;
+    const cy=s.y+Math.sin(t*1.3+i*2)*r*.4;
+    ctx.beginPath();ctx.ellipse(cx,cy,r*.35,r*.2,i*1.1,0,Math.PI*2);ctx.fill();
+  }
+  ctx.restore();
+  
+  // Light edge
+  const edgeGrad=ctx.createRadialGradient(s.x-r*.4,s.y-r*.4,0,s.x,s.y,r);
+  edgeGrad.addColorStop(0,'rgba(255,255,255,.08)');
+  edgeGrad.addColorStop(1,'rgba(0,0,0,.3)');
+  ctx.fillStyle=edgeGrad;
+  ctx.beginPath();ctx.arc(s.x,s.y,r,0,Math.PI*2);ctx.fill();
+  
+  // Shield dome (pulsing)
+  const shieldR=CFG.EARTH_SHIELD_R;
+  const pulse=Math.sin(performance.now()*.002)*.02+.05;
+  ctx.strokeStyle=`rgba(68,255,136,${pulse})`;
+  ctx.lineWidth=2;
+  ctx.shadowColor='rgba(68,255,136,.3)';
+  ctx.shadowBlur=20;
+  ctx.beginPath();ctx.arc(s.x,s.y,shieldR,0,Math.PI*2);ctx.stroke();
+  ctx.shadowBlur=0;
+  
+  // "EARTH" label
+  ctx.fillStyle='rgba(150,200,255,.25)';
+  ctx.font='10px Courier New';
+  ctx.textAlign='center';
+  ctx.fillText('EARTH',s.x,s.y+r+18);
+}
+
+function drawAsteroidEntity(a){
+  if(!a.alive)return;
+  const s=worldToScreen(a.x,a.y);
+  if(!inView(a.x,a.y,a.size+20))return;
+  
+  const ore=ORES[a.oreType];
+  const hpPct=a.hp/a.maxHp;
+  
+  ctx.save();
+  ctx.translate(s.x,s.y);
+  ctx.rotate(a.rotation);
+  
+  // Glow
+  ctx.shadowColor=ore.glow;
+  ctx.shadowBlur=8+a.size*.15;
+  
+  // Body
+  ctx.fillStyle=ore.color;
+  ctx.globalAlpha=.6+hpPct*.4;
+  ctx.beginPath();
+  ctx.moveTo(a.verts[0].x,a.verts[0].y);
+  for(let i=1;i<a.verts.length;i++)ctx.lineTo(a.verts[i].x,a.verts[i].y);
+  ctx.closePath();
+  ctx.fill();
+  
+  // Edge
+  ctx.strokeStyle=ore.glow;
+  ctx.lineWidth=1;
+  ctx.globalAlpha=.3+hpPct*.5;
+  ctx.stroke();
+  
+  ctx.shadowBlur=0;
+  ctx.globalAlpha=1;
+  ctx.restore();
+  
+  // HP bar (when damaged)
+  if(hpPct<1){
+    ctx.fillStyle='rgba(0,0,0,.5)';
+    ctx.fillRect(s.x-15,s.y-a.size-10,30,4);
+    ctx.fillStyle=hpPct>.5?'#44ff88':hpPct>.25?'#ffcc44':'#ff4444';
+    ctx.fillRect(s.x-15,s.y-a.size-10,30*hpPct,4);
+  }
+}
+
+function shipColor(entity){
+  if(entity.isPlayer)return'#44ff88';
+  if(entity.personality==='pirate')return'#ff5555';
+  return'#5588ff';
+}
+
+function drawShipEntity(e,isGhost){
+  if(e.dead)return;
+  const s=worldToScreen(e.x,e.y);
+  if(!inView(e.x,e.y,60))return;
+  
+  const col=shipColor(e);
+  const shipDef=SHIPS[e.ship];
+  const sz=12+(shipDef.hull/30);
+  
+  ctx.save();
+  ctx.translate(s.x,s.y);
+  ctx.rotate(e.angle);
+  
+  // Cloak effect
+  if(e.cloaked){ctx.globalAlpha=.15}
+  
+  // Engine glow
+  ctx.shadowColor=col;
+  ctx.shadowBlur=12;
+  
+  // Ship body (varies by type)
+  ctx.fillStyle=col;
+  ctx.globalAlpha=isGhost?.3:(e.cloaked?.15:.85);
+  ctx.beginPath();
+  
+  if(e.ship==='hauler'){
+    // Bulky shape
+    ctx.moveTo(sz,0);ctx.lineTo(-sz*.7,-sz*.8);ctx.lineTo(-sz*.9,0);ctx.lineTo(-sz*.7,sz*.8);
+  }else if(e.ship==='corsair'){
+    // Sleek triangle
+    ctx.moveTo(sz*1.2,0);ctx.lineTo(-sz*.6,-sz*.5);ctx.lineTo(-sz*.3,0);ctx.lineTo(-sz*.6,sz*.5);
+  }else if(e.ship==='sentinel'){
+    // Wide shield shape
+    ctx.moveTo(sz*.8,0);ctx.lineTo(0,-sz*.9);ctx.lineTo(-sz*.8,-sz*.6);ctx.lineTo(-sz*.6,0);ctx.lineTo(-sz*.8,sz*.6);ctx.lineTo(0,sz*.9);
+  }else if(e.ship==='phantom'){
+    // Diamond stealth
+    ctx.moveTo(sz*1.1,0);ctx.lineTo(0,-sz*.6);ctx.lineTo(-sz*.8,0);ctx.lineTo(0,sz*.6);
+  }else{
+    // Prospector (default arrow)
+    ctx.moveTo(sz,0);ctx.lineTo(-sz*.6,-sz*.7);ctx.lineTo(-sz*.3,0);ctx.lineTo(-sz*.6,sz*.7);
+  }
+  ctx.closePath();
+  ctx.fill();
+  
+  // Outline
+  ctx.strokeStyle=col;ctx.lineWidth=1;ctx.globalAlpha=isGhost?.2:.5;ctx.stroke();
+  
+  ctx.shadowBlur=0;
+  ctx.globalAlpha=1;
+  ctx.restore();
+  
+  // Shield bubble (when has shields)
+  if(e.shield>0&&!e.cloaked){
+    ctx.strokeStyle=`rgba(100,180,255,${.08+e.shield/e.maxShield*.12})`;
+    ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(s.x,s.y,sz+6,0,Math.PI*2);ctx.stroke();
+  }
+  
+  // Name tag
+  if(!e.cloaked){
+    ctx.fillStyle=e.isPlayer?'rgba(255,255,255,.6)':'rgba(200,200,220,.35)';
+    ctx.font='9px Courier New';
+    ctx.textAlign='center';
+    ctx.fillText(e.name,s.x,s.y-sz-10);
+    
+    // Bounty indicator
+    if(e.bounty>0){
+      ctx.fillStyle='rgba(255,60,60,.7)';
+      ctx.fillText('☠ BOUNTY',s.x,s.y-sz-20);
+    }
+  }
+  
+  // HP bar
+  if(e.hp<e.maxHp&&!e.cloaked){
+    const bw=30;
+    const hpPct=e.hp/e.maxHp;
+    const shPct=e.shield/e.maxShield;
+    // Hull
+    ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(s.x-bw/2,s.y+sz+6,bw,3);
+    ctx.fillStyle=hpPct>.5?'#44ff88':hpPct>.25?'#ffcc44':'#ff4444';
+    ctx.fillRect(s.x-bw/2,s.y+sz+6,bw*hpPct,3);
+    // Shield
+    if(e.maxShield>0){
+      ctx.fillStyle='rgba(0,0,0,.4)';ctx.fillRect(s.x-bw/2,s.y+sz+10,bw,2);
+      ctx.fillStyle='rgba(100,180,255,.6)';ctx.fillRect(s.x-bw/2,s.y+sz+10,bw*shPct,2);
+    }
+  }
+}
+
+function drawProjectileEntity(p){
+  const s=worldToScreen(p.x,p.y);
+  if(!inView(p.x,p.y,50))return;
+  const len=12;
+  ctx.save();
+  ctx.translate(s.x,s.y);
+  ctx.rotate(p.angle);
+  ctx.shadowColor=p.color;
+  ctx.shadowBlur=10;
+  ctx.strokeStyle=p.color;
+  ctx.lineWidth=2;
+  ctx.globalAlpha=.9;
+  ctx.beginPath();ctx.moveTo(-len,0);ctx.lineTo(len,0);ctx.stroke();
+  ctx.shadowBlur=0;
+  ctx.globalAlpha=1;
+  ctx.restore();
+}
+
+function drawLootEntity(l){
+  const s=worldToScreen(l.x,l.y);
+  if(!inView(l.x,l.y,30))return;
+  l.pulse+=.05;
+  const r=6+Math.sin(l.pulse)*2;
+  const mainOre=l.items[0]?ORES[l.items[0].ore]:null;
+  const col=mainOre?mainOre.glow:'#ffcc44';
+  ctx.shadowColor=col;ctx.shadowBlur=12;
+  ctx.fillStyle=col;ctx.globalAlpha=.7+Math.sin(l.pulse)*.2;
+  ctx.beginPath();
+  // Diamond shape
+  ctx.moveTo(s.x,s.y-r);ctx.lineTo(s.x+r,s.y);ctx.lineTo(s.x,s.y+r);ctx.lineTo(s.x-r,s.y);
+  ctx.closePath();ctx.fill();
+  ctx.shadowBlur=0;ctx.globalAlpha=1;
+}
+
+function drawMiningBeam(){
+  if(!miningTarget||!player||player.dead)return;
+  const a=miningTarget;
+  if(!a.alive)return;
+  const ps=worldToScreen(player.x,player.y);
+  const as=worldToScreen(a.x,a.y);
+  const ore=ORES[a.oreType];
+  
+  const t=performance.now()*.005;
+  ctx.save();
+  ctx.strokeStyle=ore.glow;
+  ctx.lineWidth=1.5+Math.sin(t)*0.5;
+  ctx.shadowColor=ore.glow;
+  ctx.shadowBlur=15;
+  ctx.globalAlpha=.5+Math.sin(t*2)*.2;
+  ctx.setLineDash([4,6]);
+  ctx.lineDashOffset=-performance.now()*.05;
+  ctx.beginPath();ctx.moveTo(ps.x,ps.y);ctx.lineTo(as.x,as.y);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.shadowBlur=0;ctx.globalAlpha=1;
+  ctx.restore();
+}
+
+function drawParticles(){
+  particles.forEach(p=>{
+    const s=worldToScreen(p.x,p.y);
+    const life=p.life/p.maxLife;
+    ctx.globalAlpha=life;
+    if(p.glow){ctx.shadowColor=p.color;ctx.shadowBlur=p.glow;}
+    ctx.fillStyle=p.color;
+    ctx.beginPath();ctx.arc(s.x,s.y,p.size*life,0,Math.PI*2);ctx.fill();
+    ctx.shadowBlur=0;
+  });
+  ctx.globalAlpha=1;
+}
+
+function drawFloatingTexts(){
+  floatingTexts.forEach(ft=>{
+    const s=worldToScreen(ft.x,ft.y-(1-ft.life/ft.maxLife)*30);
+    ctx.globalAlpha=ft.life/ft.maxLife;
+    ctx.fillStyle=ft.color;
+    ctx.font='bold 11px Courier New';
+    ctx.textAlign='center';
+    ctx.shadowColor=ft.color;ctx.shadowBlur=6;
+    ctx.fillText(ft.text,s.x,s.y);
+    ctx.shadowBlur=0;
+  });
+  ctx.globalAlpha=1;
+}
+
+
+// ═══════════════════════════════════════════
+// Minimap
+// ═══════════════════════════════════════════
+
+function drawMinimap(){
+  if(!player)return;
+  const mr=CFG.MINIMAP_R;
+  const mx=W-mr-20,my=mr+20;
+  const scale=CFG.MINIMAP_SCALE*(1+player.upgrades.scanner*.3);
+  
+  // Background
+  ctx.save();
+  ctx.beginPath();ctx.arc(mx,my,mr,0,Math.PI*2);ctx.clip();
+  ctx.fillStyle='rgba(0,0,10,.6)';
+  ctx.fillRect(mx-mr,my-mr,mr*2,mr*2);
+  
+  // Zone rings on minimap
+  const earthSx=mx,earthSy=my;
+  [{r:CFG.EARTH_SHIELD_R,c:'rgba(68,255,136,.15)'},{r:CFG.GREEN_R,c:'rgba(68,200,100,.08)'},{r:CFG.YELLOW_R,c:'rgba(255,200,68,.08)'}].forEach(z=>{
+    ctx.strokeStyle=z.c;ctx.lineWidth=.5;
+    ctx.beginPath();ctx.arc(earthSx+(0-player.x)*scale,earthSy+(0-player.y)*scale,z.r*scale,0,Math.PI*2);ctx.stroke();
+  });
+  
+  // Earth dot
+  const esx=mx+(0-player.x)*scale,esy=my+(0-player.y)*scale;
+  ctx.fillStyle='#4488ff';ctx.beginPath();ctx.arc(esx,esy,3,0,Math.PI*2);ctx.fill();
+  
+  // Asteroids (only close ones)
+  ctx.fillStyle='rgba(150,150,180,.25)';
+  asteroids.forEach(a=>{
+    if(!a.alive)return;
+    const ax=mx+(a.x-player.x)*scale,ay=my+(a.y-player.y)*scale;
+    if(dist(ax,ay,mx,my)<mr){
+      ctx.beginPath();ctx.arc(ax,ay,1,0,Math.PI*2);ctx.fill();
+    }
+  });
+  
+  // NPCs
+  npcs.forEach(n=>{
+    if(n.dead)return;
+    const nx=mx+(n.x-player.x)*scale,ny=my+(n.y-player.y)*scale;
+    if(dist(nx,ny,mx,my)<mr){
+      ctx.fillStyle=n.bounty>0?'#ff4444':(n.personality==='pirate'?'#ff6644':totalCargo(n.cargo)>0?'#44ff88':'#5588ff');
+      ctx.beginPath();ctx.arc(nx,ny,2,0,Math.PI*2);ctx.fill();
+    }
+  });
+  
+  // Loot
+  ctx.fillStyle='#ffcc44';
+  loot.forEach(l=>{
+    const lx=mx+(l.x-player.x)*scale,ly=my+(l.y-player.y)*scale;
+    if(dist(lx,ly,mx,my)<mr){ctx.beginPath();ctx.arc(lx,ly,1.5,0,Math.PI*2);ctx.fill();}
+  });
+  
+  // Portal
+  if(vibePortal){
+    const px=mx+(vibePortal.x-player.x)*scale,py=my+(vibePortal.y-player.y)*scale;
+    if(dist(px,py,mx,my)<mr){
+      ctx.fillStyle='#bb66ff';ctx.beginPath();ctx.arc(px,py,3,0,Math.PI*2);ctx.fill();
+    }
+  }
+  
+  // Player dot (center)
+  ctx.fillStyle='#fff';
+  ctx.shadowColor='#fff';ctx.shadowBlur=6;
+  ctx.beginPath();ctx.arc(mx,my,2.5,0,Math.PI*2);ctx.fill();
+  ctx.shadowBlur=0;
+  
+  ctx.restore();
+  
+  // Border
+  ctx.strokeStyle='rgba(100,150,255,.15)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.arc(mx,my,mr,0,Math.PI*2);ctx.stroke();
+}
+
+// ═══════════════════════════════════════════
+// Vibe Jam Portal
+// ═══════════════════════════════════════════
+
+let vibePortal={x:0,y:-(CFG.EARTH_SHIELD_R-200),size:50,pulse:0};
+let returnPortal=null;
+
+function drawPortal(portal,label,color){
+  const s=worldToScreen(portal.x,portal.y);
+  if(!inView(portal.x,portal.y,100))return;
+  portal.pulse+=.03;
+  const r=portal.size+Math.sin(portal.pulse)*5;
+  
+  // Swirl effect
+  ctx.save();
+  ctx.translate(s.x,s.y);
+  for(let i=0;i<6;i++){
+    const a=portal.pulse*2+i*(Math.PI/3);
+    const ir=r*.3,or=r;
+    ctx.strokeStyle=color;
+    ctx.globalAlpha=.15+Math.sin(portal.pulse+i)*.1;
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.arc(0,0,lerp(ir,or,(i%3)/3),a,a+1);
+    ctx.stroke();
+  }
+  
+  // Center glow
+  const grad=ctx.createRadialGradient(0,0,0,0,0,r);
+  grad.addColorStop(0,color.replace(')',',0.2)').replace('rgb','rgba'));
+  grad.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.globalAlpha=.5+Math.sin(portal.pulse)*.2;
+  ctx.fillStyle=grad;
+  ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.fill();
+  
+  ctx.globalAlpha=1;
+  ctx.restore();
+  
+  // Label
+  ctx.fillStyle=color;ctx.globalAlpha=.6+Math.sin(portal.pulse)*.2;
+  ctx.font='bold 10px Courier New';ctx.textAlign='center';
+  ctx.fillText(label,s.x,s.y-r-8);
+  ctx.globalAlpha=1;
+}
+
+// ═══════════════════════════════════════════
+// Input Handling
+// ═══════════════════════════════════════════
+
+document.addEventListener('keydown',e=>{
+  input.keys[e.key.toLowerCase()]=true;
+  if(e.key.toLowerCase()==='m'&&gameState==='playing'){
+    toggleMarket();e.preventDefault();
+  }
+  if(e.key==='Escape'){
+    document.getElementById('market').style.display='none';
+  }
+});
+document.addEventListener('keyup',e=>{input.keys[e.key.toLowerCase()]=false});
+
+canvas.addEventListener('mousemove',e=>{
+  input.mx=e.clientX;input.my=e.clientY;
+  input.mouseWorld=screenToWorld(e.clientX,e.clientY);
+});
+canvas.addEventListener('mousedown',e=>{input.mouseDown=true;e.preventDefault()});
+canvas.addEventListener('mouseup',e=>{input.mouseDown=false});
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+
+// Touch controls
+let touchMove=null,touchShoot=null;
+canvas.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  for(let t of e.changedTouches){
+    if(t.clientX<W/2){touchMove={id:t.identifier,sx:t.clientX,sy:t.clientY,cx:t.clientX,cy:t.clientY};}
+    else{touchShoot={id:t.identifier,x:t.clientX,y:t.clientY};input.mouseDown=true;input.mx=t.clientX;input.my=t.clientY;input.mouseWorld=screenToWorld(t.clientX,t.clientY);}
+  }
+},{passive:false});
+canvas.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  for(let t of e.changedTouches){
+    if(touchMove&&t.identifier===touchMove.id){touchMove.cx=t.clientX;touchMove.cy=t.clientY;}
+    if(touchShoot&&t.identifier===touchShoot.id){input.mx=t.clientX;input.my=t.clientY;input.mouseWorld=screenToWorld(t.clientX,t.clientY);}
+  }
+},{passive:false});
+canvas.addEventListener('touchend',e=>{
+  for(let t of e.changedTouches){
+    if(touchMove&&t.identifier===touchMove.id){touchMove=null;}
+    if(touchShoot&&t.identifier===touchShoot.id){touchShoot=null;input.mouseDown=false;}
+  }
+});
+
+// ═══════════════════════════════════════════
+// Player Update
+// ═══════════════════════════════════════════
+
+function updatePlayer(dt){
+  if(!player||player.dead)return;
+  
+  const spd=shipSpeed(player);
+  const thrust=CFG.THRUST*(spd/CFG.BASE_SPEED);
+  let tx=0,ty=0;
+  
+  // WASD input
+  if(input.keys['w']||input.keys['arrowup'])ty-=1;
+  if(input.keys['s']||input.keys['arrowdown'])ty+=1;
+  if(input.keys['a']||input.keys['arrowleft'])tx-=1;
+  if(input.keys['d']||input.keys['arrowright'])tx+=1;
+  
+  // Touch joystick
+  if(touchMove){
+    const dx=touchMove.cx-touchMove.sx,dy=touchMove.cy-touchMove.sy;
+    const d=Math.sqrt(dx*dx+dy*dy);
+    if(d>10){tx=dx/d;ty=dy/d;}
+  }
+  
+  // Normalize
+  const tLen=Math.sqrt(tx*tx+ty*ty);
+  if(tLen>0){
+    tx/=tLen;ty/=tLen;
+    player.vx+=tx*thrust*dt;
+    player.vy+=ty*thrust*dt;
+    // Engine particles
+    if(Math.random()<.6){
+      emitThrust(player.x,player.y,Math.atan2(ty,tx),spd,shipColor(player));
+    }
+  }
+  
+  // Drag
+  player.vx*=Math.pow(CFG.DRAG,dt*60);
+  player.vy*=Math.pow(CFG.DRAG,dt*60);
+  
+  // Clamp speed
+  const v=Math.sqrt(player.vx*player.vx+player.vy*player.vy);
+  if(v>spd){player.vx*=spd/v;player.vy*=spd/v;}
+  
+  // Move
+  player.x+=player.vx*dt;
+  player.y+=player.vy*dt;
+  
+  // World bounds
+  const wd=dist(player.x,player.y,0,0);
+  if(wd>CFG.WORLD_R){
+    const a=Math.atan2(player.y,player.x);
+    player.x=Math.cos(a)*CFG.WORLD_R;
+    player.y=Math.sin(a)*CFG.WORLD_R;
+    player.vx*=-.5;player.vy*=-.5;
+  }
+  
+  // Aim toward mouse
+  player.angle=Math.atan2(input.mouseWorld.y-player.y,input.mouseWorld.x-player.x);
+  
+  // Shooting
+  player.shootCD-=dt;
+  if(input.mouseDown&&player.shootCD<=0&&!miningTarget){
+    const zone=getZone(player.x,player.y);
+    // Can't shoot in safe zone
+    if(zone!=='safe'){
+      fireProjectile(player);
+      player.shootCD=CFG.SHOOT_CD;
+    }
+  }
+  
+  // Shield regen (slow)
+  if(player.shield<player.maxShield){
+    player.shield=Math.min(player.maxShield,player.shield+2*dt);
+  }
+  
+  // Bounty decay
+  if(player.bounty>0)player.bounty-=dt;
+  if(player.bounty<0)player.bounty=0;
+  
+  // Cloak (Phantom ability)
+  if(player.ship==='phantom'&&input.keys['shift']&&player.cloakEnergy>0){
+    player.cloaked=true;
+    player.cloakEnergy-=20*dt;
+  }else{
+    player.cloaked=false;
+    player.cloakEnergy=Math.min(100,player.cloakEnergy+5*dt);
+  }
+  
+  // Update maxes
+  player.maxShield=maxShield(player);
+  player.maxHp=maxHull(player);
+}
+
+function fireProjectile(entity){
+  const p=createProjectile(entity,entity.x+Math.cos(entity.angle)*15,entity.y+Math.sin(entity.angle)*15,entity.angle,shipDmg(entity));
+  projectiles.push(p);
+  // Muzzle flash
+  emitBurst(p.x,p.y,3,60,p.color,2,.2,8);
+}
+
+// ═══════════════════════════════════════════
+// Mining
+// ═══════════════════════════════════════════
+
+function updateMining(dt){
+  if(!player||player.dead)return;
+  miningTarget=null;
+  
+  if(!input.mouseDown)return;
+  
+  // Find closest asteroid in range
+  let closest=null,closestD=CFG.MINE_RANGE;
+  asteroids.forEach(a=>{
+    if(!a.alive)return;
+    const d=dist(player.x,player.y,a.x,a.y)-a.size;
+    if(d<closestD){closestD=d;closest=a;}
+  });
+  
+  if(!closest)return;
+  
+  const mc=maxCargo(player);
+  const tc=totalCargo(player.cargo);
+  if(tc>=mc)return; // cargo full
+  
+  miningTarget=closest;
+  const rate=mineRate(player);
+  closest.hp-=rate*dt;
+  
+  // Mining particles
+  if(Math.random()<.4)emitMiningParticles(closest.x+rand(-closest.size/2,closest.size/2),closest.y+rand(-closest.size/2,closest.size/2),ORES[closest.oreType].glow);
+  
+  if(closest.hp<=0){
+    // Asteroid destroyed — give ore
+    const oreType=closest.oreType;
+    const amount=randInt(2,5+Math.floor(closest.maxHp/25));
+    const canTake=Math.min(amount,mc-totalCargo(player.cargo));
+    player.cargo[oreType]=(player.cargo[oreType]||0)+canTake;
+    player.mined+=canTake;
+    
+    addFloatingText(closest.x,closest.y,`+${canTake} ${ORES[oreType].name}`,ORES[oreType].glow);
+    emitBurst(closest.x,closest.y,15,100,ORES[oreType].glow,3,.6,10);
+    
+    closest.alive=false;
+    closest.respawnTimer=rand(15,35);
+    miningTarget=null;
+  }
+}
+
+// ═══════════════════════════════════════════
+// Combat
+// ═══════════════════════════════════════════
+
+function updateProjectiles(dt){
+  for(let i=projectiles.length-1;i>=0;i--){
+    const p=projectiles[i];
+    p.x+=p.vx*dt;
+    p.y+=p.vy*dt;
+    p.ttl-=dt;
+    
+    if(p.ttl<=0){projectiles.splice(i,1);continue;}
+    
+    // Trail particles
+    if(Math.random()<.3){
+      spawnParticle(p.x,p.y,rand(-10,10),rand(-10,10),p.color,1,.15,4);
+    }
+    
+    // Hit detection against entities
+    const targets=p.isPlayerOwned?npcs:[player,...npcs.filter(n=>n.id!==p.ownerId)];
+    let hit=false;
+    targets.forEach(t=>{
+      if(!t||t.dead||t.cloaked||hit)return;
+      if(t.id===p.ownerId)return;
+      const sz=12+(SHIPS[t.ship].hull/30);
+      if(dist(p.x,p.y,t.x,t.y)<sz+8){
+        applyDamage(t,p.dmg,p.ownerId);
+        emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
+        shake(3);
+        hit=true;
+      }
+    });
+    if(hit){projectiles.splice(i,1);}
+  }
+}
+
+function applyDamage(target,dmg,attackerId){
+  // Shields first
+  if(target.shield>0){
+    const shieldAbsorb=Math.min(target.shield,dmg*.7);
+    target.shield-=shieldAbsorb;
+    dmg-=shieldAbsorb;
+    emitBurst(target.x,target.y,4,50,'rgba(100,180,255,.8)',2,.2,6);
+  }
+  
+  target.hp-=dmg;
+  
+  if(target.hp<=0){
+    killEntity(target,attackerId);
+  }
+}
+
+function killEntity(target,attackerId){
+  target.dead=true;
+  target.respawnTimer=CFG.RESPAWN_TIME;
+  
+  // Big explosion
+  emitBurst(target.x,target.y,30,150,shipColor(target),3,.7,12);
+  emitBurst(target.x,target.y,15,80,'#fff',2,.4,8);
+  shake(8);
+  
+  // Drop cargo as loot
+  if(totalCargo(target.cargo)>0){
+    const l=createLoot(target.x,target.y,target.cargo);
+    if(l)loot.push(l);
+  }
+  target.cargo={};
+  
+  // Bounty check (player killed someone with no cargo)
+  if(attackerId&&target.isPlayer===false){
+    // Fine for killing NPCs
+  }
+  if(attackerId===player?.id&&target.isNPC){
+    if(totalCargo(target.cargo)===0&&target.personality!=='pirate'){
+      player.bounty+=CFG.BOUNTY_TIME;
+      notify('⚠ BOUNTY — you attacked a peaceful miner','#ff4444');
+    }else{
+      player.kills++;
+      notify('☠ Kill: '+target.name,'#ff6644');
+    }
+  }
+  
+  if(target.isPlayer){
+    gameState='dead';
+    document.getElementById('deathScreen').style.display='flex';
+    const val=cargoValue(target.cargo);
+    document.getElementById('lostInfo').textContent=val>0?`You lost ${val} credits worth of ore.`:'Your empty ship was destroyed.';
+  }
+}
+
+// ═══════════════════════════════════════════
+// Loot Collection
+// ═══════════════════════════════════════════
+
+function updateLoot(dt){
+  for(let i=loot.length-1;i>=0;i--){
+    const l=loot[i];
+    l.ttl-=dt;
+    if(l.ttl<=0){loot.splice(i,1);continue;}
+    
+    // Player collection
+    if(player&&!player.dead){
+      if(dist(player.x,player.y,l.x,l.y)<CFG.COLLECT_RANGE){
+        const mc=maxCargo(player);
+        l.items.forEach(item=>{
+          const space=mc-totalCargo(player.cargo);
+          const take=Math.min(item.amount,space);
+          if(take>0){
+            player.cargo[item.ore]=(player.cargo[item.ore]||0)+take;
+            item.amount-=take;
+            addFloatingText(l.x,l.y,`+${take} ${ORES[item.ore].name}`,ORES[item.ore].glow);
+          }
+        });
+        l.items=l.items.filter(it=>it.amount>0);
+        if(l.items.length===0)loot.splice(i,1);
+      }
+    }
+    
+    // NPC collection
+    npcs.forEach(n=>{
+      if(n.dead||n.state!=='collecting')return;
+      if(dist(n.x,n.y,l.x,l.y)<CFG.COLLECT_RANGE){
+        const mc=maxCargo(n);
+        l.items.forEach(item=>{
+          const space=mc-totalCargo(n.cargo);
+          const take=Math.min(item.amount,space);
+          if(take>0){
+            n.cargo[item.ore]=(n.cargo[item.ore]||0)+take;
+            item.amount-=take;
+          }
+        });
+        l.items=l.items.filter(it=>it.amount>0);
+        if(l.items.length===0)loot.splice(i,1);
+      }
+    });
+  }
+}
+
+
+// ═══════════════════════════════════════════
+// NPC AI
+// ═══════════════════════════════════════════
+
+function updateNPCs(dt){
+  npcs.forEach(n=>{
+    if(n.dead){
+      n.respawnTimer-=dt;
+      if(n.respawnTimer<=0){
+        // Respawn
+        const d=rand(CFG.GREEN_R,CFG.RED_R);
+        const a=rand(0,Math.PI*2);
+        n.x=Math.cos(a)*d;n.y=Math.sin(a)*d;
+        n.vx=0;n.vy=0;
+        n.hp=SHIPS[n.ship].hull;n.shield=SHIPS[n.ship].shield;
+        n.dead=false;n.cargo={};n.state='idle';n.bounty=0;
+      }
+      return;
+    }
+    
+    n.thinkTimer-=dt;
+    n.stateTimer-=dt;
+    n.shootCD-=dt;
+    n.bounty=Math.max(0,n.bounty-dt);
+    
+    // Shield regen
+    if(n.shield<n.maxShield)n.shield=Math.min(n.maxShield,n.shield+1.5*dt);
+    n.maxShield=maxShield(n);n.maxHp=maxHull(n);
+    
+    if(n.thinkTimer<=0){
+      n.thinkTimer=rand(.5,1.5);
+      npcThink(n);
+    }
+    
+    npcAct(n,dt);
+  });
+}
+
+function npcThink(n){
+  const dToEarth=dist(n.x,n.y,0,0);
+  const mc=maxCargo(n);
+  const tc=totalCargo(n.cargo);
+  const hpPct=n.hp/n.maxHp;
+  
+  // Flee if low HP
+  if(hpPct<n.fleeHP){
+    n.state='flee';n.target=null;return;
+  }
+  
+  // Return to sell if cargo full or mostly full
+  if(tc>=mc*.8&&dToEarth>CFG.EARTH_SHIELD_R){
+    n.state='return';n.target=null;return;
+  }
+  
+  // Sell if at earth with cargo
+  if(tc>0&&dToEarth<CFG.EARTH_SHIELD_R+100){
+    n.state='sell';return;
+  }
+  
+  if(n.personality==='pirate'){
+    // Look for targets (player or loaded NPCs)
+    let bestTarget=null,bestDist=2000;
+    
+    if(player&&!player.dead&&!player.cloaked&&totalCargo(player.cargo)>0){
+      const dp=dist(n.x,n.y,player.x,player.y);
+      if(dp<bestDist){bestDist=dp;bestTarget=player;}
+    }
+    
+    npcs.forEach(other=>{
+      if(other.id===n.id||other.dead)return;
+      if(totalCargo(other.cargo)>2){
+        const d=dist(n.x,n.y,other.x,other.y);
+        if(d<bestDist){bestDist=d;bestTarget=other;}
+      }
+    });
+    
+    if(bestTarget){
+      n.state='attack';n.target=bestTarget;return;
+    }
+  }
+  
+  // Otherwise mine
+  if(tc<mc){
+    // Find nearby asteroid
+    let bestAst=null,bestD=3000;
+    asteroids.forEach(a=>{
+      if(!a.alive)return;
+      const d=dist(n.x,n.y,a.x,a.y);
+      if(d<bestD){bestD=d;bestAst=a;}
+    });
+    if(bestAst){n.state='mine';n.target=bestAst;return;}
+  }
+  
+  n.state='wander';
+}
+
+function npcAct(n,dt){
+  const spd=shipSpeed(n);
+  const thrust=CFG.THRUST*(spd/CFG.BASE_SPEED)*.7; // NPCs slightly slower
+  
+  switch(n.state){
+    case 'mine':{
+      if(!n.target||!n.target.alive){n.state='idle';break;}
+      const d=dist(n.x,n.y,n.target.x,n.target.y);
+      if(d>CFG.MINE_RANGE){
+        moveToward(n,n.target.x,n.target.y,thrust,dt);
+      }else{
+        // Mining
+        const rate=mineRate(n)*.7;
+        n.target.hp-=rate*dt;
+        if(Math.random()<.2)emitMiningParticles(n.target.x,n.target.y,ORES[n.target.oreType].glow);
+        if(n.target.hp<=0){
+          const oreType=n.target.oreType;
+          const amount=randInt(2,4);
+          const mc=maxCargo(n);
+          const canTake=Math.min(amount,mc-totalCargo(n.cargo));
+          n.cargo[oreType]=(n.cargo[oreType]||0)+canTake;
+          n.target.alive=false;n.target.respawnTimer=rand(15,35);
+          n.state='idle';
+        }
+      }
+      break;
+    }
+    case 'attack':{
+      if(!n.target||n.target.dead){n.state='idle';break;}
+      const d=dist(n.x,n.y,n.target.x,n.target.y);
+      const zone=getZone(n.x,n.y);
+      if(zone==='safe'){n.state='idle';break;} // Don't fight in safe zone
+      if(d>200){
+        moveToward(n,n.target.x,n.target.y,thrust,dt);
+      }else{
+        // Face target and shoot
+        n.angle=angle(n.x,n.y,n.target.x,n.target.y);
+        if(n.shootCD<=0){
+          fireProjectile(n);
+          n.shootCD=CFG.SHOOT_CD*1.3; // NPCs shoot slightly slower
+        }
+        // Strafe
+        const strafeA=n.angle+Math.PI/2;
+        n.vx+=Math.cos(strafeA)*thrust*.3*dt;
+        n.vy+=Math.sin(strafeA)*thrust*.3*dt;
+      }
+      break;
+    }
+    case 'return':
+    case 'flee':{
+      moveToward(n,0,0,thrust*(n.state==='flee'?1.2:1),dt);
+      const d=dist(n.x,n.y,0,0);
+      if(d<CFG.EARTH_SHIELD_R){n.state='sell';}
+      break;
+    }
+    case 'sell':{
+      // Sell cargo
+      const val=cargoValue(n.cargo);
+      n.credits+=val;
+      n.cargo={};
+      n.hp=Math.min(n.maxHp,n.hp+n.maxHp*.5); // Repair
+      n.shield=n.maxShield;
+      n.state='idle';
+      break;
+    }
+    case 'collecting':{
+      // Move to nearby loot
+      let nearLoot=null,nd=500;
+      loot.forEach(l=>{
+        const d=dist(n.x,n.y,l.x,l.y);
+        if(d<nd){nd=d;nearLoot=l;}
+      });
+      if(nearLoot){moveToward(n,nearLoot.x,nearLoot.y,thrust,dt);}
+      else n.state='idle';
+      break;
+    }
+    case 'wander':
+    default:{
+      if(n.stateTimer<=0){
+        n.stateTimer=rand(2,5);
+        const wa=rand(0,Math.PI*2);
+        n.vx+=Math.cos(wa)*50;
+        n.vy+=Math.sin(wa)*50;
+      }
+      break;
+    }
+  }
+  
+  // Apply drag and speed cap
+  n.vx*=Math.pow(CFG.DRAG,dt*60);
+  n.vy*=Math.pow(CFG.DRAG,dt*60);
+  const v=Math.sqrt(n.vx*n.vx+n.vy*n.vy);
+  if(v>spd){n.vx*=spd/v;n.vy*=spd/v;}
+  
+  n.x+=n.vx*dt;
+  n.y+=n.vy*dt;
+  
+  // Aim direction
+  if(n.state!=='attack'){
+    const moveAngle=Math.atan2(n.vy,n.vx);
+    if(v>5)n.angle=lerp(n.angle,moveAngle,.1);
+  }
+  
+  // Engine trail
+  if(v>30&&Math.random()<.3){
+    emitThrust(n.x,n.y,n.angle,spd,shipColor(n));
+  }
+}
+
+function moveToward(n,tx,ty,thrust,dt){
+  const a=angle(n.x,n.y,tx,ty);
+  n.vx+=Math.cos(a)*thrust*dt;
+  n.vy+=Math.sin(a)*thrust*dt;
+}
+
+// ═══════════════════════════════════════════
+// Economy — Sell & Market
+// ═══════════════════════════════════════════
+
+function sellAllOre(){
+  if(!player)return 0;
+  const val=cargoValue(player.cargo);
+  if(val>0){
+    player.credits+=val;
+    addFloatingText(player.x,player.y-30,`+${val} ⬡`,`#ffcc44`);
+    notify(`Sold ore for ${val} credits!`,'#ffcc44');
+    player.cargo={};
+    updateHUD();
+  }
+  return val;
+}
+
+function toggleMarket(){
+  if(!player)return;
+  const inSafe=getZone(player.x,player.y)==='safe';
+  if(!inSafe){notify('Return to Earth to access market','#ff6644');return;}
+  const m=document.getElementById('market');
+  m.style.display=m.style.display==='none'||!m.style.display?'block':'none';
+  if(m.style.display==='block')renderMarket();
+}
+
+function renderMarket(){
+  // Upgrades
+  const ugrid=document.getElementById('upgradeGrid');
+  ugrid.innerHTML='';
+  for(let key in UPGRADES){
+    const u=UPGRADES[key];
+    const lvl=player.upgrades[key];
+    const maxed=lvl>=u.levels;
+    const cost=maxed?0:upgradeCost(key,lvl);
+    const canBuy=player.credits>=cost&&!maxed;
+    
+    const card=document.createElement('div');
+    card.className='upgrade-card'+(maxed?' maxed':(!canBuy?' locked':''));
+    card.innerHTML=`<div class="card-name">${u.icon} ${u.name}</div><div class="card-level">${maxed?'MAX':('Mk '+(lvl+1)+' → '+(lvl+2))}</div><div class="card-cost">${maxed?'✓':('⬡ '+cost)}</div>`;
+    if(canBuy){
+      card.onclick=()=>{
+        player.credits-=cost;
+        player.upgrades[key]++;
+        player.maxShield=maxShield(player);
+        player.maxHp=maxHull(player);
+        player.shield=Math.min(player.shield,player.maxShield);
+        renderMarket();updateHUD();
+        notify(`Upgraded ${u.name} to Mk ${player.upgrades[key]+1}`,'#44ff88');
+      };
+    }
+    ugrid.appendChild(card);
+  }
+  
+  // Ships
+  const sgrid=document.getElementById('shipGrid');
+  sgrid.innerHTML='';
+  for(let key in SHIPS){
+    const s=SHIPS[key];
+    const owned=player.ship===key;
+    const canBuy=!owned&&player.credits>=s.cost;
+    
+    const card=document.createElement('div');
+    card.className='ship-card'+(owned?' active':(!canBuy&&!owned?' locked':''));
+    card.innerHTML=`<div class="card-name">${s.name}</div><div class="ship-stats">SPD:${'★'.repeat(Math.ceil(s.speed*3))} HP:${s.hull}<br>CARGO:${s.cargo} DMG:${'★'.repeat(Math.ceil(s.dmg*2.5))}</div><div class="card-cost">${owned?'ACTIVE':(s.cost===0?'FREE':'⬡ '+s.cost)}</div>`;
+    if(canBuy){
+      card.onclick=()=>{
+        // Sell old ship at 70%
+        const oldShip=SHIPS[player.ship];
+        const sellBack=Math.floor(oldShip.cost*.7);
+        player.credits-=s.cost;
+        player.credits+=sellBack;
+        player.ship=key;
+        player.hp=SHIPS[key].hull;
+        player.maxHp=SHIPS[key].hull;
+        player.shield=SHIPS[key].shield;
+        player.maxShield=maxShield(player);
+        renderMarket();updateHUD();
+        notify(`Switched to ${s.name}${sellBack>0?' (+'+sellBack+' from trade-in)':''}`,'#44ff88');
+      };
+    }
+    sgrid.appendChild(card);
+  }
+  
+  // Sell value
+  const sv=document.getElementById('sellValue');
+  const val=cargoValue(player.cargo);
+  sv.textContent=val>0?`Value: ⬡ ${val}`:'Cargo empty';
+}
+
+document.getElementById('sellAllBtn').onclick=()=>{sellAllOre();renderMarket()};
+document.getElementById('closeMarket').onclick=()=>{document.getElementById('market').style.display='none'};
+document.getElementById('marketBtn').onclick=toggleMarket;
+
+// ═══════════════════════════════════════════
+// Earth proximity auto-sell prompt & market btn
+// ═══════════════════════════════════════════
+
+function updateEarthProximity(){
+  if(!player||player.dead)return;
+  const d=dist(player.x,player.y,0,0);
+  const inShield=d<CFG.EARTH_SHIELD_R;
+  const mbtn=document.getElementById('marketBtn');
+  mbtn.style.display=inShield?'block':'none';
+  
+  // Auto-sell when entering shield with cargo
+  if(inShield&&totalCargo(player.cargo)>0){
+    // Show sell prompt (just auto-sell for smooth gameplay)
+    sellAllOre();
+  }
+  
+  // Repair at earth
+  if(inShield){
+    player.hp=Math.min(player.maxHp,player.hp+30*lastDt);
+    player.shield=Math.min(player.maxShield,player.shield+20*lastDt);
+  }
+}
+
+
+// ═══════════════════════════════════════════
+// HUD Updates
+// ═══════════════════════════════════════════
+
+function updateHUD(){
+  if(!player)return;
+  document.getElementById('credits').textContent='⬡ '+player.credits;
+  
+  const zone=getZone(player.x,player.y);
+  const zi=document.getElementById('zoneIndicator');
+  zi.textContent=zoneName(zone);
+  zi.style.color=zoneTextColor(zone);
+  zi.style.background=zoneColor(zone);
+  zi.style.borderColor=zoneTextColor(zone);
+  zi.style.border='1px solid '+zoneTextColor(zone)+'33';
+  
+  const tc=totalCargo(player.cargo);
+  const mc=maxCargo(player);
+  const pct=Math.round(tc/mc*100);
+  document.querySelector('.cargo-inner').style.width=pct+'%';
+  document.querySelector('.cargo-label').textContent=`CARGO ${tc}/${mc}`;
+  
+  // Cargo bar color
+  const ci=document.querySelector('.cargo-inner');
+  if(pct>=90)ci.style.background='linear-gradient(90deg,#ff4444,#ff8844)';
+  else if(pct>=60)ci.style.background='linear-gradient(90deg,#ffcc44,#ff8844)';
+  else ci.style.background='linear-gradient(90deg,#44ff88,#ffcc44)';
+}
+
+function notify(text,color){
+  const n=document.getElementById('notifications');
+  const div=document.createElement('div');
+  div.className='notification';
+  div.style.color=color||'#fff';
+  div.textContent=text;
+  n.appendChild(div);
+  setTimeout(()=>div.remove(),2600);
+}
+
+// ═══════════════════════════════════════════
+// Asteroid Respawn
+// ═══════════════════════════════════════════
+
+function updateAsteroidRespawn(dt){
+  asteroids.forEach(a=>{
+    if(!a.alive){
+      a.respawnTimer-=dt;
+      if(a.respawnTimer<=0){
+        // Respawn at new location
+        const ore=ORES[a.oreType];
+        const d=rand(ore.minR,ore.maxR);
+        const ang=rand(0,Math.PI*2);
+        a.x=Math.cos(ang)*d;a.y=Math.sin(ang)*d;
+        a.hp=a.maxHp;a.alive=true;
+        a.rotation=rand(0,Math.PI*2);
+      }
+    }else{
+      a.rotation+=a.rotSpeed*dt;
+    }
+  });
+}
+
+// ═══════════════════════════════════════════
+// Camera
+// ═══════════════════════════════════════════
+
+function updateCamera(dt){
+  if(!player)return;
+  camera.x=lerp(camera.x,player.x,CFG.CAM_LERP);
+  camera.y=lerp(camera.y,player.y,CFG.CAM_LERP);
+  
+  // Shake
+  if(camera.shakeAmt>.1){
+    camera.shakeX=rand(-camera.shakeAmt,camera.shakeAmt);
+    camera.shakeY=rand(-camera.shakeAmt,camera.shakeAmt);
+    camera.shakeAmt*=CFG.SHAKE_DECAY;
+  }else{
+    camera.shakeX=0;camera.shakeY=0;camera.shakeAmt=0;
+  }
+}
+
+// ═══════════════════════════════════════════
+// Particles & Text Update
+// ═══════════════════════════════════════════
+
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx*dt;p.y+=p.vy*dt;
+    p.vx*=.97;p.vy*=.97;
+    p.life-=dt;
+    if(p.life<=0)particles.splice(i,1);
+  }
+  // Cap particle count
+  if(particles.length>500)particles.splice(0,particles.length-500);
+  
+  for(let i=floatingTexts.length-1;i>=0;i--){
+    floatingTexts[i].life-=dt;
+    if(floatingTexts[i].life<=0)floatingTexts.splice(i,1);
+  }
+}
+
+// ═══════════════════════════════════════════
+// Portal Logic
+// ═══════════════════════════════════════════
+
+function parsePortalParams(){
+  const params=new URLSearchParams(window.location.search);
+  if(params.get('portal')==='true'){
+    portalParams={
+      username:params.get('username')||'',
+      color:params.get('color')||'',
+      ref:params.get('ref')||'',
+      speed:params.get('speed')||'',
+      hp:params.get('hp')||''
+    };
+  }
+}
+
+function checkPortalCollision(){
+  if(!player||player.dead)return;
+  
+  // Exit portal (Vibe Jam)
+  if(vibePortal){
+    if(dist(player.x,player.y,vibePortal.x,vibePortal.y)<vibePortal.size){
+      const params=new URLSearchParams();
+      params.set('username',player.name);
+      params.set('color','#44ff88');
+      params.set('speed',Math.round(shipSpeed(player)));
+      params.set('ref',window.location.href);
+      window.location.href='https://vibej.am/portal/2026?'+params.toString();
+    }
+  }
+  
+  // Return portal
+  if(returnPortal){
+    if(dist(player.x,player.y,returnPortal.x,returnPortal.y)<returnPortal.size){
+      const params=new URLSearchParams();
+      if(portalParams){
+        for(let k in portalParams){if(portalParams[k])params.set(k,portalParams[k]);}
+      }
+      params.set('portal','true');
+      const ref=portalParams?.ref||'';
+      if(ref){
+        const url=ref.startsWith('http')?ref:'https://'+ref;
+        window.location.href=url+(url.includes('?')?'&':'?')+params.toString();
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════
+// Main Game Loop
+// ═══════════════════════════════════════════
+
+let lastTime=0;
+let lastDt=1/60;
+let hudTimer=0;
+
+function gameLoop(timestamp){
+  requestAnimationFrame(gameLoop);
+  
+  const dt=Math.min((timestamp-lastTime)/1000,.05);
+  lastTime=timestamp;
+  lastDt=dt;
+  
+  if(gameState==='playing'||gameState==='dead'){
+    // Update
+    if(gameState==='playing'){
+      updatePlayer(dt);
+      updateMining(dt);
+      updateEarthProximity();
+      checkPortalCollision();
+    }
+    
+    if(gameState==='dead'&&player){
+      player.respawnTimer-=dt;
+    }
+    
+    updateNPCs(dt);
+    updateProjectiles(dt);
+    updateLoot(dt);
+    updateAsteroidRespawn(dt);
+    updateParticles(dt);
+    updateCamera(dt);
+    
+    // HUD throttle
+    hudTimer-=dt;
+    if(hudTimer<=0){updateHUD();hudTimer=.15;}
+    
+    // Hint timer
+    if(hintTimer>0){
+      hintTimer-=dt;
+      const hint=document.getElementById('controls-hint');
+      if(hint){
+        if(hintTimer<=2)hint.style.opacity=hintTimer/2;
+        if(hintTimer<=0)hint.style.display='none';
+      }
+    }
+    
+    // Render
+    drawBackground();
+    drawZoneRings();
+    drawEarth();
+    
+    // Draw portals
+    if(vibePortal)drawPortal(vibePortal,'VIBE JAM PORTAL','rgb(187,102,255)');
+    if(returnPortal)drawPortal(returnPortal,'← RETURN','rgb(100,200,255)');
+    
+    asteroids.forEach(a=>drawAsteroidEntity(a));
+    loot.forEach(l=>drawLootEntity(l));
+    drawMiningBeam();
+    npcs.forEach(n=>drawShipEntity(n,false));
+    if(player&&!player.dead)drawShipEntity(player,false);
+    projectiles.forEach(p=>drawProjectileEntity(p));
+    drawParticles();
+    drawFloatingTexts();
+    drawMinimap();
+    
+    // Distance indicator to earth
+    if(player&&!player.dead){
+      const dToEarth=Math.round(dist(player.x,player.y,0,0));
+      ctx.fillStyle='rgba(255,255,255,.15)';
+      ctx.font='9px Courier New';
+      ctx.textAlign='right';
+      ctx.fillText(`DIST: ${dToEarth}`,W-20,H-20);
+      
+      // Cargo value indicator
+      const cv=cargoValue(player.cargo);
+      if(cv>0){
+        ctx.fillStyle='rgba(255,204,68,.25)';
+        ctx.fillText(`VALUE: ⬡${cv}`,W-20,H-35);
+      }
+    }
+    
+    // Touch joystick visual
+    if(touchMove){
+      ctx.strokeStyle='rgba(255,255,255,.1)';ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(touchMove.sx,touchMove.sy,50,0,Math.PI*2);ctx.stroke();
+      const dx=touchMove.cx-touchMove.sx,dy=touchMove.cy-touchMove.sy;
+      const d=Math.min(Math.sqrt(dx*dx+dy*dy),50);
+      const a=Math.atan2(dy,dx);
+      ctx.fillStyle='rgba(255,255,255,.15)';
+      ctx.beginPath();ctx.arc(touchMove.sx+Math.cos(a)*d,touchMove.sy+Math.sin(a)*d,15,0,Math.PI*2);ctx.fill();
+    }
+  }
+}
+
+// ═══════════════════════════════════════════
+// Start & Respawn
+// ═══════════════════════════════════════════
+
+function startGame(name){
+  player=createPlayer(name);
+  player.maxShield=maxShield(player);
+  player.maxHp=maxHull(player);
+  player.shield=player.maxShield;
+  player.hp=player.maxHp;
+  
+  // If coming from portal, use params
+  if(portalParams){
+    if(portalParams.username&&!name)player.name=portalParams.username;
+    // Create return portal
+    if(portalParams.ref){
+      returnPortal={x:200,y:-(CFG.EARTH_SHIELD_R-300),size:50,pulse:0};
+    }
+  }
+  
+  spawnAsteroids();
+  spawnNPCs();
+  
+  gameState='playing';
+  document.getElementById('startScreen').style.display='none';
+  document.getElementById('hud').style.display='block';
+  updateHUD();
+}
+
+function respawn(){
+  if(!player)return;
+  player.dead=false;
+  player.x=0;player.y=-CFG.EARTH_R-100;
+  player.vx=0;player.vy=0;
+  player.hp=player.maxHp;
+  player.shield=player.maxShield;
+  player.cargo={};
+  gameState='playing';
+  document.getElementById('deathScreen').style.display='none';
+  updateHUD();
+}
+
+// ═══════════════════════════════════════════
+// UI Event Bindings
+// ═══════════════════════════════════════════
+
+document.getElementById('launchBtn').onclick=()=>{
+  const name=document.getElementById('nameInput').value.trim()||'Pilot_'+randInt(100,999);
+  startGame(name);
+};
+document.getElementById('nameInput').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){document.getElementById('launchBtn').click();}
+});
+document.getElementById('respawnBtn').onclick=respawn;
+
+// ═══════════════════════════════════════════
+// Resize
+// ═══════════════════════════════════════════
+
+function resize(){
+  W=canvas.width=window.innerWidth;
+  H=canvas.height=window.innerHeight;
+  generateStars();
+}
+window.addEventListener('resize',resize);
+
+// ═══════════════════════════════════════════
+// Initialize
+// ═══════════════════════════════════════════
+
+function init(){
+  parsePortalParams();
+  resize();
+  
+  // If portal entry, skip start screen
+  if(portalParams){
+    const name=portalParams.username||'Traveler_'+randInt(100,999);
+    document.getElementById('nameInput').value=name;
+    startGame(name);
+  }
+  
+  // Update player count display
+  const pcEl=document.getElementById('playerCount');
+  const npcCount=CFG.NPC_COUNT;
+  pcEl.textContent=`${npcCount} miners in deep space`;
+  
+  requestAnimationFrame(gameLoop);
+}
+
+init();
+
+})();
+</script>
+</body>
+</html>
