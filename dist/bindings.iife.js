@@ -7900,12 +7900,6 @@ ${ty.variants.map(
     return { procedures: procedures2 };
   }
 
-  // src/client_connected_reducer.ts
-  var client_connected_reducer_default = {};
-
-  // src/client_disconnected_reducer.ts
-  var client_disconnected_reducer_default = {};
-
   // src/deal_damage_reducer.ts
   var deal_damage_reducer_default = {
     victimIdentityHex: t.string(),
@@ -8071,7 +8065,7 @@ ${ty.variants.map(
     chat_message: table({
       name: "chat_message",
       indexes: [
-        { name: "id", algorithm: "btree", columns: [
+        { accessor: "id", name: "chat_message_id_idx_btree", algorithm: "btree", columns: [
           "id"
         ] }
       ],
@@ -8082,7 +8076,7 @@ ${ty.variants.map(
     kill_event: table({
       name: "kill_event",
       indexes: [
-        { name: "id", algorithm: "btree", columns: [
+        { accessor: "id", name: "kill_event_id_idx_btree", algorithm: "btree", columns: [
           "id"
         ] }
       ],
@@ -8093,7 +8087,7 @@ ${ty.variants.map(
     leaderboard_entry: table({
       name: "leaderboard_entry",
       indexes: [
-        { name: "id", algorithm: "btree", columns: [
+        { accessor: "id", name: "leaderboard_entry_id_idx_btree", algorithm: "btree", columns: [
           "id"
         ] }
       ],
@@ -8104,7 +8098,7 @@ ${ty.variants.map(
     player: table({
       name: "player",
       indexes: [
-        { name: "identity", algorithm: "btree", columns: [
+        { accessor: "identity", name: "player_identity_idx_btree", algorithm: "btree", columns: [
           "identity"
         ] }
       ],
@@ -8115,7 +8109,7 @@ ${ty.variants.map(
     projectile: table({
       name: "projectile",
       indexes: [
-        { name: "id", algorithm: "btree", columns: [
+        { accessor: "id", name: "projectile_id_idx_btree", algorithm: "btree", columns: [
           "id"
         ] }
       ],
@@ -8126,7 +8120,7 @@ ${ty.variants.map(
     world_state: table({
       name: "world_state",
       indexes: [
-        { name: "id", algorithm: "btree", columns: [
+        { accessor: "id", name: "world_state_id_idx_btree", algorithm: "btree", columns: [
           "id"
         ] }
       ],
@@ -8136,8 +8130,6 @@ ${ty.variants.map(
     }, world_state_table_default)
   });
   var reducersSchema = reducers(
-    reducerSchema("client_connected", client_connected_reducer_default),
-    reducerSchema("client_disconnected", client_disconnected_reducer_default),
     reducerSchema("deal_damage", deal_damage_reducer_default),
     reducerSchema("fire_projectile", fire_projectile_reducer_default),
     reducerSchema("heal_player", heal_player_reducer_default),
@@ -8154,7 +8146,7 @@ ${ty.variants.map(
   var proceduresSchema = procedures();
   var REMOTE_MODULE = {
     versionInfo: {
-      cliVersion: "2.0.1"
+      cliVersion: "2.1.0"
     },
     tables: tablesSchema.schemaType.tables,
     reducers: reducersSchema.reducersType.reducers,

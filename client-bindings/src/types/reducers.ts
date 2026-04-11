@@ -6,8 +6,6 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
-import ClientConnectedReducer from "../client_connected_reducer";
-import ClientDisconnectedReducer from "../client_disconnected_reducer";
 import DealDamageReducer from "../deal_damage_reducer";
 import FireProjectileReducer from "../fire_projectile_reducer";
 import HealPlayerReducer from "../heal_player_reducer";
@@ -21,8 +19,6 @@ import SendChatReducer from "../send_chat_reducer";
 import SubmitScoreReducer from "../submit_score_reducer";
 import UpdatePlayerReducer from "../update_player_reducer";
 
-export type ClientConnectedParams = __Infer<typeof ClientConnectedReducer>;
-export type ClientDisconnectedParams = __Infer<typeof ClientDisconnectedReducer>;
 export type DealDamageParams = __Infer<typeof DealDamageReducer>;
 export type FireProjectileParams = __Infer<typeof FireProjectileReducer>;
 export type HealPlayerParams = __Infer<typeof HealPlayerReducer>;
