@@ -13,7 +13,7 @@
 [![Built with AutoGPT AutoPilot](https://img.shields.io/badge/built_with-AutoGPT_AutoPilot-44ff88?style=flat-square&labelColor=0a0a2e)](https://autogpt.com)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-ffcc44?style=flat-square&labelColor=0a0a2e)](.)
 [![Vibe Jam 2026](https://img.shields.io/badge/Vibe_Jam-2026-bb66ff?style=flat-square&labelColor=0a0a2e)](https://vibej.am/2026/)
-[![Lines of Code](https://img.shields.io/badge/lines-1860-5588ff?style=flat-square&labelColor=0a0a2e)](.)
+[![Lines of Code](https://img.shields.io/badge/lines-2100-5588ff?style=flat-square&labelColor=0a0a2e)](.)
 
 </div>
 
@@ -80,23 +80,26 @@ You pilot a mining ship. You start safe, orbiting Earth. But the valuable ore? I
 - Parallax starfield with nebula clouds
 - Zone-colored HUD that shifts as you venture deeper
 
-### 🌐 Multiplayer
-- WebSocket server for real-time player sync ([server repo](https://github.com/Torantulino/void-claim-server))
-- 14 AI miners & pirates with full behavior trees when playing solo
+### 🌐 Multiplayer (SpacetimeDB)
+- **Real-time multiplayer** via [SpacetimeDB](https://spacetimedb.com) — no separate server needed
+- Player positions, combat, chat, and leaderboard sync instantly over WebSocket
+- Auto-deploys on push via GitHub Actions
+- Graceful fallback to NPC-only mode when offline
+- 14 AI miners & pirates with full behavior trees for solo play
 - Vibe Jam portal webring integration
 
-## Deploy the Server
+## Enable Multiplayer
 
-The game works standalone with NPC AI, but for real multiplayer:
+The game works standalone with NPC AI out of the box. To enable real multiplayer:
 
-```bash
-git clone https://github.com/Torantulino/void-claim-server.git
-cd void-claim-server
-npm install
-node server.js
-```
+👉 **[Full setup guide →](./MULTIPLAYER_SETUP.md)**
 
-Or deploy to [Render](https://render.com), [Railway](https://railway.app), or [Fly.io](https://fly.io) — the repo includes `render.yaml` and `Dockerfile`.
+Quick version:
+1. Install SpacetimeDB CLI: `curl -sSf https://install.spacetimedb.com | sh`
+2. Login: `spacetime login`
+3. Publish: `cd spacetimedb && spacetime publish void-claim --server maincloud`
+4. Add `SPACETIMEDB_TOKEN` to GitHub repo secrets
+5. Trigger the GitHub Action — done!
 
 ## Run Locally
 

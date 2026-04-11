@@ -1,0 +1,12 @@
+{
+  "name": "void-claim-server",
+  "version": "1.0.0",
+  "description": "VOID CLAIM SpacetimeDB multiplayer module",
+  "type": "module",
+  "dependencies": {
+    "spacetimedb": "^2.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
