@@ -51,6 +51,7 @@ jobs:
           cd spacetimedb
           spacetime publish "${{ env.STDB_DATABASE }}" \
             --server maincloud \
+            --delete-data \
             -y \
             2>&1
           echo "✅ Module published to Maincloud"

@@ -20,8 +20,6 @@ const spacetimedb = schema({
       name:        t.string(),
       x:           t.f32(),
       y:           t.f32(),
-      vx:          t.f32(),  // velocity for dead-reckoning
-      vy:          t.f32(),
       angle:       t.f32(),
       ship:        t.string(),
       color:       t.string(),
@@ -36,6 +34,8 @@ const spacetimedb = schema({
       kills:       t.u32(),
       earned:      t.u64(),
       last_update: t.u64(),
+      vx:          t.f32(),  // velocity for dead-reckoning (added at end)
+      vy:          t.f32(),
     }
   ),
 
