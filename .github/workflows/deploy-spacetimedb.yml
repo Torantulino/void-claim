@@ -41,6 +41,11 @@ jobs:
       - name: Authenticate with SpacetimeDB
         run: spacetime login --token "${{ secrets.SPACETIMEDB_TOKEN }}"
 
+      - name: Install module dependencies
+        run: |
+          cd spacetimedb
+          npm install
+
       - name: Publish module to Maincloud
         run: |
           cd spacetimedb
