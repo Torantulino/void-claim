@@ -409,6 +409,23 @@ let minimapEvents=[]; // {x,y,color,t,maxT,type}
 let killStreakTimer=0;
 let pruneTimer=60;
 let autoSaveTimer=30;
+// World seed for deterministic asteroids (synced from SpacetimeDB)
+let worldSeed=null;
+
+// Seeded PRNG (mulberry32)
+function seededRng(seed){
+  let s=seed|0;
+  return function(){
+    s=s+0x6D2B79F5|0;
+    let t=Math.imul(s^s>>>15,1|s);
+    t=t+Math.imul(t^t>>>7,61|t)^t;
+    return((t^t>>>14)>>>0)/4294967296;
+  };
+}
+
+// Remote projectiles from other players (synced from SpacetimeDB)
+let remoteProjectiles=[];
+let projPruneTimer=2; // prune server projectiles every 2s
 
 // Void Leviathan state
 let leviathan=null;
@@ -524,25 +541,29 @@ function createPlayer(name,color){
   };
 }
 
-function createAsteroid(id){
+function createAsteroid(id,rng){
+  // If rng provided (seeded), use it for deterministic generation
+  const r=rng||Math.random;
+  const sRand=(min,max)=>min+r()*(max-min);
+  const sRandInt=(min,max)=>Math.floor(sRand(min,max+1));
   const oreKeys=Object.keys(ORES);
-  const oreType=pick(oreKeys);
+  const oreType=oreKeys[Math.floor(r()*oreKeys.length)];
   const ore=ORES[oreType];
-  const d=rand(ore.minR,ore.maxR);
-  const a=rand(0,Math.PI*2);
-  const hp=rand(30,80)*(1+ore.value/20);
-  const size=rand(18,42)*(1+ore.value/80);
+  const d=sRand(ore.minR,ore.maxR);
+  const a=sRand(0,Math.PI*2);
+  const hp=sRand(30,80)*(1+ore.value/20);
+  const size=sRand(18,42)*(1+ore.value/80);
   const verts=[];
-  const n=randInt(6,10);
+  const n=sRandInt(6,10);
   for(let i=0;i<n;i++){
     const ang=(i/n)*Math.PI*2;
-    const r=size*rand(.7,1.1);
-    verts.push({x:Math.cos(ang)*r,y:Math.sin(ang)*r});
+    const vr=size*sRand(.7,1.1);
+    verts.push({x:Math.cos(ang)*vr,y:Math.sin(ang)*vr});
   }
   return{
     id:id||uid(),x:Math.cos(a)*d,y:Math.sin(a)*d,
     oreType,size,hp,maxHp:hp,verts,
-    rotation:rand(0,Math.PI*2),rotSpeed:rand(-.3,.3),
+    rotation:sRand(0,Math.PI*2),rotSpeed:sRand(-.3,.3),
     respawnTimer:0,alive:true
   };
 }
@@ -566,7 +587,9 @@ function createLoot(x,y,cargo){
 
 function spawnAsteroids(){
   asteroids=[];
-  for(let i=0;i<CFG.AST_COUNT;i++)asteroids.push(createAsteroid());
+  // Use seeded PRNG if world seed is available (multiplayer sync)
+  const rng=worldSeed!==null?seededRng(worldSeed):null;
+  for(let i=0;i<CFG.AST_COUNT;i++)asteroids.push(createAsteroid(null,rng));
 }
 
 // ═══════════════════════════════════════════
@@ -909,7 +932,17 @@ function fireProjectile(entity){
   projectiles.push(p);
   emitBurst(p.x,p.y,3,60,p.color,2,.2,8);
   if(minimapEvents.length<100)minimapEvents.push({x:p.x,y:p.y,color:p.color,t:0,maxT:.6,type:'shot'});
-  if(entity.isPlayer)SFX.laser();
+  if(entity.isPlayer){
+    SFX.laser();
+    // Broadcast projectile to other players via SpacetimeDB
+    if(stdbConn&&stdbConnected){
+      try{stdbConn.reducers.fireProjectile({
+        x:p.x,y:p.y,vx:p.vx,vy:p.vy,
+        dmg:p.dmg,color:p.color,
+        ttlMs:Math.round(CFG.PROJ_TTL*1000)
+      });}catch(e){}
+    }
+  }
 }
 
 
@@ -1746,27 +1779,18 @@ function updateProjectiles(dt){
         const nearPlayer=distToPlayer(p.x,p.y)<FX_RANGE;
         const hitsPlayer=t.isPlayer||t.isRemotePlayer;
         if(t.isRemotePlayer){
-          // For remote players, show local FX and report hit via SpacetimeDB
-          if(nearPlayer||true){emitBurst(p.x,p.y,8,80,p.color,2,.3,8);SFX.hit();}
+          // Server-authoritative: tell server to apply damage
+          if(stdbConn&&stdbConnected&&p.isPlayerOwned){
+            try{stdbConn.reducers.dealDamage({
+              victimIdentityHex:t.id,
+              damage:p.dmg,
+              attackerName:player?player.name:'Unknown'
+            });}catch(e){console.warn('[STDB] deal_damage failed:',e);}
+          }
+          // Local FX only (HP comes from server)
+          emitBurst(p.x,p.y,8,80,p.color,2,.3,8);SFX.hit();
           minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
           shake(2);
-          // Locally reduce HP for visual feedback (authoritative state comes from server)
-          t.hp=Math.max(0,t.hp-p.dmg);
-          if(t.hp<=0){
-            t.dead=true;
-            emitBurst(t.x,t.y,30,150,t.color||'#ff5555',3,.7,12);
-            emitBurst(t.x,t.y,15,80,'#fff',2,.4,8);
-            SFX.explode();shake(6);
-            minimapEvents.push({x:t.x,y:t.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
-            player.totalKills++;
-            killStreak++;killStreakTimer=8;
-            if(killStreak>=2){
-              const names=['','','DOUBLE KILL','TRIPLE KILL','QUAD KILL','RAMPAGE','GODLIKE'];
-              notify('🔥 '+names[Math.min(killStreak,6)],'#ff8800');
-            }
-            reportKill(player.name,t.name||'Player');
-            notify('☠ Destroyed '+t.name,'#ff4444');
-          }
         }else{
           applyDamage(t,p.dmg,p.ownerId,nearPlayer||hitsPlayer);
           if(nearPlayer||hitsPlayer)emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
@@ -2503,6 +2527,17 @@ function connectSTDB(){
           .onApplied(()=>{
             console.log('[STDB] Subscriptions applied — syncing players');
             syncRemotePlayers();
+            // Check for world seed
+            try{
+              for(const ws of conn.db.world_state.iter()){
+                if(worldSeed===null){
+                  worldSeed=Number(ws.worldSeed);
+                  console.log('[STDB] World seed from initial sync:',worldSeed);
+                  spawnAsteroids(); // re-generate with shared seed
+                }
+                break;
+              }
+            }catch(e){}
           })
           .subscribeToAllTables();
         
@@ -2525,6 +2560,34 @@ function connectSTDB(){
         // Listen for chat messages
         conn.db.chat_message.onInsert((ctx,msg)=>{
           notify(`${msg.sender}: ${msg.text}`,'#aaaaff');
+        });
+        
+        // Listen for remote projectiles (from other players)
+        conn.db.projectile.onInsert((ctx,proj)=>{
+          // Skip our own projectiles
+          if(stdbConn&&stdbConn.identity&&proj.ownerId===stdbConn.identity.toHexString())return;
+          // Add to remote projectiles for local rendering/collision
+          remoteProjectiles.push({
+            id:Number(proj.id),ownerId:proj.ownerId,ownerName:proj.ownerName,
+            x:proj.x,y:proj.y,vx:proj.vx,vy:proj.vy,
+            dmg:proj.dmg,color:proj.color,isPlayer:proj.isPlayer,
+            spawned:Number(proj.spawnedAt),ttl:proj.ttlMs/1000,
+            age:0
+          });
+        });
+        conn.db.projectile.onDelete((ctx,proj)=>{
+          const idx=remoteProjectiles.findIndex(rp=>rp.id===Number(proj.id));
+          if(idx>=0)remoteProjectiles.splice(idx,1);
+        });
+        
+        // Listen for world_state (seed) changes
+        conn.db.world_state.onInsert((ctx,ws)=>{
+          if(worldSeed===null){
+            worldSeed=Number(ws.worldSeed);
+            console.log('[STDB] World seed received:',worldSeed);
+            // Re-generate asteroids with shared seed
+            spawnAsteroids();
+          }
         });
         
         // Listen for leaderboard updates
@@ -2582,19 +2645,50 @@ function syncRemotePlayers(){
     remotePlayers.forEach(rp=>{oldMap[rp.id]=rp;});
     const allPlayers=[];
     for(const p of stdbConn.db.player.iter()){
-      // Skip self
-      if(myIdentity&&p.identity.toHexString()===myIdentity.toHexString())continue;
+      // Skip self — but sync our own HP/shield from server (authoritative)
+      if(myIdentity&&p.identity.toHexString()===myIdentity.toHexString()){
+        // Server-authoritative HP sync: update local player HP from server
+        if(player){
+          player.hp=p.hp;
+          player.shield=p.shield;
+          if(p.dead&&!player.dead){
+            // Server says we're dead — trigger death locally
+            player.dead=true;player.hp=0;player.shield=0;
+            gameState='dead';
+            document.getElementById('deathScreen').style.display='flex';
+            document.getElementById('lostInfo').textContent='You were destroyed by another player.';
+            SFX.death();killStreak=0;shake(8);
+            emitBurst(player.x,player.y,30,150,player.color||'#ff5555',3,.7,12);
+            emitBurst(player.x,player.y,15,80,'#fff',2,.4,8);
+          }
+        }
+        continue;
+      }
       const id=p.identity.toHexString();
       const old=oldMap[id];
       const now=performance.now()/1000;
+      // Check if remote player just died (transition from alive to dead)
+      const wasDead=old?old.dead:p.dead;
+      if(p.dead&&!wasDead){
+        // Remote player just died — show explosion FX
+        const dx=p.x-(player?player.x:0),dy=p.y-(player?player.y:0);
+        if(Math.sqrt(dx*dx+dy*dy)<FX_RANGE){
+          emitBurst(p.x,p.y,30,150,p.color||'#ff5555',3,.7,12);
+          emitBurst(p.x,p.y,15,80,'#fff',2,.4,8);
+          SFX.explode();shake(4);
+        }
+        minimapEvents.push({x:p.x,y:p.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
+      }
       allPlayers.push({
         id:id,isRemotePlayer:true,
         name:p.name,
         // Interpolation: store previous + target positions
         x:old?old.x:p.x, y:old?old.y:p.y, angle:old?old.angle:p.angle,
         targetX:p.x, targetY:p.y, targetAngle:p.angle,
+        // Velocity for dead-reckoning extrapolation
+        vx:p.vx||0, vy:p.vy||0,
         interpStart:now,
-        interpDur:0.12, // smooth over 120ms (slightly more than 100ms tick)
+        interpDur:0.08, // smooth over 80ms (tighter for 20Hz)
         startX:old?old.x:p.x, startY:old?old.y:p.y, startAngle:old?old.angle:p.angle,
         ship:p.ship,color:p.color,
         hp:p.hp,maxHp:p.maxHp,
@@ -2625,11 +2719,60 @@ function updateRemotePlayers(dt){
     const ease=1-(1-t)*(1-t);
     rp.x=rp.startX+(rp.targetX-rp.startX)*ease;
     rp.y=rp.startY+(rp.targetY-rp.startY)*ease;
+    // After interpolation completes, extrapolate using velocity (dead reckoning)
+    if(t>=1&&(rp.vx||rp.vy)){
+      const extraT=elapsed-rp.interpDur;
+      if(extraT>0&&extraT<0.15){ // cap extrapolation at 150ms to avoid overshoot
+        rp.x+=rp.vx*extraT;
+        rp.y+=rp.vy*extraT;
+      }
+    }
     // Angle interpolation (handle wrapping)
     let da=rp.targetAngle-rp.startAngle;
     while(da>Math.PI)da-=2*Math.PI;
     while(da<-Math.PI)da+=2*Math.PI;
     rp.angle=rp.startAngle+da*ease;
+  });
+}
+
+// Update remote projectiles (move, collide with local player, expire)
+function updateRemoteProjectiles(dt){
+  for(let i=remoteProjectiles.length-1;i>=0;i--){
+    const rp=remoteProjectiles[i];
+    rp.x+=rp.vx*dt;rp.y+=rp.vy*dt;rp.age+=dt;
+    if(rp.age>=rp.ttl){remoteProjectiles.splice(i,1);continue;}
+    // Trail particles
+    if(Math.random()<.3&&distToPlayer(rp.x,rp.y)<FX_RANGE)
+      spawnParticle(rp.x,rp.y,rand(-10,10),rand(-10,10),rp.color,1,.15,4);
+    // Check collision with local player
+    if(player&&!player.dead){
+      const shipDef=SHIPS[player.ship]||SHIPS.prospector;
+      const sz=12+(shipDef.hull/30);
+      if(dist(rp.x,rp.y,player.x,player.y)<sz+8){
+        // Hit local player — server already handled damage via deal_damage,
+        // but we show FX locally for responsiveness
+        emitBurst(rp.x,rp.y,8,80,rp.color,2,.3,8);
+        SFX.hit();shake(4);
+        minimapEvents.push({x:rp.x,y:rp.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
+        remoteProjectiles.splice(i,1);
+      }
+    }
+  }
+}
+
+// Draw remote projectiles
+function drawRemoteProjectiles(){
+  remoteProjectiles.forEach(rp=>{
+    const s=worldToScreen(rp.x,rp.y);
+    if(!inView(rp.x,rp.y,20))return;
+    ctx.fillStyle=rp.color||'#ff6644';
+    ctx.globalAlpha=Math.min(1,(rp.ttl-rp.age)*4); // fade near end
+    ctx.beginPath();ctx.arc(s.x,s.y,3,0,Math.PI*2);ctx.fill();
+    // Draw short trail
+    const tx=s.x-rp.vx*0.02,ty=s.y-rp.vy*0.02;
+    ctx.strokeStyle=rp.color||'#ff6644';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(tx,ty);ctx.stroke();
+    ctx.globalAlpha=1;
   });
 }
 
@@ -2650,17 +2793,15 @@ function syncLeaderboard(){
 }
 
 function sendState(){
-  // SpacetimeDB path
+  // SpacetimeDB path — server-authoritative: we send position+velocity, NOT hp/shield
   if(stdbConn&&stdbConnected&&player){
     try{
       stdbConn.reducers.updatePlayer({
         x:Math.round(player.x),
         y:Math.round(player.y),
+        vx:+(player.vx.toFixed(1)),
+        vy:+(player.vy.toFixed(1)),
         angle:+(player.angle.toFixed(2)),
-        hp:Math.round(player.hp),
-        maxHp:player.maxHp,
-        shield:Math.round(player.shield),
-        maxShield:player.maxShield,
         cargoUsed:totalCargo(player.cargo),
         dead:player.dead||false,
         cloaked:player.cloaked||false,
@@ -2668,7 +2809,9 @@ function sendState(){
         kills:player.totalKills||0,
         earned:BigInt(player.totalEarned||0),
         ship:player.ship,
-        color:player.color
+        color:player.color,
+        maxHp:player.maxHp,
+        maxShield:player.maxShield
       });
     }catch(e){console.warn('[STDB] update_player failed:',e);}
     return;
@@ -2864,6 +3007,14 @@ function updateEarthProximity(){
   document.getElementById('marketBtn').style.display=inShield?'block':'none';
   if(inShield&&totalCargo(player.cargo)>0)sellAllOre();
   if(inShield){
+    // Server-authoritative healing: tell server to heal us
+    if(stdbConn&&stdbConnected&&(player.hp<player.maxHp||player.shield<player.maxShield)){
+      try{stdbConn.reducers.healPlayer({
+        healHp:30*lastDt,
+        healShield:20*lastDt
+      });}catch(e){}
+    }
+    // Local prediction for responsive feel (server is authoritative)
     player.hp=Math.min(player.maxHp,player.hp+30*lastDt);
     player.shield=Math.min(player.maxShield,player.shield+20*lastDt);
   }
@@ -2932,13 +3083,14 @@ function gameLoop(timestamp){
     }
     if(gameState==='dead'&&player)player.respawnTimer-=dt;
     
-    updateNPCs(dt);updateProjectiles(dt);updateLeviathan(dt);updateRemotePlayers(dt);
+    updateNPCs(dt);updateProjectiles(dt);updateLeviathan(dt);updateRemotePlayers(dt);updateRemoteProjectiles(dt);
     // Decay minimap events
     for(let i=minimapEvents.length-1;i>=0;i--){minimapEvents[i].t+=dt;if(minimapEvents[i].t>=minimapEvents[i].maxT)minimapEvents.splice(i,1);}updateLoot(dt);
     updateAsteroidRespawn(dt);updateParticles(dt);updateCamera(dt);
     
     hudTimer-=dt;if(hudTimer<=0){updateHUD();hudTimer=.15;}
-    wsTimer-=dt;if(wsTimer<=0){sendState();wsTimer=.1;} // 10Hz net tick
+    wsTimer-=dt;if(wsTimer<=0){sendState();wsTimer=.05;} // 20Hz net tick
+    projPruneTimer-=dt;if(projPruneTimer<=0&&stdbConn&&stdbConnected){try{stdbConn.reducers.pruneProjectiles();}catch(e){}projPruneTimer=2;}
     pruneTimer-=dt;if(pruneTimer<=0&&stdbConn&&stdbConnected){try{stdbConn.reducers.pruneEvents();}catch(e){}pruneTimer=60;}
     autoSaveTimer-=dt;if(autoSaveTimer<=0){saveGame();autoSaveTimer=30;}
     
@@ -2957,6 +3109,7 @@ function gameLoop(timestamp){
     drawRemotePlayers();
     if(player&&!player.dead)drawShipEntity(player);
     projectiles.forEach(p=>drawProjectileEntity(p));
+    drawRemoteProjectiles();
     drawParticles();drawFloatingTexts();drawMinimap();
     drawLeviathanScreenFX();
     
@@ -3029,6 +3182,10 @@ function startGame(name,color,saved){
 
 function respawn(){
   if(!player)return;
+  // Tell server to respawn (resets HP/shield authoritatively)
+  if(stdbConn&&stdbConnected){
+    try{stdbConn.reducers.respawnPlayer();}catch(e){}
+  }
   player.dead=false;player.x=0;player.y=-CFG.EARTH_R-100;
   player.vx=0;player.vy=0;player.hp=player.maxHp;player.shield=player.maxShield;
   player.cargo={};player.abilityCD=0;player.cloaked=false;player.cloakTimer=0;
