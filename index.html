@@ -1735,20 +1735,45 @@ function updateProjectiles(dt){
     if(p.ttl<=0){projectiles.splice(i,1);continue;}
     // Only spawn trail particles if near player
     if(Math.random()<.3&&distToPlayer(p.x,p.y)<FX_RANGE)spawnParticle(p.x,p.y,rand(-10,10),rand(-10,10),p.color,1,.15,4);
-    const targets=p.isPlayerOwned?npcs:[player,...npcs.filter(n=>n.id!==p.ownerId)];
+    const targets=p.isPlayerOwned?[...npcs,...remotePlayers.filter(rp=>rp.id!==p.ownerId)]:[player,...npcs.filter(n=>n.id!==p.ownerId),...remotePlayers.filter(rp=>rp.id!==p.ownerId)];
     let hit=false;
     targets.forEach(t=>{
       if(!t||t.dead||t.cloaked||hit)return;
       if(t.id===p.ownerId)return;
-      const sz=12+(SHIPS[t.ship].hull/30);
+      const shipDef=SHIPS[t.ship]||SHIPS.prospector;
+      const sz=12+(shipDef.hull/30);
       if(dist(p.x,p.y,t.x,t.y)<sz+8){
         const nearPlayer=distToPlayer(p.x,p.y)<FX_RANGE;
-        const hitsPlayer=t.isPlayer;
-        applyDamage(t,p.dmg,p.ownerId,nearPlayer||hitsPlayer);
-        if(nearPlayer||hitsPlayer)emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
-        minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
-        if(hitsPlayer)shake(4);
-        else if(nearPlayer)shake(Math.max(0,1.5-distToPlayer(p.x,p.y)/FX_RANGE*1.5));
+        const hitsPlayer=t.isPlayer||t.isRemotePlayer;
+        if(t.isRemotePlayer){
+          // For remote players, show local FX and report hit via SpacetimeDB
+          if(nearPlayer||true){emitBurst(p.x,p.y,8,80,p.color,2,.3,8);SFX.hit();}
+          minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
+          shake(2);
+          // Locally reduce HP for visual feedback (authoritative state comes from server)
+          t.hp=Math.max(0,t.hp-p.dmg);
+          if(t.hp<=0){
+            t.dead=true;
+            emitBurst(t.x,t.y,30,150,t.color||'#ff5555',3,.7,12);
+            emitBurst(t.x,t.y,15,80,'#fff',2,.4,8);
+            SFX.explode();shake(6);
+            minimapEvents.push({x:t.x,y:t.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
+            player.totalKills++;
+            killStreak++;killStreakTimer=8;
+            if(killStreak>=2){
+              const names=['','','DOUBLE KILL','TRIPLE KILL','QUAD KILL','RAMPAGE','GODLIKE'];
+              notify('🔥 '+names[Math.min(killStreak,6)],'#ff8800');
+            }
+            reportKill(player.name,t.name||'Player');
+            notify('☠ Destroyed '+t.name,'#ff4444');
+          }
+        }else{
+          applyDamage(t,p.dmg,p.ownerId,nearPlayer||hitsPlayer);
+          if(nearPlayer||hitsPlayer)emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
+          minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
+          if(hitsPlayer)shake(4);
+          else if(nearPlayer)shake(Math.max(0,1.5-distToPlayer(p.x,p.y)/FX_RANGE*1.5));
+        }
         hit=true;
       }
     });
@@ -2553,14 +2578,24 @@ function syncRemotePlayers(){
   if(!stdbConn||!stdbConnected)return;
   try{
     const myIdentity=stdbConn.identity;
+    const oldMap={};
+    remotePlayers.forEach(rp=>{oldMap[rp.id]=rp;});
     const allPlayers=[];
     for(const p of stdbConn.db.player.iter()){
       // Skip self
       if(myIdentity&&p.identity.toHexString()===myIdentity.toHexString())continue;
+      const id=p.identity.toHexString();
+      const old=oldMap[id];
+      const now=performance.now()/1000;
       allPlayers.push({
-        id:p.identity.toHexString(),
+        id:id,isRemotePlayer:true,
         name:p.name,
-        x:p.x,y:p.y,angle:p.angle,
+        // Interpolation: store previous + target positions
+        x:old?old.x:p.x, y:old?old.y:p.y, angle:old?old.angle:p.angle,
+        targetX:p.x, targetY:p.y, targetAngle:p.angle,
+        interpStart:now,
+        interpDur:0.12, // smooth over 120ms (slightly more than 100ms tick)
+        startX:old?old.x:p.x, startY:old?old.y:p.y, startAngle:old?old.angle:p.angle,
         ship:p.ship,color:p.color,
         hp:p.hp,maxHp:p.maxHp,
         shield:p.shield,maxShield:p.maxShield,
@@ -2577,6 +2612,25 @@ function syncRemotePlayers(){
     const oc=document.getElementById('onlineCount');
     if(oc)oc.textContent=`🌐 ${total} online`;
   }catch(e){}
+}
+
+// Interpolate remote player positions each frame for smooth movement
+function updateRemotePlayers(dt){
+  const now=performance.now()/1000;
+  remotePlayers.forEach(rp=>{
+    if(rp.targetX===undefined)return;
+    const elapsed=now-rp.interpStart;
+    const t=Math.min(elapsed/rp.interpDur,1);
+    // Smooth ease-out interpolation
+    const ease=1-(1-t)*(1-t);
+    rp.x=rp.startX+(rp.targetX-rp.startX)*ease;
+    rp.y=rp.startY+(rp.targetY-rp.startY)*ease;
+    // Angle interpolation (handle wrapping)
+    let da=rp.targetAngle-rp.startAngle;
+    while(da>Math.PI)da-=2*Math.PI;
+    while(da<-Math.PI)da+=2*Math.PI;
+    rp.angle=rp.startAngle+da*ease;
+  });
 }
 
 function syncLeaderboard(){
@@ -2706,6 +2760,16 @@ function drawRemotePlayers(){
     const shipDef=SHIPS[rp.ship]||SHIPS.prospector;
     const sz=12+(shipDef.hull/30);
     
+    // Engine trail particles when moving
+    if(rp.targetX!==undefined){
+      const dx=rp.targetX-rp.startX,dy=rp.targetY-rp.startY;
+      const spd=Math.sqrt(dx*dx+dy*dy);
+      if(spd>5&&Math.random()<.4){
+        const ex=rp.x-Math.cos(rp.angle)*sz*.6,ey=rp.y-Math.sin(rp.angle)*sz*.6;
+        spawnParticle(ex,ey,rand(-15,15),rand(-15,15),col,.6,.2,3);
+      }
+    }
+    
     ctx.save();ctx.translate(s.x,s.y);ctx.rotate(rp.angle||0);
     ctx.fillStyle=col;ctx.globalAlpha=1;
     drawShipHull(ctx,rp.ship,sz,col);
@@ -2716,12 +2780,17 @@ function drawRemotePlayers(){
     ctx.strokeStyle='rgba(0,0,0,.85)';ctx.lineWidth=3;ctx.strokeText(rp.name||'???',s.x,s.y-sz-10);
     ctx.fillText(rp.name||'???',s.x,s.y-sz-10);
     if(rp.bounty){ctx.fillStyle='rgba(255,60,60,.9)';ctx.fillText('☠',s.x,s.y-sz-20);}
-    // HP
-    if(rp.hp<rp.maxHp){
-      const bw=30;const hpPct=rp.hp/rp.maxHp;
-      ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(s.x-bw/2,s.y+sz+6,bw,3);
-      ctx.fillStyle=hpPct>.5?'#44ff88':'#ff4444';
-      ctx.fillRect(s.x-bw/2,s.y+sz+6,bw*hpPct,3);
+    // HP bar (always show for remote players to indicate they're real players)
+    const bw=30;const hpPct=Math.max(0,rp.hp)/Math.max(1,rp.maxHp);
+    ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(s.x-bw/2,s.y+sz+6,bw,3);
+    ctx.fillStyle=hpPct>.5?'#44ff88':'#ff4444';
+    ctx.fillRect(s.x-bw/2,s.y+sz+6,bw*hpPct,3);
+    // Shield bar if they have shields
+    if(rp.shield>0&&rp.maxShield>0){
+      const sPct=rp.shield/rp.maxShield;
+      ctx.fillStyle='rgba(0,0,0,.4)';ctx.fillRect(s.x-bw/2,s.y+sz+10,bw,2);
+      ctx.fillStyle='rgba(100,180,255,.8)';
+      ctx.fillRect(s.x-bw/2,s.y+sz+10,bw*sPct,2);
     }
   });
 }
@@ -2863,7 +2932,7 @@ function gameLoop(timestamp){
     }
     if(gameState==='dead'&&player)player.respawnTimer-=dt;
     
-    updateNPCs(dt);updateProjectiles(dt);updateLeviathan(dt);
+    updateNPCs(dt);updateProjectiles(dt);updateLeviathan(dt);updateRemotePlayers(dt);
     // Decay minimap events
     for(let i=minimapEvents.length-1;i>=0;i--){minimapEvents[i].t+=dt;if(minimapEvents[i].t>=minimapEvents[i].maxT)minimapEvents.splice(i,1);}updateLoot(dt);
     updateAsteroidRespawn(dt);updateParticles(dt);updateCamera(dt);
