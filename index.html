@@ -125,7 +125,7 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 const CFG={
   WORLD_R:25000,EARTH_R:180,EARTH_SHIELD_R:1800,GREEN_R:2500,YELLOW_R:6000,RED_R:12000,
   TICK:1000/60,BASE_SPEED:220,DRAG:.985,THRUST:600,
-  PROJ_SPEED:700,PROJ_TTL:1.2,PROJ_DMG:8,
+  PROJ_SPEED:700,PROJ_TTL:2.4,PROJ_DMG:8,
   MINE_RANGE:120,MINE_RATE:25,COLLECT_RANGE:60,SHOOT_CD:.35,
   RESPAWN_TIME:3,NPC_COUNT:14,AST_COUNT:350,LOOT_TTL:25,BOUNTY_TIME:90,
   CAM_LERP:.08,SHAKE_DECAY:.9,MINIMAP_R:140,MINIMAP_SCALE:0.02,
@@ -2052,6 +2052,11 @@ function connectSTDB(){
         console.log('[STDB] Disconnected — retrying in 3s');
         setTimeout(()=>{stdbConn=null;connectSTDB();},3000);
       })
+      .onConnectError((ctx,err)=>{
+        console.error('[STDB] Connect error:',err);
+        stdbConn=null;
+        setTimeout(connectSTDB,5000);
+      })
       .build();
       
   }catch(e){
@@ -2063,7 +2068,7 @@ function connectSTDB(){
 function stdbJoinGame(){
   if(!stdbConn||!stdbConnected||!player)return;
   try{
-    stdbConn.reducers.join_game({
+    stdbConn.reducers.joinGame({
       name:player.name,
       ship:player.ship,
       color:player.color,
@@ -2123,7 +2128,7 @@ function sendState(){
   // SpacetimeDB path
   if(stdbConn&&stdbConnected&&player){
     try{
-      stdbConn.reducers.update_player({
+      stdbConn.reducers.updatePlayer({
         x:Math.round(player.x),
         y:Math.round(player.y),
         angle:+(player.angle.toFixed(2)),
@@ -2164,14 +2169,14 @@ function sendState(){
 
 function reportKill(killerName,victimName){
   if(stdbConn&&stdbConnected){
-    try{stdbConn.reducers.report_kill({killerName:killerName,victimName:victimName});}catch(e){}
+    try{stdbConn.reducers.reportKill({killerName:killerName,victimName:victimName});}catch(e){}
   }
 }
 
 function submitScore(){
   if(!stdbConn||!stdbConnected||!player)return;
   try{
-    stdbConn.reducers.submit_score({
+    stdbConn.reducers.submitScore({
       name:player.name,
       credits:BigInt(player.totalEarned||0),
       kills:player.totalKills||0,
@@ -2184,7 +2189,7 @@ function submitScore(){
 
 function sendChat(text){
   if(stdbConn&&stdbConnected&&player){
-    try{stdbConn.reducers.send_chat({senderName:player.name,text:text});}catch(e){}
+    try{stdbConn.reducers.sendChat({senderName:player.name,text:text});}catch(e){}
   }
 }
 
@@ -2388,7 +2393,7 @@ function gameLoop(timestamp){
     
     hudTimer-=dt;if(hudTimer<=0){updateHUD();hudTimer=.15;}
     wsTimer-=dt;if(wsTimer<=0){sendState();wsTimer=.1;} // 10Hz net tick
-    pruneTimer-=dt;if(pruneTimer<=0&&stdbConn&&stdbConnected){try{stdbConn.reducers.prune_events();}catch(e){}pruneTimer=60;}
+    pruneTimer-=dt;if(pruneTimer<=0&&stdbConn&&stdbConnected){try{stdbConn.reducers.pruneEvents();}catch(e){}pruneTimer=60;}
     autoSaveTimer-=dt;if(autoSaveTimer<=0){saveGame();autoSaveTimer=30;}
     
     if(hintTimer>0){hintTimer-=dt;const hint=document.getElementById('controls-hint');
