@@ -105,24 +105,34 @@ const spacetimedb = schema({
 export default spacetimedb;
 
 // ═══════════════════════════════════════════
-// Lifecycle hooks
+// Lifecycle hooks — use spacetimedb.clientConnected/clientDisconnected
+// (NOT spacetimedb.reducer — that creates a regular reducer, not a lifecycle hook!)
 // ═══════════════════════════════════════════
 
-export const client_connected = spacetimedb.reducer(
+// init runs once when the module is first published (or after --delete-data)
+spacetimedb.init(
+  (ctx) => {
+    // Generate world seed (singleton row id=0)
+    const seed = BigInt(Math.floor(Math.random() * 2147483647));
+    ctx.db.world_state.insert({ id: 0, world_seed: seed });
+    console.log(`World initialized with seed: ${seed}`);
+  }
+);
+
+spacetimedb.clientConnected(
   (ctx) => {
     console.log(`Client connected: ${ctx.sender.toHexString()}`);
-    // Ensure world seed exists (singleton row id=0)
+    // Ensure world seed exists (safety net — init should have created it)
     const ws = ctx.db.world_state.id.find(0);
     if (!ws) {
-      // First client ever — generate a random world seed
       const seed = BigInt(Math.floor(Math.random() * 2147483647));
       ctx.db.world_state.insert({ id: 0, world_seed: seed });
-      console.log(`World seed initialized: ${seed}`);
+      console.log(`World seed initialized (fallback): ${seed}`);
     }
   }
 );
 
-export const client_disconnected = spacetimedb.reducer(
+spacetimedb.clientDisconnected(
   (ctx) => {
     const existing = ctx.db.player.identity.find(ctx.sender);
     if (existing) {
