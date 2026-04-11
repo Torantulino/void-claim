@@ -377,6 +377,51 @@ const SFX={
     const s2=ac.createBufferSource(),sg=ac.createGain();
     sg.gain.setValueAtTime(.2,ac.currentTime);sg.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.05);
     s2.buffer=buf;s2.connect(sg);sg.connect(out);s2.start();
+  }),
+  // Deep void dread — distant, low, scary sound for pre-spawn warning
+  leviathanDread:()=>snd((ac,out)=>{
+    const dur=4.0;
+    // Ultra-low sub-bass drone
+    const sub=ac.createOscillator(),subG=ac.createGain();
+    sub.type='sine';sub.frequency.setValueAtTime(22,ac.currentTime);
+    sub.frequency.linearRampToValueAtTime(18,ac.currentTime+dur);
+    subG.gain.setValueAtTime(0,ac.currentTime);
+    subG.gain.linearRampToValueAtTime(.12,ac.currentTime+1.5);
+    subG.gain.linearRampToValueAtTime(.08,ac.currentTime+dur-1);
+    subG.gain.linearRampToValueAtTime(0,ac.currentTime+dur);
+    sub.connect(subG);subG.connect(out);sub.start();sub.stop(ac.currentTime+dur);
+    // Eerie detuned harmonic — creates "something alive" feeling
+    const h1=ac.createOscillator(),h1G=ac.createGain();
+    h1.type='sine';h1.frequency.setValueAtTime(66,ac.currentTime);
+    h1.detune.setValueAtTime(-30,ac.currentTime);
+    h1.detune.linearRampToValueAtTime(30,ac.currentTime+dur);
+    h1G.gain.setValueAtTime(0,ac.currentTime);
+    h1G.gain.linearRampToValueAtTime(.04,ac.currentTime+2);
+    h1G.gain.linearRampToValueAtTime(0,ac.currentTime+dur);
+    h1.connect(h1G);h1G.connect(out);h1.start();h1.stop(ac.currentTime+dur);
+    // Ghostly high whistle — distant, creepy
+    const w=ac.createOscillator(),wG=ac.createGain(),wF=ac.createBiquadFilter();
+    w.type='sine';w.frequency.setValueAtTime(1800,ac.currentTime);
+    w.frequency.exponentialRampToValueAtTime(600,ac.currentTime+dur);
+    wF.type='bandpass';wF.frequency.value=1200;wF.Q.value=15;
+    wG.gain.setValueAtTime(0,ac.currentTime);
+    wG.gain.linearRampToValueAtTime(.015,ac.currentTime+1);
+    wG.gain.linearRampToValueAtTime(.02,ac.currentTime+dur*.7);
+    wG.gain.linearRampToValueAtTime(0,ac.currentTime+dur);
+    w.connect(wF);wF.connect(wG);wG.connect(out);w.start();w.stop(ac.currentTime+dur);
+    // Filtered noise — like distant whale/creature call
+    const nBuf=ac.createBuffer(1,ac.sampleRate*dur,ac.sampleRate);
+    const nd=nBuf.getChannelData(0);
+    for(let i=0;i<nd.length;i++){
+      const env=Math.sin(i/nd.length*Math.PI);
+      nd[i]=(Math.random()*2-1)*env*.15;
+    }
+    const ns=ac.createBufferSource(),nG=ac.createGain(),nF=ac.createBiquadFilter();
+    nF.type='lowpass';nF.frequency.setValueAtTime(80,ac.currentTime);
+    nF.frequency.linearRampToValueAtTime(40,ac.currentTime+dur);
+    nG.gain.setValueAtTime(.06,ac.currentTime);
+    nG.gain.linearRampToValueAtTime(0,ac.currentTime+dur);
+    ns.buffer=nBuf;ns.connect(nF);nF.connect(nG);nG.connect(out);ns.start();
   })
 };
 
@@ -487,6 +532,8 @@ let voidTimeAccum=0;
 let leviathanWarnPhase=0;
 let leviathanPingTimer=0;
 let leviathanScreenFX={darkness:0,distortion:0,tint:0};
+let radarGlitchIntensity=0; // 0-1, how much the radar is glitching from Leviathan presence
+let leviathanDreadTimer=0; // timer for dread sound during pre-spawn
 
 // ═══════════════════════════════════════════
 // Utilities
@@ -2081,6 +2128,87 @@ function drawMinimap(){
   // ── Void Leviathan ──
   drawLeviathanMinimap(mx,my,scale);
 
+  // ── Radar Glitch Effect (Leviathan approaching) ──
+  if(radarGlitchIntensity>0.02){
+    const gi=radarGlitchIntensity;const gt=performance.now()*.001;
+    // Scan line interference
+    for(let sy2=my-mr;sy2<my+mr;sy2+=3+Math.floor(Math.random()*4)){
+      if(Math.random()>gi*.8)continue;
+      const scanW=mr*2*(.3+Math.random()*.7)*gi;
+      const scanX=mx-mr+Math.random()*(mr*2-scanW);
+      const scanH=1+Math.random()*2;
+      // Check if scanline is within the circular minimap
+      const dy2=sy2-my;
+      if(Math.abs(dy2)>mr)continue;
+      const halfW=Math.sqrt(mr*mr-dy2*dy2);
+      const clippedX=Math.max(mx-halfW,scanX);
+      const clippedR=Math.min(mx+halfW,scanX+scanW);
+      if(clippedR<=clippedX)continue;
+      ctx.fillStyle=`rgba(${120+Math.random()*80},${Math.random()*40},${160+Math.random()*90},${.15+gi*.4})`;
+      ctx.fillRect(clippedX,sy2,clippedR-clippedX,scanH);
+    }
+    // Random displaced ghost dots (false signals)
+    const ghostCount=Math.floor(gi*25);
+    for(let g=0;g<ghostCount;g++){
+      const ga=Math.random()*Math.PI*2;
+      const gr2=Math.random()*mr;
+      const gx=mx+Math.cos(ga)*gr2,gy=my+Math.sin(ga)*gr2;
+      if(dist(gx,gy,mx,my)>mr)continue;
+      const ghostSize=1+Math.random()*3;
+      const colors=['#8833cc','#aa44ff','#ff33aa','#44ff88','#ff4444','#ffffff'];
+      ctx.fillStyle=colors[Math.floor(Math.random()*colors.length)];
+      ctx.globalAlpha=.2+Math.random()*.5*gi;
+      ctx.beginPath();ctx.arc(gx,gy,ghostSize,0,Math.PI*2);ctx.fill();
+    }
+    ctx.globalAlpha=1;
+    // Horizontal tear/offset glitch bands
+    if(gi>.3&&Math.random()<gi*.6){
+      const bandY=my-mr+Math.random()*mr*2;
+      const bandH=4+Math.random()*12*gi;
+      const offsetX=(Math.random()-.5)*20*gi;
+      const dy3=bandY-my;
+      if(Math.abs(dy3)<mr){
+        const halfW2=Math.sqrt(mr*mr-dy3*dy3);
+        ctx.save();
+        ctx.beginPath();ctx.rect(mx-halfW2,bandY,halfW2*2,bandH);ctx.clip();
+        // Redraw a displaced slice to create tear effect
+        ctx.fillStyle=`rgba(80,20,120,${.15+gi*.25})`;
+        ctx.fillRect(mx-halfW2+offsetX,bandY,halfW2*2,bandH);
+        // Bright glitch line at edge
+        ctx.fillStyle=`rgba(170,50,255,${.3+gi*.4})`;
+        ctx.fillRect(mx-halfW2+offsetX,bandY,halfW2*2,1);
+        ctx.restore();
+      }
+    }
+    // Flickering static noise overlay
+    if(gi>.15){
+      const noiseCount=Math.floor(gi*80);
+      for(let n=0;n<noiseCount;n++){
+        const na=Math.random()*Math.PI*2;
+        const nr2=Math.random()*mr;
+        const nx2=mx+Math.cos(na)*nr2,ny2=my+Math.sin(na)*nr2;
+        if(dist(nx2,ny2,mx,my)>mr)continue;
+        ctx.fillStyle=`rgba(255,255,255,${Math.random()*.15*gi})`;
+        ctx.fillRect(nx2,ny2,1,1);
+      }
+    }
+    // Purple interference pulse ring expanding from center
+    if(gi>.25){
+      const pulseR=(gt*80)%mr;
+      const pFade=1-pulseR/mr;
+      ctx.strokeStyle=`rgba(140,40,200,${pFade*.3*gi})`;
+      ctx.lineWidth=2+gi*2;
+      ctx.beginPath();ctx.arc(mx,my,pulseR,0,Math.PI*2);ctx.stroke();
+    }
+    // "SIGNAL LOST" / "INTERFERENCE" text flicker
+    if(gi>.4&&Math.random()<gi*.15){
+      const msgs=['⚠ INTERFERENCE','SIGNAL DEGRADED','◈ ???','⚠ ANOMALY'];
+      ctx.font='bold 8px Courier New';ctx.textAlign='center';
+      ctx.fillStyle=`rgba(180,60,255,${.5+Math.random()*.5})`;
+      ctx.fillText(msgs[Math.floor(Math.random()*msgs.length)],mx+(Math.random()-.5)*20,my+(Math.random()-.5)*mr);
+    }
+  }
+
   // ── Projectiles on minimap (weapon fire trails) ──
   projectiles.forEach(p=>{
     const px=mx+(p.x-player.x)*scale,py=my+(p.y-player.y)*scale;
@@ -2647,7 +2775,7 @@ function createLeviathan(px,py){
     hp:800,maxHp:800,bodyRadius:60,
     state:'lurk',stateTimer:8+Math.random()*5,
     tentacles,jawOpen:0,jawTimer:0,eyeGlow:0,eyePulse:0,
-    speed:140,chargeSpeed:450,dmg:35,biteCooldown:0,
+    speed:140,chargeSpeed:450,dmg:60,biteCooldown:0,
     phase:0,ambientTimer:0,
     dead:false,deathTimer:0,retreatAngle:0,lastSeenDist:99999
   };
@@ -2669,30 +2797,44 @@ function updateLeviathan(dt){
   
   // Spawn logic
   if(!leviathan&&zone==='void'){
-    const minTime=30;
+    const minTime=12;
     if(voidTimeAccum>minTime){
       const t2=voidTimeAccum-minTime;
-      const spawnChance=(0.003+t2*0.00025)*dt;
+      const spawnChance=(0.008+t2*0.0008)*dt;
       if(Math.random()<spawnChance){
         leviathan=createLeviathan(player.x,player.y);
         leviathanWarnPhase=1;leviathanPingTimer=0;
         SFX.leviathanPing();
         notify('◈ Something stirs in the void...','#8833cc');
+        radarGlitchIntensity=.8; // spike on spawn
       }
     }
-    // Warning pings before spawn
-    if(voidTimeAccum>20){
+    // Warning pings + dread sounds + radar glitch ramp-up before spawn
+    if(voidTimeAccum>6){
+      const warnProgress=clamp((voidTimeAccum-6)/(minTime-6),0,1); // 0→1 as we approach spawn
+      // Radar glitch ramps up as spawn approaches
+      radarGlitchIntensity=lerp(radarGlitchIntensity,warnProgress*.7,dt*2);
       leviathanPingTimer-=dt;
       if(leviathanPingTimer<=0){
-        leviathanPingTimer=Math.max(4,15-voidTimeAccum*.08);
-        if(voidTimeAccum>minTime*.6){
+        leviathanPingTimer=Math.max(2,8-warnProgress*6);
+        if(voidTimeAccum>minTime*.5){
           SFX.leviathanPing();
           const pa=Math.random()*Math.PI*2,pd=1500+Math.random()*2000;
           minimapEvents.push({x:player.x+Math.cos(pa)*pd,y:player.y+Math.sin(pa)*pd,
             color:'#8833cc',t:0,maxT:2,type:'leviathanPing'});
         }
       }
+      // Deep dread sound — plays periodically, getting more frequent
+      leviathanDreadTimer-=dt;
+      if(leviathanDreadTimer<=0){
+        leviathanDreadTimer=Math.max(3,10-warnProgress*7);
+        if(warnProgress>.15)SFX.leviathanDread();
+      }
+    }else{
+      radarGlitchIntensity=lerp(radarGlitchIntensity,0,dt*3);
     }
+  }else if(!leviathan){
+    radarGlitchIntensity=lerp(radarGlitchIntensity,0,dt*3);
   }
   
   if(!leviathan||leviathan.dead){
@@ -2700,6 +2842,7 @@ function updateLeviathan(dt){
     leviathanScreenFX.darkness=Math.max(0,leviathanScreenFX.darkness-dt*.5);
     leviathanScreenFX.distortion=Math.max(0,leviathanScreenFX.distortion-dt*2);
     leviathanScreenFX.tint=Math.max(0,leviathanScreenFX.tint-dt*.5);
+    radarGlitchIntensity=lerp(radarGlitchIntensity,0,dt*2);
     return;
   }
   
@@ -2717,6 +2860,9 @@ function updateLeviathan(dt){
   leviathanScreenFX.darkness=lerp(leviathanScreenFX.darkness,proximity*.35,dt*2);
   leviathanScreenFX.distortion=lerp(leviathanScreenFX.distortion,proximity*.5,dt*3);
   leviathanScreenFX.tint=lerp(leviathanScreenFX.tint,proximity*.4,dt*2);
+  // Radar glitch intensifies when leviathan is alive and nearby
+  const levGlitchTarget=.3+proximity*.7; // .3 baseline when alive, up to 1.0 when very close
+  radarGlitchIntensity=lerp(radarGlitchIntensity,levGlitchTarget,dt*3);
   
   // Eye + jaw animation
   lev.eyePulse+=dt*3;
@@ -2799,7 +2945,7 @@ function updateLeviathan(dt){
     case 'retreat':{
       moveLeviathan(lev,lev.x+Math.cos(lev.retreatAngle)*2000,lev.y+Math.sin(lev.retreatAngle)*2000,lev.speed*1.5,dt);
       if(lev.stateTimer<=0||dToPlayer>4000){
-        if(dToPlayer>3500){leviathan=null;leviathanWarnPhase=0;voidTimeAccum=Math.max(0,voidTimeAccum-60);return;}
+        if(dToPlayer>3500){leviathan=null;leviathanWarnPhase=0;voidTimeAccum=Math.max(0,voidTimeAccum-60);radarGlitchIntensity=0;leviathanDreadTimer=0;return;}
         lev.state='lurk';lev.stateTimer=10+Math.random()*5;
       }
       break;
@@ -2854,7 +3000,7 @@ function killLeviathan(lev){
   if(player){player.credits+=500;player.totalEarned+=500;}
   const voidLoot=createLoot(lev.x,lev.y,{voidstone:randInt(5,12)});
   if(voidLoot)loot.push(voidLoot);
-  voidTimeAccum=0;leviathanWarnPhase=0;
+  voidTimeAccum=0;leviathanWarnPhase=0;radarGlitchIntensity=0;leviathanDreadTimer=0;
   minimapEvents.push({x:lev.x,y:lev.y,color:'#cc33ff',t:0,maxT:3,type:'explosion'});
 }
 
@@ -2962,7 +3108,9 @@ function drawLeviathan(){
 }
 
 function drawLeviathanScreenFX(){
-  if(leviathanScreenFX.darkness<=0.01&&leviathanScreenFX.distortion<=0.01&&leviathanScreenFX.tint<=0.01)return;
+  const hasLevFX=leviathanScreenFX.darkness>0.01||leviathanScreenFX.distortion>0.01||leviathanScreenFX.tint>0.01;
+  const hasGlitch=radarGlitchIntensity>0.15&&!leviathan; // pre-spawn screen edge effect
+  if(!hasLevFX&&!hasGlitch)return;
   if(leviathanScreenFX.darkness>0.01){
     const vig=ctx.createRadialGradient(W/2,H/2,W*.15,W/2,H/2,W*.7);
     vig.addColorStop(0,'rgba(15,0,30,0)');
@@ -2975,6 +3123,24 @@ function drawLeviathanScreenFX(){
   }
   if(leviathanScreenFX.distortion>.3){
     ctx.fillStyle=`rgba(120,30,160,${(leviathanScreenFX.distortion-.3)*.3})`;ctx.fillRect(0,0,W,H);
+  }
+  // Pre-spawn: subtle screen edge purple pulse and vignette
+  if(hasGlitch){
+    const gi=radarGlitchIntensity;
+    const t=performance.now()*.001;
+    const pulse=.5+Math.sin(t*1.5)*.5;
+    // Creeping dark vignette at screen edges
+    const edgeVig=ctx.createRadialGradient(W/2,H/2,W*.3,W/2,H/2,W*.65);
+    edgeVig.addColorStop(0,'rgba(10,0,20,0)');
+    edgeVig.addColorStop(.7,`rgba(10,0,20,${gi*.08*pulse})`);
+    edgeVig.addColorStop(1,`rgba(5,0,10,${gi*.15*pulse})`);
+    ctx.fillStyle=edgeVig;ctx.fillRect(0,0,W,H);
+    // Occasional brief scan line flash across screen
+    if(gi>.35&&Math.random()<gi*.04){
+      const sy=Math.random()*H;
+      ctx.fillStyle=`rgba(100,20,160,${.04+gi*.06})`;
+      ctx.fillRect(0,sy,W,2+Math.random()*3);
+    }
   }
 }
 
