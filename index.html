@@ -654,7 +654,10 @@ function finishCrossfade(s){prevMusic=curMusic;curMusic=s;musicFadeLocked=false;
 function _detectCombat(){
   if(!player||player.dead)return false;
   const now=performance.now();
-  return(player.lastDamageTime&&(now-player.lastDamageTime)<3000)||npcs.some(n=>!n.dead&&(n.state==='attack'||n.state==='hunt')&&n.target===player&&dist(n.x,n.y,player.x,player.y)<800);
+  const recentDamage=player.lastDamageTime&&(now-player.lastDamageTime)<3000;
+  const npcEngaging=npcs.some(n=>!n.dead&&(n.state==='attack'||n.state==='hunt')&&n.target===player&&dist(n.x,n.y,player.x,player.y)<800);
+  const leviathanEngaging=leviathan&&!leviathan.dead&&dist(leviathan.x,leviathan.y,player.x,player.y)<800;
+  return recentDamage||npcEngaging||leviathanEngaging;
 }
 function isCombatActive(){if(_detectCombat())combatActiveUntil=performance.now()+COMBAT_HOLD;return performance.now()<combatActiveUntil;}
 function _isPoliceChasing(){return policeUnits.some(p=>p.state==='hunt'&&p.target===player);}
