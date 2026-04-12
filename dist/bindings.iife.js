@@ -8068,7 +8068,10 @@ ${ty.variants.map(
     ship: t.string(),
     color: t.string(),
     maxHp: t.f32(),
-    maxShield: t.f32()
+    maxShield: t.f32(),
+    miningX: t.f32(),
+    miningY: t.f32(),
+    miningOre: t.string()
   };
 
   // src/update_wingman_reducer.ts
@@ -8166,7 +8169,10 @@ ${ty.variants.map(
     earned: t.u64(),
     lastUpdate: t.u64().name("last_update"),
     vx: t.f32(),
-    vy: t.f32()
+    vy: t.f32(),
+    miningX: t.f32().name("mining_x"),
+    miningY: t.f32().name("mining_y"),
+    miningOre: t.string().name("mining_ore")
   });
 
   // src/projectile_table.ts
