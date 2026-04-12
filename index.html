@@ -2200,7 +2200,7 @@ function npcAct(n,dt){
       if(d>CFG.COLLECT_RANGE){
         moveToward(n,lt.x,lt.y,thrust,dt);
       }else{
-        // Close enough — loot pickup happens in updateLoot since state is 'collectLoot'
+        // Close enough — loot pickup happens in updateLoot automatically
         n.state='idle';n._lootTarget=null;
       }
       break;
@@ -3804,10 +3804,9 @@ function updateLoot(dt){
         if(l.items.length===0)loot.splice(i,1);
       }
     }
-    // NPCs collect loot if in 'collecting' state OR close enough (any non-pirate NPC)
+    // NPCs always auto-collect loot within range (same as player)
     npcs.forEach(n=>{
       if(n.dead)return;
-      if(n.state!=='collecting'&&n.state!=='collectLoot')return;
       if(dist(n.x,n.y,l.x,l.y)<CFG.COLLECT_RANGE){
         const mc=maxCargo(n);
         l.items.forEach(item=>{
