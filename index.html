@@ -202,7 +202,7 @@ const CFG={
   TICK:1000/60,BASE_SPEED:220,DRAG:.985,THRUST:600,
   PROJ_SPEED:700,PROJ_TTL:2.4,PROJ_DMG:8,
   MINE_RANGE:120,MINE_RATE:25,COLLECT_RANGE:60,SHOOT_CD:.35,
-  RESPAWN_TIME:3,NPC_COUNT:14,AST_COUNT:350,LOOT_TTL:25,BOUNTY_TIME:90,
+  RESPAWN_TIME:3,NPC_COUNT:14,AST_COUNT:350,LOOT_TTL:50,BOUNTY_TIME:90,
   // Pirate Den system — red zone pirates with staggered respawn
   DEN_PIRATE_COUNT:8,        // Max den pirates alive at once
   DEN_RESPAWN_MIN:30,        // Min seconds before a den pirate respawns
@@ -3909,8 +3909,28 @@ function killEntity(target,attackerId){
   else if(near)shake(Math.max(0,4-distToPlayer(target.x,target.y)/FX_RANGE*4));
   
   if(totalCargo(target.cargo||{})>0){
-    const l=createLoot(target.x,target.y,target.cargo);
-    if(l)loot.push(l);
+    // Scatter cargo as individual loot drops with outward velocity (like asteroid destruction)
+    const cargoEntries=Object.entries(target.cargo).filter(([,v])=>v>0);
+    if(cargoEntries.length>0){
+      let allItems=[];
+      cargoEntries.forEach(([ore,amt])=>{for(let i=0;i<amt;i++)allItems.push(ore);});
+      const numDrops=Math.min(allItems.length,randInt(3,6));
+      let idx=0;
+      for(let d=0;d<numDrops;d++){
+        const cargo={};
+        const take=d===numDrops-1?allItems.length-idx:Math.max(1,Math.ceil((allItems.length-idx)/(numDrops-d)));
+        for(let t=0;t<take&&idx<allItems.length;t++,idx++){
+          cargo[allItems[idx]]=(cargo[allItems[idx]]||0)+1;
+        }
+        if(totalCargo(cargo)<=0)continue;
+        const ang=rand(0,Math.PI*2);
+        const spd=rand(40,120);
+        const vx=Math.cos(ang)*spd;
+        const vy=Math.sin(ang)*spd;
+        const l=createLoot(target.x,target.y,cargo,vx,vy);
+        if(l)loot.push(l);
+      }
+    }
   }
   target.cargo={};
   
@@ -4300,8 +4320,21 @@ function killLeviathan(lev){
   notify('◈ LEVIATHAN SLAIN! +500⬡','#ff44ff');
   addFloatingText(lev.x,lev.y,'+500 CREDITS','#ff44ff');
   if(player){player.credits+=500;player.totalEarned+=500;}
-  const voidLoot=createLoot(lev.x,lev.y,{voidstone:randInt(5,12)});
-  if(voidLoot)loot.push(voidLoot);
+  // Scatter voidstone as individual loot drops with outward velocity
+  const voidTotal=randInt(5,12);
+  const voidDrops=Math.min(voidTotal,randInt(4,7));
+  let voidRemaining=voidTotal;
+  for(let d=0;d<voidDrops;d++){
+    const amt=d===voidDrops-1?voidRemaining:Math.max(1,randInt(1,Math.ceil(voidRemaining/(voidDrops-d))));
+    voidRemaining-=amt;
+    if(amt<=0)continue;
+    const ang=rand(0,Math.PI*2);
+    const spd=rand(50,140);
+    const vx=Math.cos(ang)*spd;
+    const vy=Math.sin(ang)*spd;
+    const vl=createLoot(lev.x,lev.y,{voidstone:amt},vx,vy);
+    if(vl)loot.push(vl);
+  }
   voidTimeAccum=0;leviathanWarnPhase=0;radarGlitchIntensity=0;leviathanDreadTimer=0;
   minimapEvents.push({x:lev.x,y:lev.y,color:'#cc33ff',t:0,maxT:3,type:'explosion'});
 }
