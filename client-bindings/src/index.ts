@@ -35,13 +35,13 @@ import {
 
 // Import all reducer arg schemas
 import ClaimNpcHostReducer from "./claim_npc_host_reducer";
-import HeartbeatNpcHostReducer from "./heartbeat_npc_host_reducer";
 import DamageNpcReducer from "./damage_npc_reducer";
 import DamageWingmanReducer from "./damage_wingman_reducer";
 import DealDamageReducer from "./deal_damage_reducer";
 import DeleteWingmanReducer from "./delete_wingman_reducer";
 import FireProjectileReducer from "./fire_projectile_reducer";
 import HealPlayerReducer from "./heal_player_reducer";
+import HeartbeatNpcHostReducer from "./heartbeat_npc_host_reducer";
 import JoinGameReducer from "./join_game_reducer";
 import LeaveGameReducer from "./leave_game_reducer";
 import PruneEventsReducer from "./prune_events_reducer";
@@ -179,13 +179,13 @@ const tablesSchema = __schema({
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
   __reducerSchema("claim_npc_host", ClaimNpcHostReducer),
-  __reducerSchema("heartbeat_npc_host", HeartbeatNpcHostReducer),
   __reducerSchema("damage_npc", DamageNpcReducer),
   __reducerSchema("damage_wingman", DamageWingmanReducer),
   __reducerSchema("deal_damage", DealDamageReducer),
   __reducerSchema("delete_wingman", DeleteWingmanReducer),
   __reducerSchema("fire_projectile", FireProjectileReducer),
   __reducerSchema("heal_player", HealPlayerReducer),
+  __reducerSchema("heartbeat_npc_host", HeartbeatNpcHostReducer),
   __reducerSchema("join_game", JoinGameReducer),
   __reducerSchema("leave_game", LeaveGameReducer),
   __reducerSchema("prune_events", PruneEventsReducer),

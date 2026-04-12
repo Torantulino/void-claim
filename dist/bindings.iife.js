@@ -5,6 +5,7 @@ var VoidClaimDB = (() => {
   var __getOwnPropNames = Object.getOwnPropertyNames;
   var __getProtoOf = Object.getPrototypeOf;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
   var __commonJS = (cb, mod) => function __require() {
     return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
   };
@@ -29,6 +30,40 @@ var VoidClaimDB = (() => {
     mod
   ));
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+  var __publicField = (obj, key, value) => {
+    __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+    return value;
+  };
+  var __accessCheck = (obj, member, msg) => {
+    if (!member.has(obj))
+      throw TypeError("Cannot " + msg);
+  };
+  var __privateGet = (obj, member, getter) => {
+    __accessCheck(obj, member, "read from private field");
+    return getter ? getter.call(obj) : member.get(obj);
+  };
+  var __privateAdd = (obj, member, value) => {
+    if (member.has(obj))
+      throw TypeError("Cannot add the same private member more than once");
+    member instanceof WeakSet ? member.add(obj) : member.set(obj, value);
+  };
+  var __privateSet = (obj, member, value, setter) => {
+    __accessCheck(obj, member, "write to private field");
+    setter ? setter.call(obj, value) : member.set(obj, value);
+    return value;
+  };
+  var __privateWrapper = (obj, member, setter, getter) => ({
+    set _(value) {
+      __privateSet(obj, member, value, setter);
+    },
+    get _() {
+      return __privateGet(obj, member, getter);
+    }
+  });
+  var __privateMethod = (obj, member, method) => {
+    __accessCheck(obj, member, "access private method");
+    return method;
+  };
 
   // node_modules/base64-js/index.js
   var require_base64_js = __commonJS({
@@ -55,7 +90,8 @@ var VoidClaimDB = (() => {
           throw new Error("Invalid string. Length must be a multiple of 4");
         }
         var validLen = b64.indexOf("=");
-        if (validLen === -1) validLen = len2;
+        if (validLen === -1)
+          validLen = len2;
         var placeHoldersLen = validLen === len2 ? 0 : 4 - validLen % 4;
         return [validLen, placeHoldersLen];
       }
@@ -267,7 +303,8 @@ var VoidClaimDB = (() => {
           if (value) {
             return (value2) => {
               let message = `Object can not safely be stringified. Received type ${typeof value2}`;
-              if (typeof value2 !== "function") message += ` (${value2.toString()})`;
+              if (typeof value2 !== "function")
+                message += ` (${value2.toString()})`;
               throw new Error(message);
             };
           }
@@ -396,7 +433,6 @@ ${originalIndentation}`;
               if (bigint) {
                 return String(value);
               }
-            // fallthrough
             default:
               return fail ? fail(value) : void 0;
           }
@@ -487,7 +523,6 @@ ${originalIndentation}`;
               if (bigint) {
                 return String(value);
               }
-            // fallthrough
             default:
               return fail ? fail(value) : void 0;
           }
@@ -599,7 +634,6 @@ ${originalIndentation}`;
               if (bigint) {
                 return String(value);
               }
-            // fallthrough
             default:
               return fail ? fail(value) : void 0;
           }
@@ -695,7 +729,6 @@ ${originalIndentation}`;
               if (bigint) {
                 return String(value);
               }
-            // fallthrough
             default:
               return fail ? fail(value) : void 0;
           }
@@ -727,9 +760,9 @@ ${originalIndentation}`;
     }
   });
 
-  // client-bindings/src/index.ts
-  var index_exports = {};
-  __export(index_exports, {
+  // src/index.ts
+  var src_exports = {};
+  __export(src_exports, {
     DbConnection: () => DbConnection,
     DbConnectionBuilder: () => DbConnectionBuilder2,
     SubscriptionBuilder: () => SubscriptionBuilder,
@@ -746,9 +779,12 @@ ${originalIndentation}`;
   var stringify = import__.default;
 
   // node_modules/spacetimedb/dist/index.browser.mjs
-  var TimeDuration = class _TimeDuration {
-    __time_duration_micros__;
-    static MICROS_PER_MILLIS = 1000n;
+  var _a;
+  var TimeDuration = (_a = class {
+    constructor(micros) {
+      __publicField(this, "__time_duration_micros__");
+      this.__time_duration_micros__ = micros;
+    }
     /**
      * Get the algebraic type representation of the {@link TimeDuration} type.
      * @returns The algebraic type representation of the type.
@@ -778,13 +814,10 @@ ${originalIndentation}`;
       return this.__time_duration_micros__;
     }
     get millis() {
-      return Number(this.micros / _TimeDuration.MICROS_PER_MILLIS);
-    }
-    constructor(micros) {
-      this.__time_duration_micros__ = micros;
+      return Number(this.micros / _a.MICROS_PER_MILLIS);
     }
     static fromMillis(millis) {
-      return new _TimeDuration(BigInt(millis) * _TimeDuration.MICROS_PER_MILLIS);
+      return new _a(BigInt(millis) * _a.MICROS_PER_MILLIS);
     }
     /** This outputs the same string format that we use in the host and in Rust modules */
     toString() {
@@ -795,15 +828,15 @@ ${originalIndentation}`;
       const micros_remaining = pos % 1000000n;
       return `${sign}${secs}.${String(micros_remaining).padStart(6, "0")}`;
     }
-  };
-  var Timestamp = class _Timestamp {
-    __timestamp_micros_since_unix_epoch__;
-    static MICROS_PER_MILLIS = 1000n;
+  }, __publicField(_a, "MICROS_PER_MILLIS", 1000n), _a);
+  var _a2;
+  var Timestamp = (_a2 = class {
+    constructor(micros) {
+      __publicField(this, "__timestamp_micros_since_unix_epoch__");
+      this.__timestamp_micros_since_unix_epoch__ = micros;
+    }
     get microsSinceUnixEpoch() {
       return this.__timestamp_micros_since_unix_epoch__;
-    }
-    constructor(micros) {
-      this.__timestamp_micros_since_unix_epoch__ = micros;
     }
     /**
      * Get the algebraic type representation of the {@link Timestamp} type.
@@ -831,14 +864,10 @@ ${originalIndentation}`;
       return microsElement.name === "__timestamp_micros_since_unix_epoch__" && microsElement.algebraicType.tag === "I64";
     }
     /**
-     * The Unix epoch, the midnight at the beginning of January 1, 1970, UTC.
-     */
-    static UNIX_EPOCH = new _Timestamp(0n);
-    /**
      * Get a `Timestamp` representing the execution environment's belief of the current moment in time.
      */
     static now() {
-      return _Timestamp.fromDate(/* @__PURE__ */ new Date());
+      return _a2.fromDate(/* @__PURE__ */ new Date());
     }
     /** Convert to milliseconds since Unix epoch. */
     toMillis() {
@@ -849,8 +878,8 @@ ${originalIndentation}`;
      */
     static fromDate(date) {
       const millis = date.getTime();
-      const micros = BigInt(millis) * _Timestamp.MICROS_PER_MILLIS;
-      return new _Timestamp(micros);
+      const micros = BigInt(millis) * _a2.MICROS_PER_MILLIS;
+      return new _a2(micros);
     }
     /**
      * Get a `Date` representing approximately the same point in time as `this`.
@@ -860,7 +889,7 @@ ${originalIndentation}`;
      */
     toDate() {
       const micros = this.__timestamp_micros_since_unix_epoch__;
-      const millis = micros / _Timestamp.MICROS_PER_MILLIS;
+      const millis = micros / _a2.MICROS_PER_MILLIS;
       if (millis > BigInt(Number.MAX_SAFE_INTEGER) || millis < BigInt(Number.MIN_SAFE_INTEGER)) {
         throw new RangeError(
           "Timestamp is outside of the representable range of JS's Date"
@@ -878,7 +907,7 @@ ${originalIndentation}`;
      */
     toISOString() {
       const micros = this.__timestamp_micros_since_unix_epoch__;
-      const millis = micros / _Timestamp.MICROS_PER_MILLIS;
+      const millis = micros / _a2.MICROS_PER_MILLIS;
       if (millis > BigInt(Number.MAX_SAFE_INTEGER) || millis < BigInt(Number.MIN_SAFE_INTEGER)) {
         throw new RangeError(
           "Timestamp is outside of the representable range for ISO string formatting"
@@ -895,34 +924,12 @@ ${originalIndentation}`;
         this.__timestamp_micros_since_unix_epoch__ - other.__timestamp_micros_since_unix_epoch__
       );
     }
-  };
-  var Uuid = class _Uuid {
-    __uuid__;
-    /**
-     * The nil UUID (all zeros).
-     *
-     * @example
-     * ```ts
-     * const uuid = Uuid.NIL;
-     * console.assert(
-     *   uuid.toString() === "00000000-0000-0000-0000-000000000000"
-     * );
-     * ```
-     */
-    static NIL = new _Uuid(0n);
-    static MAX_UUID_BIGINT = 0xffffffffffffffffffffffffffffffffn;
-    /**
-     * The max UUID (all ones).
-     *
-     * @example
-     * ```ts
-     * const uuid = Uuid.MAX;
-     * console.assert(
-     *   uuid.toString() === "ffffffff-ffff-ffff-ffff-ffffffffffff"
-     * );
-     * ```
-     */
-    static MAX = new _Uuid(_Uuid.MAX_UUID_BIGINT);
+  }, __publicField(_a2, "MICROS_PER_MILLIS", 1000n), /**
+   * The Unix epoch, the midnight at the beginning of January 1, 1970, UTC.
+   */
+  __publicField(_a2, "UNIX_EPOCH", new _a2(0n)), _a2);
+  var _a3;
+  var Uuid = (_a3 = class {
     /**
      * Create a UUID from a raw 128-bit value.
      *
@@ -930,7 +937,8 @@ ${originalIndentation}`;
      * @throws {Error} If the value is outside the valid UUID range
      */
     constructor(u) {
-      if (u < 0n || u > _Uuid.MAX_UUID_BIGINT) {
+      __publicField(this, "__uuid__");
+      if (u < 0n || u > _a3.MAX_UUID_BIGINT) {
         throw new Error("Invalid UUID: must be between 0 and `MAX_UUID_BIGINT`");
       }
       this.__uuid__ = u;
@@ -956,11 +964,12 @@ ${originalIndentation}`;
      * ```
      */
     static fromRandomBytesV4(bytes) {
-      if (bytes.length !== 16) throw new Error("UUID v4 requires 16 bytes");
+      if (bytes.length !== 16)
+        throw new Error("UUID v4 requires 16 bytes");
       const arr = new Uint8Array(bytes);
       arr[6] = arr[6] & 15 | 64;
       arr[8] = arr[8] & 63 | 128;
-      return new _Uuid(_Uuid.bytesToBigInt(arr));
+      return new _a3(_a3.bytesToBigInt(arr));
     }
     /**
      * Generate a UUID `v7` using a monotonic counter from `0` to `2^31 - 1`,
@@ -1035,7 +1044,7 @@ ${originalIndentation}`;
       bytes[15] = randomBytes[3];
       bytes[6] = bytes[6] & 15 | 112;
       bytes[8] = bytes[8] & 63 | 128;
-      return new _Uuid(_Uuid.bytesToBigInt(bytes));
+      return new _a3(_a3.bytesToBigInt(bytes));
     }
     /**
      * Parse a UUID from a string representation.
@@ -1054,16 +1063,17 @@ ${originalIndentation}`;
      */
     static parse(s) {
       const hex = s.replace(/-/g, "");
-      if (hex.length !== 32) throw new Error("Invalid hex UUID");
+      if (hex.length !== 32)
+        throw new Error("Invalid hex UUID");
       let v = 0n;
       for (let i = 0; i < 32; i += 2) {
         v = v << 8n | BigInt(parseInt(hex.slice(i, i + 2), 16));
       }
-      return new _Uuid(v);
+      return new _a3(v);
     }
     /** Convert to string (hyphenated form). */
     toString() {
-      const bytes = _Uuid.bigIntToBytes(this.__uuid__);
+      const bytes = _a3.bigIntToBytes(this.__uuid__);
       const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
       return hex.slice(0, 8) + "-" + hex.slice(8, 12) + "-" + hex.slice(12, 16) + "-" + hex.slice(16, 20) + "-" + hex.slice(20);
     }
@@ -1073,11 +1083,12 @@ ${originalIndentation}`;
     }
     /** Return a `Uint8Array` of 16 bytes. */
     toBytes() {
-      return _Uuid.bigIntToBytes(this.__uuid__);
+      return _a3.bigIntToBytes(this.__uuid__);
     }
     static bytesToBigInt(bytes) {
       let result = 0n;
-      for (const b of bytes) result = result << 8n | BigInt(b);
+      for (const b of bytes)
+        result = result << 8n | BigInt(b);
       return result;
     }
     static bigIntToBytes(value) {
@@ -1104,10 +1115,10 @@ ${originalIndentation}`;
         case 7:
           return "V7";
         default:
-          if (this == _Uuid.NIL) {
+          if (this == _a3.NIL) {
             return "Nil";
           }
-          if (this == _Uuid.MAX) {
+          if (this == _a3.MAX) {
             return "Max";
           }
           throw new Error(`Unsupported UUID version: ${version}`);
@@ -1130,8 +1141,10 @@ ${originalIndentation}`;
       return high << 23 | mid1 << 15 | mid2 << 7 | low | 0;
     }
     compareTo(other) {
-      if (this.__uuid__ < other.__uuid__) return -1;
-      if (this.__uuid__ > other.__uuid__) return 1;
+      if (this.__uuid__ < other.__uuid__)
+        return -1;
+      if (this.__uuid__ > other.__uuid__)
+        return 1;
       return 0;
     }
     static getAlgebraicType() {
@@ -1144,25 +1157,50 @@ ${originalIndentation}`;
         ]
       });
     }
-  };
-  var BinaryReader = class {
-    /**
-     * The DataView used to read values from the binary data.
-     *
-     * Note: The DataView's `byteOffset` is relative to the beginning of the
-     * underlying ArrayBuffer, not the start of the provided Uint8Array input.
-     * This `BinaryReader`'s `#offset` field is used to track the current read position
-     * relative to the start of the provided Uint8Array input.
-     */
-    view;
-    /**
-     * Represents the offset (in bytes) relative to the start of the DataView
-     * and provided Uint8Array input.
-     *
-     * Note: This is *not* the absolute byte offset within the underlying ArrayBuffer.
-     */
-    offset = 0;
+  }, /**
+   * The nil UUID (all zeros).
+   *
+   * @example
+   * ```ts
+   * const uuid = Uuid.NIL;
+   * console.assert(
+   *   uuid.toString() === "00000000-0000-0000-0000-000000000000"
+   * );
+   * ```
+   */
+  __publicField(_a3, "NIL", new _a3(0n)), __publicField(_a3, "MAX_UUID_BIGINT", 0xffffffffffffffffffffffffffffffffn), /**
+   * The max UUID (all ones).
+   *
+   * @example
+   * ```ts
+   * const uuid = Uuid.MAX;
+   * console.assert(
+   *   uuid.toString() === "ffffffff-ffff-ffff-ffff-ffffffffffff"
+   * );
+   * ```
+   */
+  __publicField(_a3, "MAX", new _a3(_a3.MAX_UUID_BIGINT)), _a3);
+  var _ensure, ensure_fn, _a4;
+  var BinaryReader = (_a4 = class {
     constructor(input) {
+      /** Ensure we have at least `n` bytes left to read */
+      __privateAdd(this, _ensure);
+      /**
+       * The DataView used to read values from the binary data.
+       *
+       * Note: The DataView's `byteOffset` is relative to the beginning of the
+       * underlying ArrayBuffer, not the start of the provided Uint8Array input.
+       * This `BinaryReader`'s `#offset` field is used to track the current read position
+       * relative to the start of the provided Uint8Array input.
+       */
+      __publicField(this, "view");
+      /**
+       * Represents the offset (in bytes) relative to the start of the DataView
+       * and provided Uint8Array input.
+       *
+       * Note: This is *not* the absolute byte offset within the underlying ArrayBuffer.
+       */
+      __publicField(this, "offset", 0);
       this.view = input instanceof DataView ? input : new DataView(input.buffer, input.byteOffset, input.byteLength);
       this.offset = 0;
     }
@@ -1173,17 +1211,9 @@ ${originalIndentation}`;
     get remaining() {
       return this.view.byteLength - this.offset;
     }
-    /** Ensure we have at least `n` bytes left to read */
-    #ensure(n) {
-      if (this.offset + n > this.view.byteLength) {
-        throw new RangeError(
-          `Tried to read ${n} byte(s) at relative offset ${this.offset}, but only ${this.remaining} byte(s) remain`
-        );
-      }
-    }
     readUInt8Array() {
       const length = this.readU32();
-      this.#ensure(length);
+      __privateMethod(this, _ensure, ensure_fn).call(this, length);
       return this.readBytes(length);
     }
     readBool() {
@@ -1285,7 +1315,13 @@ ${originalIndentation}`;
       const uint8Array = this.readUInt8Array();
       return new TextDecoder("utf-8").decode(uint8Array);
     }
-  };
+  }, _ensure = new WeakSet(), ensure_fn = function(n) {
+    if (this.offset + n > this.view.byteLength) {
+      throw new RangeError(
+        `Tried to read ${n} byte(s) at relative offset ${this.offset}, but only ${this.remaining} byte(s) remain`
+      );
+    }
+  }, _a4);
   var ArrayBufferPrototypeTransfer = ArrayBuffer.prototype.transfer ?? function(newByteLength) {
     if (newByteLength === void 0) {
       return this.slice();
@@ -1298,9 +1334,9 @@ ${originalIndentation}`;
     }
   };
   var ResizableBuffer = class {
-    buffer;
-    view;
     constructor(init) {
+      __publicField(this, "buffer");
+      __publicField(this, "view");
       this.buffer = typeof init === "number" ? new ArrayBuffer(init) : init;
       this.view = new DataView(this.buffer);
     }
@@ -1308,15 +1344,16 @@ ${originalIndentation}`;
       return this.buffer.byteLength;
     }
     grow(newSize) {
-      if (newSize <= this.buffer.byteLength) return;
+      if (newSize <= this.buffer.byteLength)
+        return;
       this.buffer = ArrayBufferPrototypeTransfer.call(this.buffer, newSize);
       this.view = new DataView(this.buffer);
     }
   };
   var BinaryWriter = class {
-    buffer;
-    offset = 0;
     constructor(init) {
+      __publicField(this, "buffer");
+      __publicField(this, "offset", 0);
       this.buffer = typeof init === "number" ? new ResizableBuffer(init) : init;
     }
     clear() {
@@ -1328,9 +1365,11 @@ ${originalIndentation}`;
     }
     expandBuffer(additionalCapacity) {
       const minCapacity = this.offset + additionalCapacity + 1;
-      if (minCapacity <= this.buffer.capacity) return;
+      if (minCapacity <= this.buffer.capacity)
+        return;
       let newCapacity = this.buffer.capacity * 2;
-      if (newCapacity < minCapacity) newCapacity = minCapacity;
+      if (newCapacity < minCapacity)
+        newCapacity = minCapacity;
       this.buffer.grow(newCapacity);
     }
     toBase64() {
@@ -1458,13 +1497,15 @@ ${originalIndentation}`;
     }
   };
   function deepEqual(obj1, obj2) {
-    if (obj1 === obj2) return true;
+    if (obj1 === obj2)
+      return true;
     if (typeof obj1 !== "object" || obj1 === null || typeof obj2 !== "object" || obj2 === null) {
       return false;
     }
     const keys1 = Object.keys(obj1);
     const keys2 = Object.keys(obj2);
-    if (keys1.length !== keys2.length) return false;
+    if (keys1.length !== keys2.length)
+      return false;
     for (const key of keys1) {
       if (!keys2.includes(key) || !deepEqual(obj1[key], obj2[key])) {
         return false;
@@ -1529,13 +1570,13 @@ ${originalIndentation}`;
   }
   var hasOwn = Object.hasOwn;
   var Identity = class _Identity {
-    __identity__;
     /**
      * Creates a new `Identity`.
      *
      * `data` can be a hexadecimal string or a `bigint`.
      */
     constructor(data) {
+      __publicField(this, "__identity__");
       this.__identity__ = typeof data === "string" ? hexStringToU256(data) : data;
     }
     /**
@@ -1623,7 +1664,8 @@ ${originalIndentation}`;
       if (ty.tag === "Ref") {
         if (!typespace)
           throw new Error("cannot serialize refs without a typespace");
-        while (ty.tag === "Ref") ty = typespace.types[ty.value];
+        while (ty.tag === "Ref")
+          ty = typespace.types[ty.value];
       }
       switch (ty.tag) {
         case "Product":
@@ -1654,7 +1696,8 @@ ${originalIndentation}`;
       if (ty.tag === "Ref") {
         if (!typespace)
           throw new Error("cannot deserialize refs without a typespace");
-        while (ty.tag === "Ref") ty = typespace.types[ty.value];
+        while (ty.tag === "Ref")
+          ty = typespace.types[ty.value];
       }
       switch (ty.tag) {
         case "Product":
@@ -1849,7 +1892,8 @@ ${originalIndentation}`;
   var ProductType = {
     makeSerializer(ty, typespace) {
       let serializer = SERIALIZERS.get(ty);
-      if (serializer != null) return serializer;
+      if (serializer != null)
+        return serializer;
       if (isFixedSizeProduct(ty)) {
         const size = productSize(ty);
         const body2 = `"use strict";
@@ -1895,7 +1939,8 @@ writer.offset += ${primitiveSizes[tag]};` : `writer.write${tag}(value.${name});`
         }
       }
       let deserializer = DESERIALIZERS.get(ty);
-      if (deserializer != null) return deserializer;
+      if (deserializer != null)
+        return deserializer;
       if (isFixedSizeProduct(ty)) {
         const body = `"use strict";
 const result = { ${ty.elements.map(getElementInitializer).join(", ")} };
@@ -1983,7 +2028,8 @@ return result;`
         };
       } else {
         let serializer = SERIALIZERS.get(ty);
-        if (serializer != null) return serializer;
+        if (serializer != null)
+          return serializer;
         const serializers = {};
         const body = `switch (value.tag) {
 ${ty.variants.map(
@@ -2052,7 +2098,8 @@ ${ty.variants.map(
         };
       } else {
         let deserializer = DESERIALIZERS.get(ty);
-        if (deserializer != null) return deserializer;
+        if (deserializer != null)
+          return deserializer;
         const deserializers = {};
         deserializer = Function(
           "reader",
@@ -2078,11 +2125,11 @@ ${ty.variants.map(
     }
   };
   var ConnectionId = class _ConnectionId {
-    __connection_id__;
     /**
      * Creates a new `ConnectionId`.
      */
     constructor(data) {
+      __publicField(this, "__connection_id__");
       this.__connection_id__ = data;
     }
     /**
@@ -2237,13 +2284,16 @@ ${ty.variants.map(
       });
     }
   };
-  var QueryBrand = /* @__PURE__ */ Symbol("QueryBrand");
+  var QueryBrand = Symbol("QueryBrand");
   var isRowTypedQuery = (val) => !!val && typeof val === "object" && QueryBrand in val;
   function toSql(q) {
     return q.toSql();
   }
-  var SemijoinImpl = class _SemijoinImpl {
+  var _a5, _b;
+  var SemijoinImpl = (_b = class {
     constructor(sourceQuery, filterQuery, joinCondition) {
+      __publicField(this, _a5, true);
+      __publicField(this, "type", "semijoin");
       this.sourceQuery = sourceQuery;
       this.filterQuery = filterQuery;
       this.joinCondition = joinCondition;
@@ -2251,14 +2301,12 @@ ${ty.variants.map(
         throw new Error("Cannot semijoin a table to itself");
       }
     }
-    [QueryBrand] = true;
-    type = "semijoin";
     build() {
       return this;
     }
     where(predicate) {
       const nextSourceQuery = this.sourceQuery.where(predicate);
-      return new _SemijoinImpl(
+      return new _b(
         nextSourceQuery,
         this.filterQuery,
         this.joinCondition
@@ -2283,20 +2331,21 @@ ${ty.variants.map(
       }
       return sql;
     }
-  };
-  var FromBuilder = class _FromBuilder {
+  }, _a5 = QueryBrand, _b);
+  var _a6, _b2;
+  var FromBuilder = (_b2 = class {
     constructor(table2, whereClause) {
+      __publicField(this, _a6, true);
       this.table = table2;
       this.whereClause = whereClause;
     }
-    [QueryBrand] = true;
     where(predicate) {
       const newCondition = normalizePredicateExpr(predicate(this.table.cols));
       const nextWhere = this.whereClause ? this.whereClause.and(newCondition) : newCondition;
-      return new _FromBuilder(this.table, nextWhere);
+      return new _b2(this.table, nextWhere);
     }
     rightSemijoin(right, on) {
-      const sourceQuery = new _FromBuilder(right);
+      const sourceQuery = new _b2(right);
       const joinCondition = on(
         this.table.indexedCols,
         right.indexedCols
@@ -2304,7 +2353,7 @@ ${ty.variants.map(
       return new SemijoinImpl(sourceQuery, this, joinCondition);
     }
     leftSemijoin(right, on) {
-      const filterQuery = new _FromBuilder(right);
+      const filterQuery = new _b2(right);
       const joinCondition = on(
         this.table.indexedCols,
         right.indexedCols
@@ -2317,15 +2366,24 @@ ${ty.variants.map(
     build() {
       return this;
     }
-  };
-  var TableRefImpl = class {
-    [QueryBrand] = true;
-    type = "table";
-    sourceName;
-    accessorName;
-    cols;
-    indexedCols;
-    tableDef;
+  }, _a6 = QueryBrand, _b2);
+  var _a7, _b3;
+  var TableRefImpl = (_b3 = class {
+    constructor(tableDef) {
+      __publicField(this, _a7, true);
+      __publicField(this, "type", "table");
+      __publicField(this, "sourceName");
+      __publicField(this, "accessorName");
+      __publicField(this, "cols");
+      __publicField(this, "indexedCols");
+      __publicField(this, "tableDef");
+      this.sourceName = tableDef.sourceName;
+      this.accessorName = tableDef.accessorName;
+      this.cols = createRowExpr(tableDef);
+      this.indexedCols = this.cols;
+      this.tableDef = tableDef;
+      Object.freeze(this);
+    }
     // Delegate UntypedTableDef properties from tableDef so this can be used as a table def.
     get columns() {
       return this.tableDef.columns;
@@ -2338,14 +2396,6 @@ ${ty.variants.map(
     }
     get constraints() {
       return this.tableDef.constraints;
-    }
-    constructor(tableDef) {
-      this.sourceName = tableDef.sourceName;
-      this.accessorName = tableDef.accessorName;
-      this.cols = createRowExpr(tableDef);
-      this.indexedCols = this.cols;
-      this.tableDef = tableDef;
-      Object.freeze(this);
     }
     asFrom() {
       return new FromBuilder(this);
@@ -2365,7 +2415,7 @@ ${ty.variants.map(
     where(predicate) {
       return this.asFrom().where(predicate);
     }
-  };
+  }, _a7 = QueryBrand, _b3);
   function createTableRefFromDef(tableDef) {
     return new TableRefImpl(tableDef);
   }
@@ -2397,23 +2447,25 @@ ${ty.variants.map(
     const quotedTable = quoteIdentifier(table2.sourceName);
     const sql = `SELECT * FROM ${quotedTable}`;
     const clauses = [];
-    if (where) clauses.push(booleanExprToSql(where));
+    if (where)
+      clauses.push(booleanExprToSql(where));
     clauses.push(...extraClauses);
-    if (clauses.length === 0) return sql;
+    if (clauses.length === 0)
+      return sql;
     const whereSql = clauses.length === 1 ? clauses[0] : clauses.map(wrapInParens).join(" AND ");
     return `${sql} WHERE ${whereSql}`;
   }
   var ColumnExpression = class {
-    type = "column";
-    // This is the column accessor
-    column;
-    // The name of the column in the database.
-    columnName;
-    table;
-    // phantom: actual runtime value is undefined
-    tsValueType;
-    spacetimeType;
     constructor(table2, column, spacetimeType, columnName) {
+      __publicField(this, "type", "column");
+      // This is the column accessor
+      __publicField(this, "column");
+      // The name of the column in the database.
+      __publicField(this, "columnName");
+      __publicField(this, "table");
+      // phantom: actual runtime value is undefined
+      __publicField(this, "tsValueType");
+      __publicField(this, "spacetimeType");
       this.table = table2;
       this.column = column;
       this.columnName = columnName || column;
@@ -2474,7 +2526,8 @@ ${ty.variants.map(
     return literal(val);
   }
   function normalizePredicateExpr(value) {
-    if (value instanceof BooleanExpr) return value;
+    if (value instanceof BooleanExpr)
+      return value;
     if (typeof value === "boolean") {
       return new BooleanExpr({
         type: "eq",
@@ -2573,22 +2626,22 @@ ${ty.variants.map(
     return { ...x, ...t2 };
   }
   var TypeBuilder = class {
-    /**
-     * The TypeScript phantom type. This is not stored at runtime,
-     * but is visible to the compiler
-     */
-    type;
-    /**
-     * The SpacetimeDB algebraic type (run‑time value). In addition to storing
-     * the runtime representation of the `AlgebraicType`, it also captures
-     * the TypeScript type information of the `AlgebraicType`. That is to say
-     * the value is not merely an `AlgebraicType`, but is constructed to be
-     * the corresponding concrete `AlgebraicType` for the TypeScript type `Type`.
-     *
-     * e.g. `string` corresponds to `AlgebraicType.String`
-     */
-    algebraicType;
     constructor(algebraicType) {
+      /**
+       * The TypeScript phantom type. This is not stored at runtime,
+       * but is visible to the compiler
+       */
+      __publicField(this, "type");
+      /**
+       * The SpacetimeDB algebraic type (run‑time value). In addition to storing
+       * the runtime representation of the `AlgebraicType`, it also captures
+       * the TypeScript type information of the `AlgebraicType`. That is to say
+       * the value is not merely an `AlgebraicType`, but is constructed to be
+       * the corresponding concrete `AlgebraicType` for the TypeScript type `Type`.
+       *
+       * e.g. `string` corresponds to `AlgebraicType.String`
+       */
+      __publicField(this, "algebraicType");
       this.algebraicType = algebraicType;
     }
     optional() {
@@ -3132,9 +3185,9 @@ ${ty.variants.map(
     }
   };
   var ArrayBuilder = class extends TypeBuilder {
-    element;
     constructor(element) {
       super(AlgebraicType.Array(element.algebraicType));
+      __publicField(this, "element");
       this.element = element;
     }
     default(value) {
@@ -3161,9 +3214,9 @@ ${ty.variants.map(
     }
   };
   var OptionBuilder = class extends TypeBuilder {
-    value;
     constructor(value) {
       super(Option.getAlgebraicType(value.algebraicType));
+      __publicField(this, "value");
       this.value = value;
     }
     default(value) {
@@ -3177,8 +3230,6 @@ ${ty.variants.map(
     }
   };
   var ProductBuilder = class extends TypeBuilder {
-    typeName;
-    elements;
     constructor(elements, name) {
       function elementsArrayFromElementsObj(obj) {
         return Object.keys(obj).map((key) => ({
@@ -3196,6 +3247,8 @@ ${ty.variants.map(
           elements: elementsArrayFromElementsObj(elements)
         })
       );
+      __publicField(this, "typeName");
+      __publicField(this, "elements");
       this.typeName = name;
       this.elements = elements;
     }
@@ -3210,10 +3263,10 @@ ${ty.variants.map(
     }
   };
   var ResultBuilder = class extends TypeBuilder {
-    ok;
-    err;
     constructor(ok, err) {
       super(Result.getAlgebraicType(ok.algebraicType, err.algebraicType));
+      __publicField(this, "ok");
+      __publicField(this, "err");
       this.ok = ok;
       this.err = err;
     }
@@ -3227,8 +3280,6 @@ ${ty.variants.map(
     }
   };
   var RowBuilder = class extends TypeBuilder {
-    row;
-    typeName;
     constructor(row, name) {
       const mappedRow = Object.fromEntries(
         Object.entries(row).map(([colName, builder]) => [
@@ -3243,13 +3294,13 @@ ${ty.variants.map(
         }
       }));
       super(AlgebraicType.Product({ elements }));
+      __publicField(this, "row");
+      __publicField(this, "typeName");
       this.row = mappedRow;
       this.typeName = name;
     }
   };
   var SumBuilderImpl = class extends TypeBuilder {
-    variants;
-    typeName;
     constructor(variants, name) {
       function variantsArrayFromVariantsObj(variants2) {
         return Object.keys(variants2).map((key) => ({
@@ -3267,6 +3318,8 @@ ${ty.variants.map(
           variants: variantsArrayFromVariantsObj(variants)
         })
       );
+      __publicField(this, "variants");
+      __publicField(this, "typeName");
       this.variants = variants;
       this.typeName = name;
       for (const key of Object.keys(variants)) {
@@ -3286,7 +3339,7 @@ ${ty.variants.map(
             configurable: false
           });
         } else {
-          const fn = ((value) => this.create(key, value));
+          const fn = (value) => this.create(key, value);
           Object.defineProperty(this, key, {
             value: fn,
             writable: false,
@@ -3530,9 +3583,9 @@ ${ty.variants.map(
   };
   var defaultMetadata = {};
   var ColumnBuilder = class {
-    typeBuilder;
-    columnMetadata;
     constructor(typeBuilder, metadata) {
+      __publicField(this, "typeBuilder");
+      __publicField(this, "columnMetadata");
       this.typeBuilder = typeBuilder;
       this.columnMetadata = metadata;
     }
@@ -4398,15 +4451,15 @@ ${ty.variants.map(
     }
   };
   var RefBuilder = class extends TypeBuilder {
-    ref;
-    /** The phantom type of the pointee of this ref. */
-    __spacetimeType;
     constructor(ref) {
       super(AlgebraicType.Ref(ref));
+      __publicField(this, "ref");
+      /** The phantom type of the pointee of this ref. */
+      __publicField(this, "__spacetimeType");
       this.ref = ref;
     }
   };
-  var enumImpl = ((nameOrObj, maybeObj) => {
+  var enumImpl = (nameOrObj, maybeObj) => {
     let obj = nameOrObj;
     let name = void 0;
     if (typeof nameOrObj === "string") {
@@ -4426,7 +4479,7 @@ ${ty.variants.map(
       return new SimpleSumBuilderImpl(simpleVariantsObj, name);
     }
     return new SumBuilder(obj, name);
-  });
+  };
   var t = {
     /**
      * Creates a new `Bool` {@link AlgebraicType} to be used in table definitions
@@ -4541,7 +4594,7 @@ ${ty.variants.map(
      * values must be {@link TypeBuilder}s.
      * @returns A new {@link ProductBuilder} instance.
      */
-    object: ((nameOrObj, maybeObj) => {
+    object: (nameOrObj, maybeObj) => {
       if (typeof nameOrObj === "string") {
         if (!maybeObj) {
           throw new TypeError(
@@ -4551,7 +4604,7 @@ ${ty.variants.map(
         return new ProductBuilder(maybeObj, nameOrObj);
       }
       return new ProductBuilder(nameOrObj, void 0);
-    }),
+    },
     /**
      * Creates a new `Row` {@link AlgebraicType} to be used in table definitions. Row types in SpacetimeDB
      * are similar to `Product` types, but are specifically used to define the schema of a table row.
@@ -4568,10 +4621,10 @@ ${ty.variants.map(
      * values must be {@link TypeBuilder}s or {@link ColumnBuilder}s.
      * @returns A new {@link RowBuilder} instance
      */
-    row: ((nameOrObj, maybeObj) => {
+    row: (nameOrObj, maybeObj) => {
       const [obj, name] = typeof nameOrObj === "string" ? [maybeObj, nameOrObj] : [nameOrObj, void 0];
       return new RowBuilder(obj, name);
-    }),
+    },
     /**
      * Creates a new `Array` {@link AlgebraicType} to be used in table definitions.
      * Represented as an array in TypeScript.
@@ -4598,7 +4651,7 @@ ${ty.variants.map(
      */
     lazy(thunk) {
       let cached = null;
-      const get = () => cached ??= thunk();
+      const get = () => cached ?? (cached = thunk());
       const proxy = new Proxy({}, {
         get(_t, prop, recv) {
           const target = get();
@@ -4911,25 +4964,28 @@ ${ty.variants.map(
     Default: t.unit(),
     SendDroppedRows: t.unit()
   });
-  var EventEmitter = class {
-    #events = /* @__PURE__ */ new Map();
+  var _events, _a8;
+  var EventEmitter = (_a8 = class {
+    constructor() {
+      __privateAdd(this, _events, /* @__PURE__ */ new Map());
+    }
     on(event, callback) {
-      let callbacks = this.#events.get(event);
+      let callbacks = __privateGet(this, _events).get(event);
       if (!callbacks) {
         callbacks = /* @__PURE__ */ new Set();
-        this.#events.set(event, callbacks);
+        __privateGet(this, _events).set(event, callbacks);
       }
       callbacks.add(callback);
     }
     off(event, callback) {
-      const callbacks = this.#events.get(event);
+      const callbacks = __privateGet(this, _events).get(event);
       if (!callbacks) {
         return;
       }
       callbacks.delete(callback);
     }
     emit(event, ...args) {
-      const callbacks = this.#events.get(event);
+      const callbacks = __privateGet(this, _events).get(event);
       if (!callbacks) {
         return;
       }
@@ -4937,7 +4993,7 @@ ${ty.variants.map(
         callback(...args);
       }
     }
-  };
+  }, _events = new WeakMap(), _a8);
   var LogLevelIdentifierIcon = {
     component: "\u{1F4E6}",
     info: "\u2139\uFE0F",
@@ -5023,13 +5079,12 @@ ${ty.variants.map(
     );
   };
   var scalarCompare = (x, y) => {
-    if (x === y) return 0;
+    if (x === y)
+      return 0;
     return x < y ? -1 : 1;
   };
-  var TableCacheImpl = class {
-    rows;
-    tableDef;
-    emitter;
+  var _makeReadonlyIndex, makeReadonlyIndex_fn, _a9;
+  var TableCacheImpl = (_a9 = class {
     /**
      * @param name the table name
      * @param primaryKeyCol column index designated as `#[primarykey]`
@@ -5037,76 +5092,250 @@ ${ty.variants.map(
      * @param entityClass the entityClass
      */
     constructor(tableDef) {
+      // TODO: this just scans the whole table; we should build proper index structures
+      __privateAdd(this, _makeReadonlyIndex);
+      __publicField(this, "rows");
+      __publicField(this, "tableDef");
+      __publicField(this, "emitter");
+      __publicField(this, "applyOperations", (operations, ctx) => {
+        const pendingCallbacks = [];
+        if (this.tableDef.isEvent) {
+          for (const op of operations) {
+            if (op.type === "insert") {
+              pendingCallbacks.push({
+                type: "insert",
+                table: this.tableDef.sourceName,
+                cb: () => {
+                  this.emitter.emit("insert", ctx, op.row);
+                }
+              });
+            }
+          }
+          return pendingCallbacks;
+        }
+        const hasPrimaryKey = Object.values(this.tableDef.columns).some(
+          (col) => col.columnMetadata.isPrimaryKey === true
+        );
+        if (hasPrimaryKey) {
+          const insertMap = /* @__PURE__ */ new Map();
+          const deleteMap = /* @__PURE__ */ new Map();
+          for (const op of operations) {
+            if (op.type === "insert") {
+              const [_, prevCount] = insertMap.get(op.rowId) || [op, 0];
+              insertMap.set(op.rowId, [op, prevCount + 1]);
+            } else {
+              const [_, prevCount] = deleteMap.get(op.rowId) || [op, 0];
+              deleteMap.set(op.rowId, [op, prevCount + 1]);
+            }
+          }
+          for (const [primaryKey, [insertOp, refCount]] of insertMap) {
+            const deleteEntry = deleteMap.get(primaryKey);
+            if (deleteEntry) {
+              const [_, deleteCount] = deleteEntry;
+              const refCountDelta = refCount - deleteCount;
+              const maybeCb = this.update(
+                ctx,
+                primaryKey,
+                insertOp.row,
+                refCountDelta
+              );
+              if (maybeCb) {
+                pendingCallbacks.push(maybeCb);
+              }
+              deleteMap.delete(primaryKey);
+            } else {
+              const maybeCb = this.insert(ctx, insertOp, refCount);
+              if (maybeCb) {
+                pendingCallbacks.push(maybeCb);
+              }
+            }
+          }
+          for (const [deleteOp, refCount] of deleteMap.values()) {
+            const maybeCb = this.delete(ctx, deleteOp, refCount);
+            if (maybeCb) {
+              pendingCallbacks.push(maybeCb);
+            }
+          }
+        } else {
+          for (const op of operations) {
+            if (op.type === "insert") {
+              const maybeCb = this.insert(ctx, op);
+              if (maybeCb) {
+                pendingCallbacks.push(maybeCb);
+              }
+            } else {
+              const maybeCb = this.delete(ctx, op);
+              if (maybeCb) {
+                pendingCallbacks.push(maybeCb);
+              }
+            }
+          }
+        }
+        return pendingCallbacks;
+      });
+      __publicField(this, "update", (ctx, rowId, newRow, refCountDelta = 0) => {
+        const existingEntry = this.rows.get(rowId);
+        if (!existingEntry) {
+          stdbLogger(
+            "error",
+            `Updating a row that was not present in the cache. Table: ${this.tableDef.sourceName}, RowId: ${rowId}`
+          );
+          return void 0;
+        }
+        const [oldRow, previousCount] = existingEntry;
+        const refCount = Math.max(1, previousCount + refCountDelta);
+        if (previousCount + refCountDelta <= 0) {
+          stdbLogger(
+            "error",
+            `Negative reference count for in table ${this.tableDef.sourceName} row ${rowId} (${previousCount} + ${refCountDelta})`
+          );
+          return void 0;
+        }
+        this.rows.set(rowId, [newRow, refCount]);
+        if (previousCount === 0) {
+          stdbLogger(
+            "error",
+            `Updating a row id in table ${this.tableDef.sourceName} which was not present in the cache (rowId: ${rowId})`
+          );
+          return {
+            type: "insert",
+            table: this.tableDef.sourceName,
+            cb: () => {
+              this.emitter.emit("insert", ctx, newRow);
+            }
+          };
+        }
+        return {
+          type: "update",
+          table: this.tableDef.sourceName,
+          cb: () => {
+            this.emitter.emit("update", ctx, oldRow, newRow);
+          }
+        };
+      });
+      __publicField(this, "insert", (ctx, operation, count = 1) => {
+        const [_, previousCount] = this.rows.get(operation.rowId) || [
+          operation.row,
+          0
+        ];
+        this.rows.set(operation.rowId, [operation.row, previousCount + count]);
+        if (previousCount === 0) {
+          return {
+            type: "insert",
+            table: this.tableDef.sourceName,
+            cb: () => {
+              this.emitter.emit("insert", ctx, operation.row);
+            }
+          };
+        }
+        return void 0;
+      });
+      __publicField(this, "delete", (ctx, operation, count = 1) => {
+        const [_, previousCount] = this.rows.get(operation.rowId) || [
+          operation.row,
+          0
+        ];
+        if (previousCount === 0) {
+          stdbLogger("warn", "Deleting a row that was not present in the cache");
+          return void 0;
+        }
+        if (previousCount <= count) {
+          this.rows.delete(operation.rowId);
+          return {
+            type: "delete",
+            table: this.tableDef.sourceName,
+            cb: () => {
+              this.emitter.emit("delete", ctx, operation.row);
+            }
+          };
+        }
+        this.rows.set(operation.rowId, [operation.row, previousCount - count]);
+        return void 0;
+      });
+      /**
+       * Register a callback for when a row is newly inserted into the database.
+       *
+       * ```ts
+       * ctx.db.user.onInsert((reducerEvent, user) => {
+       *   if (reducerEvent) {
+       *      console.log("New user on reducer", reducerEvent, user);
+       *   } else {
+       *      console.log("New user received during subscription update on insert", user);
+       *  }
+       * });
+       * ```
+       *
+       * @param cb Callback to be called when a new row is inserted
+       */
+      __publicField(this, "onInsert", (cb) => {
+        this.emitter.on("insert", cb);
+      });
+      /**
+       * Register a callback for when a row is deleted from the database.
+       *
+       * ```ts
+       * ctx.db.user.onDelete((reducerEvent, user) => {
+       *   if (reducerEvent) {
+       *      console.log("Deleted user on reducer", reducerEvent, user);
+       *   } else {
+       *      console.log("Deleted user received during subscription update on update", user);
+       *  }
+       * });
+       * ```
+       *
+       * @param cb Callback to be called when a new row is inserted
+       */
+      __publicField(this, "onDelete", (cb) => {
+        this.emitter.on("delete", cb);
+      });
+      /**
+       * Register a callback for when a row is updated into the database.
+       *
+       * ```ts
+       * ctx.db.user.onInsert((reducerEvent, oldUser, user) => {
+       *   if (reducerEvent) {
+       *      console.log("Updated user on reducer", reducerEvent, user);
+       *   } else {
+       *      console.log("Updated user received during subscription update on delete", user);
+       *  }
+       * });
+       * ```
+       *
+       * @param cb Callback to be called when a new row is inserted
+       */
+      __publicField(this, "onUpdate", (cb) => {
+        this.emitter.on("update", cb);
+      });
+      /**
+       * Remove a callback for when a row is newly inserted into the database.
+       *
+       * @param cb Callback to be removed
+       */
+      __publicField(this, "removeOnInsert", (cb) => {
+        this.emitter.off("insert", cb);
+      });
+      /**
+       * Remove a callback for when a row is deleted from the database.
+       *
+       * @param cb Callback to be removed
+       */
+      __publicField(this, "removeOnDelete", (cb) => {
+        this.emitter.off("delete", cb);
+      });
+      /**
+       * Remove a callback for when a row is updated into the database.
+       *
+       * @param cb Callback to be removed
+       */
+      __publicField(this, "removeOnUpdate", (cb) => {
+        this.emitter.off("update", cb);
+      });
       this.tableDef = tableDef;
       this.rows = /* @__PURE__ */ new Map();
       this.emitter = new EventEmitter();
       for (const idxDef of this.tableDef.resolvedIndexes) {
-        const index = this.#makeReadonlyIndex(this.tableDef, idxDef);
+        const index = __privateMethod(this, _makeReadonlyIndex, makeReadonlyIndex_fn).call(this, this.tableDef, idxDef);
         this[idxDef.name] = index;
-      }
-    }
-    // TODO: this just scans the whole table; we should build proper index structures
-    #makeReadonlyIndex(tableDef, idx) {
-      if (idx.algorithm !== "btree") {
-        throw new Error("Only btree indexes are supported in TableCacheImpl");
-      }
-      const columns = idx.columns;
-      const getKey = (row) => columns.map((c) => row[c]);
-      const matchRange = (row, rangeArg) => {
-        const key = getKey(row);
-        const arr = Array.isArray(rangeArg) ? rangeArg : [rangeArg];
-        const prefixLen = Math.max(0, arr.length - 1);
-        for (let i = 0; i < prefixLen; i++) {
-          if (!deepEqual(key[i], arr[i])) return false;
-        }
-        const lastProvided = arr[arr.length - 1];
-        const kLast = key[prefixLen];
-        if (lastProvided && typeof lastProvided === "object" && "from" in lastProvided && "to" in lastProvided) {
-          const from = lastProvided.from;
-          const to = lastProvided.to;
-          if (from.tag !== "unbounded") {
-            const c = scalarCompare(kLast, from.value);
-            if (c < 0) return false;
-            if (c === 0 && from.tag === "excluded") return false;
-          }
-          if (to.tag !== "unbounded") {
-            const c = scalarCompare(kLast, to.value);
-            if (c > 0) return false;
-            if (c === 0 && to.tag === "excluded") return false;
-          }
-          return true;
-        } else {
-          if (!deepEqual(kLast, lastProvided)) return false;
-          return true;
-        }
-      };
-      const isUnique = tableDef.constraints.some((constraint) => {
-        if (constraint.constraint !== "unique") {
-          return false;
-        }
-        return deepEqual(constraint.columns, idx.columns);
-      });
-      const self = this;
-      if (isUnique) {
-        const impl = {
-          find: (colVal) => {
-            const expected = Array.isArray(colVal) ? colVal : [colVal];
-            for (const row of self.iter()) {
-              if (deepEqual(getKey(row), expected)) return row;
-            }
-            return null;
-          }
-        };
-        return impl;
-      } else {
-        const impl = {
-          *filter(range) {
-            for (const row of self.iter()) {
-              if (matchRange(row, range)) yield row;
-            }
-          }
-        };
-        return impl;
       }
     }
     /**
@@ -5133,242 +5362,81 @@ ${ty.variants.map(
     [Symbol.iterator]() {
       return this.iter();
     }
-    applyOperations = (operations, ctx) => {
-      const pendingCallbacks = [];
-      if (this.tableDef.isEvent) {
-        for (const op of operations) {
-          if (op.type === "insert") {
-            pendingCallbacks.push({
-              type: "insert",
-              table: this.tableDef.sourceName,
-              cb: () => {
-                this.emitter.emit("insert", ctx, op.row);
-              }
-            });
-          }
-        }
-        return pendingCallbacks;
+  }, _makeReadonlyIndex = new WeakSet(), makeReadonlyIndex_fn = function(tableDef, idx) {
+    if (idx.algorithm !== "btree") {
+      throw new Error("Only btree indexes are supported in TableCacheImpl");
+    }
+    const columns = idx.columns;
+    const getKey = (row) => columns.map((c) => row[c]);
+    const matchRange = (row, rangeArg) => {
+      const key = getKey(row);
+      const arr = Array.isArray(rangeArg) ? rangeArg : [rangeArg];
+      const prefixLen = Math.max(0, arr.length - 1);
+      for (let i = 0; i < prefixLen; i++) {
+        if (!deepEqual(key[i], arr[i]))
+          return false;
       }
-      const hasPrimaryKey = Object.values(this.tableDef.columns).some(
-        (col) => col.columnMetadata.isPrimaryKey === true
-      );
-      if (hasPrimaryKey) {
-        const insertMap = /* @__PURE__ */ new Map();
-        const deleteMap = /* @__PURE__ */ new Map();
-        for (const op of operations) {
-          if (op.type === "insert") {
-            const [_, prevCount] = insertMap.get(op.rowId) || [op, 0];
-            insertMap.set(op.rowId, [op, prevCount + 1]);
-          } else {
-            const [_, prevCount] = deleteMap.get(op.rowId) || [op, 0];
-            deleteMap.set(op.rowId, [op, prevCount + 1]);
-          }
+      const lastProvided = arr[arr.length - 1];
+      const kLast = key[prefixLen];
+      if (lastProvided && typeof lastProvided === "object" && "from" in lastProvided && "to" in lastProvided) {
+        const from = lastProvided.from;
+        const to = lastProvided.to;
+        if (from.tag !== "unbounded") {
+          const c = scalarCompare(kLast, from.value);
+          if (c < 0)
+            return false;
+          if (c === 0 && from.tag === "excluded")
+            return false;
         }
-        for (const [primaryKey, [insertOp, refCount]] of insertMap) {
-          const deleteEntry = deleteMap.get(primaryKey);
-          if (deleteEntry) {
-            const [_, deleteCount] = deleteEntry;
-            const refCountDelta = refCount - deleteCount;
-            const maybeCb = this.update(
-              ctx,
-              primaryKey,
-              insertOp.row,
-              refCountDelta
-            );
-            if (maybeCb) {
-              pendingCallbacks.push(maybeCb);
-            }
-            deleteMap.delete(primaryKey);
-          } else {
-            const maybeCb = this.insert(ctx, insertOp, refCount);
-            if (maybeCb) {
-              pendingCallbacks.push(maybeCb);
-            }
-          }
+        if (to.tag !== "unbounded") {
+          const c = scalarCompare(kLast, to.value);
+          if (c > 0)
+            return false;
+          if (c === 0 && to.tag === "excluded")
+            return false;
         }
-        for (const [deleteOp, refCount] of deleteMap.values()) {
-          const maybeCb = this.delete(ctx, deleteOp, refCount);
-          if (maybeCb) {
-            pendingCallbacks.push(maybeCb);
-          }
-        }
+        return true;
       } else {
-        for (const op of operations) {
-          if (op.type === "insert") {
-            const maybeCb = this.insert(ctx, op);
-            if (maybeCb) {
-              pendingCallbacks.push(maybeCb);
-            }
-          } else {
-            const maybeCb = this.delete(ctx, op);
-            if (maybeCb) {
-              pendingCallbacks.push(maybeCb);
-            }
-          }
-        }
+        if (!deepEqual(kLast, lastProvided))
+          return false;
+        return true;
       }
-      return pendingCallbacks;
     };
-    update = (ctx, rowId, newRow, refCountDelta = 0) => {
-      const existingEntry = this.rows.get(rowId);
-      if (!existingEntry) {
-        stdbLogger(
-          "error",
-          `Updating a row that was not present in the cache. Table: ${this.tableDef.sourceName}, RowId: ${rowId}`
-        );
-        return void 0;
+    const isUnique = tableDef.constraints.some((constraint) => {
+      if (constraint.constraint !== "unique") {
+        return false;
       }
-      const [oldRow, previousCount] = existingEntry;
-      const refCount = Math.max(1, previousCount + refCountDelta);
-      if (previousCount + refCountDelta <= 0) {
-        stdbLogger(
-          "error",
-          `Negative reference count for in table ${this.tableDef.sourceName} row ${rowId} (${previousCount} + ${refCountDelta})`
-        );
-        return void 0;
-      }
-      this.rows.set(rowId, [newRow, refCount]);
-      if (previousCount === 0) {
-        stdbLogger(
-          "error",
-          `Updating a row id in table ${this.tableDef.sourceName} which was not present in the cache (rowId: ${rowId})`
-        );
-        return {
-          type: "insert",
-          table: this.tableDef.sourceName,
-          cb: () => {
-            this.emitter.emit("insert", ctx, newRow);
+      return deepEqual(constraint.columns, idx.columns);
+    });
+    const self = this;
+    if (isUnique) {
+      const impl = {
+        find: (colVal) => {
+          const expected = Array.isArray(colVal) ? colVal : [colVal];
+          for (const row of self.iter()) {
+            if (deepEqual(getKey(row), expected))
+              return row;
           }
-        };
-      }
-      return {
-        type: "update",
-        table: this.tableDef.sourceName,
-        cb: () => {
-          this.emitter.emit("update", ctx, oldRow, newRow);
+          return null;
         }
       };
-    };
-    insert = (ctx, operation, count = 1) => {
-      const [_, previousCount] = this.rows.get(operation.rowId) || [
-        operation.row,
-        0
-      ];
-      this.rows.set(operation.rowId, [operation.row, previousCount + count]);
-      if (previousCount === 0) {
-        return {
-          type: "insert",
-          table: this.tableDef.sourceName,
-          cb: () => {
-            this.emitter.emit("insert", ctx, operation.row);
+      return impl;
+    } else {
+      const impl = {
+        *filter(range) {
+          for (const row of self.iter()) {
+            if (matchRange(row, range))
+              yield row;
           }
-        };
-      }
-      return void 0;
-    };
-    delete = (ctx, operation, count = 1) => {
-      const [_, previousCount] = this.rows.get(operation.rowId) || [
-        operation.row,
-        0
-      ];
-      if (previousCount === 0) {
-        stdbLogger("warn", "Deleting a row that was not present in the cache");
-        return void 0;
-      }
-      if (previousCount <= count) {
-        this.rows.delete(operation.rowId);
-        return {
-          type: "delete",
-          table: this.tableDef.sourceName,
-          cb: () => {
-            this.emitter.emit("delete", ctx, operation.row);
-          }
-        };
-      }
-      this.rows.set(operation.rowId, [operation.row, previousCount - count]);
-      return void 0;
-    };
-    /**
-     * Register a callback for when a row is newly inserted into the database.
-     *
-     * ```ts
-     * ctx.db.user.onInsert((reducerEvent, user) => {
-     *   if (reducerEvent) {
-     *      console.log("New user on reducer", reducerEvent, user);
-     *   } else {
-     *      console.log("New user received during subscription update on insert", user);
-     *  }
-     * });
-     * ```
-     *
-     * @param cb Callback to be called when a new row is inserted
-     */
-    onInsert = (cb) => {
-      this.emitter.on("insert", cb);
-    };
-    /**
-     * Register a callback for when a row is deleted from the database.
-     *
-     * ```ts
-     * ctx.db.user.onDelete((reducerEvent, user) => {
-     *   if (reducerEvent) {
-     *      console.log("Deleted user on reducer", reducerEvent, user);
-     *   } else {
-     *      console.log("Deleted user received during subscription update on update", user);
-     *  }
-     * });
-     * ```
-     *
-     * @param cb Callback to be called when a new row is inserted
-     */
-    onDelete = (cb) => {
-      this.emitter.on("delete", cb);
-    };
-    /**
-     * Register a callback for when a row is updated into the database.
-     *
-     * ```ts
-     * ctx.db.user.onInsert((reducerEvent, oldUser, user) => {
-     *   if (reducerEvent) {
-     *      console.log("Updated user on reducer", reducerEvent, user);
-     *   } else {
-     *      console.log("Updated user received during subscription update on delete", user);
-     *  }
-     * });
-     * ```
-     *
-     * @param cb Callback to be called when a new row is inserted
-     */
-    onUpdate = (cb) => {
-      this.emitter.on("update", cb);
-    };
-    /**
-     * Remove a callback for when a row is newly inserted into the database.
-     *
-     * @param cb Callback to be removed
-     */
-    removeOnInsert = (cb) => {
-      this.emitter.off("insert", cb);
-    };
-    /**
-     * Remove a callback for when a row is deleted from the database.
-     *
-     * @param cb Callback to be removed
-     */
-    removeOnDelete = (cb) => {
-      this.emitter.off("delete", cb);
-    };
-    /**
-     * Remove a callback for when a row is updated into the database.
-     *
-     * @param cb Callback to be removed
-     */
-    removeOnUpdate = (cb) => {
-      this.emitter.off("update", cb);
-    };
-  };
+        }
+      };
+      return impl;
+    }
+  }, _a9);
   var TableMap = class {
-    map = /* @__PURE__ */ new Map();
+    constructor() {
+      __publicField(this, "map", /* @__PURE__ */ new Map());
+    }
     get(key) {
       return this.map.get(key);
     }
@@ -5397,10 +5465,12 @@ ${ty.variants.map(
     }
   };
   var ClientCache = class {
-    /**
-     * The tables in the database.
-     */
-    tables = new TableMap();
+    constructor() {
+      /**
+       * The tables in the database.
+       */
+      __publicField(this, "tables", new TableMap());
+    }
     /**
      * Returns the table with the given name.
      * - If SchemaDef is a concrete schema, `name` is constrained to known table names,
@@ -5441,7 +5511,8 @@ ${ty.variants.map(
     for (let i = 0; i < len; i++) {
       const aPart = a[i];
       const bPart = b[i];
-      if (aPart === bPart) continue;
+      if (aPart === bPart)
+        continue;
       if (typeof aPart === "number" && typeof bPart === "number") {
         return aPart - bPart;
       }
@@ -5453,12 +5524,12 @@ ${ty.variants.map(
     return a.length - b.length;
   }
   var SemanticVersion = class _SemanticVersion {
-    major;
-    minor;
-    patch;
-    preRelease;
-    buildInfo;
     constructor(major, minor, patch, preRelease = null, buildInfo = null) {
+      __publicField(this, "major");
+      __publicField(this, "minor");
+      __publicField(this, "patch");
+      __publicField(this, "preRelease");
+      __publicField(this, "buildInfo");
       this.major = major;
       this.minor = minor;
       this.patch = patch;
@@ -5586,50 +5657,34 @@ ${ty.variants.map(
       throw err;
     }
   }
-  var WebsocketDecompressAdapter = class _WebsocketDecompressAdapter {
+  var _ws, _decompress, decompress_fn, _a10;
+  var WebsocketDecompressAdapter = (_a10 = class {
+    constructor(ws) {
+      __privateAdd(this, _decompress);
+      __privateAdd(this, _ws, void 0);
+      ws.binaryType = "arraybuffer";
+      __privateSet(this, _ws, ws);
+    }
     set onclose(handler) {
-      this.#ws.onclose = handler;
+      __privateGet(this, _ws).onclose = handler;
     }
     set onopen(handler) {
-      this.#ws.onopen = handler;
+      __privateGet(this, _ws).onopen = handler;
     }
     set onmessage(handler) {
-      this.#ws.onmessage = async (msg) => {
-        const data = await this.#decompress(new Uint8Array(msg.data));
+      __privateGet(this, _ws).onmessage = async (msg) => {
+        const data = await __privateMethod(this, _decompress, decompress_fn).call(this, new Uint8Array(msg.data));
         handler({ data });
       };
     }
     set onerror(handler) {
-      this.#ws.onerror = handler;
-    }
-    #ws;
-    async #decompress(buffer) {
-      const tag = buffer[0];
-      const data = buffer.subarray(1);
-      switch (tag) {
-        case 0:
-          return data;
-        case 1:
-          throw new Error(
-            "Brotli Compression not supported. Please use gzip or none compression in withCompression method on DbConnection."
-          );
-        case 2:
-          return await decompress(data, "gzip");
-        default:
-          throw new Error(
-            "Unexpected Compression Algorithm. Please use `gzip` or `none`"
-          );
-      }
+      __privateGet(this, _ws).onerror = handler;
     }
     send(msg) {
-      this.#ws.send(msg);
+      __privateGet(this, _ws).send(msg);
     }
     close() {
-      this.#ws.close();
-    }
-    constructor(ws) {
-      ws.binaryType = "arraybuffer";
-      this.#ws = ws;
+      __privateGet(this, _ws).close();
     }
     static async createWebSocketFn({
       url,
@@ -5672,10 +5727,28 @@ ${ty.variants.map(
         databaseUrl.searchParams.set("confirmed", confirmedReads.toString());
       }
       const ws = new WS(databaseUrl.toString(), wsProtocol);
-      return new _WebsocketDecompressAdapter(ws);
+      return new _a10(ws);
     }
-  };
-  var DbConnectionBuilder = class {
+  }, _ws = new WeakMap(), _decompress = new WeakSet(), decompress_fn = async function(buffer) {
+    const tag = buffer[0];
+    const data = buffer.subarray(1);
+    switch (tag) {
+      case 0:
+        return data;
+      case 1:
+        throw new Error(
+          "Brotli Compression not supported. Please use gzip or none compression in withCompression method on DbConnection."
+        );
+      case 2:
+        return await decompress(data, "gzip");
+      default:
+        throw new Error(
+          "Unexpected Compression Algorithm. Please use `gzip` or `none`"
+        );
+    }
+  }, _a10);
+  var _uri, _nameOrAddress, _identity, _token, _emitter, _compression, _lightMode, _confirmedReads, _createWSFn, _a11;
+  var DbConnectionBuilder = (_a11 = class {
     /**
      * Creates a new `DbConnectionBuilder` database client and set the initial parameters.
      *
@@ -5685,19 +5758,19 @@ ${ty.variants.map(
      * @param dbConnectionConstructor The constructor to use to create a new `DbConnection`.
      */
     constructor(remoteModule, dbConnectionCtor) {
+      __privateAdd(this, _uri, void 0);
+      __privateAdd(this, _nameOrAddress, void 0);
+      __privateAdd(this, _identity, void 0);
+      __privateAdd(this, _token, void 0);
+      __privateAdd(this, _emitter, new EventEmitter());
+      __privateAdd(this, _compression, "gzip");
+      __privateAdd(this, _lightMode, false);
+      __privateAdd(this, _confirmedReads, void 0);
+      __privateAdd(this, _createWSFn, void 0);
       this.remoteModule = remoteModule;
       this.dbConnectionCtor = dbConnectionCtor;
-      this.#createWSFn = WebsocketDecompressAdapter.createWebSocketFn;
+      __privateSet(this, _createWSFn, WebsocketDecompressAdapter.createWebSocketFn);
     }
-    #uri;
-    #nameOrAddress;
-    #identity;
-    #token;
-    #emitter = new EventEmitter();
-    #compression = "gzip";
-    #lightMode = false;
-    #confirmedReads;
-    #createWSFn;
     /**
      * Set the URI of the SpacetimeDB server to connect to.
      *
@@ -5705,7 +5778,7 @@ ${ty.variants.map(
      *
      **/
     withUri(uri) {
-      this.#uri = new URL(uri);
+      __privateSet(this, _uri, new URL(uri));
       return this;
     }
     /**
@@ -5716,7 +5789,7 @@ ${ty.variants.map(
      * @returns The `DbConnectionBuilder` instance.
      */
     withDatabaseName(nameOrAddress) {
-      this.#nameOrAddress = nameOrAddress;
+      __privateSet(this, _nameOrAddress, nameOrAddress);
       return this;
     }
     /**
@@ -5729,11 +5802,11 @@ ${ty.variants.map(
      * @returns The `DbConnectionBuilder` instance.
      */
     withToken(token) {
-      this.#token = token;
+      __privateSet(this, _token, token);
       return this;
     }
     withWSFn(createWSFn) {
-      this.#createWSFn = createWSFn;
+      __privateSet(this, _createWSFn, createWSFn);
       return this;
     }
     /**
@@ -5742,7 +5815,7 @@ ${ty.variants.map(
      * @param compression The compression algorithm to use for the connection.
      */
     withCompression(compression) {
-      this.#compression = compression;
+      __privateSet(this, _compression, compression);
       return this;
     }
     /**
@@ -5753,7 +5826,7 @@ ${ty.variants.map(
      * @param lightMode The light mode for the connection.
      */
     withLightMode(lightMode) {
-      this.#lightMode = lightMode;
+      __privateSet(this, _lightMode, lightMode);
       return this;
     }
     /**
@@ -5777,7 +5850,7 @@ ${ty.variants.map(
      * @param confirmedReads `true` to enable confirmed reads, `false` to disable.
      */
     withConfirmedReads(confirmedReads) {
-      this.#confirmedReads = confirmedReads;
+      __privateSet(this, _confirmedReads, confirmedReads);
       return this;
     }
     /**
@@ -5805,7 +5878,7 @@ ${ty.variants.map(
      * ```
      */
     onConnect(callback) {
-      this.#emitter.on("connect", callback);
+      __privateGet(this, _emitter).on("connect", callback);
       return this;
     }
     /**
@@ -5820,7 +5893,7 @@ ${ty.variants.map(
      * ```
      */
     onConnectError(callback) {
-      this.#emitter.on("connectError", callback);
+      __privateGet(this, _emitter).on("connectError", callback);
       return this;
     }
     /**
@@ -5851,14 +5924,14 @@ ${ty.variants.map(
      * @throws {Error} Throws an error if called multiple times on the same `DbConnectionBuilder`.
      */
     onDisconnect(callback) {
-      this.#emitter.on("disconnect", callback);
+      __privateGet(this, _emitter).on("disconnect", callback);
       return this;
     }
     getUri() {
-      return this.#uri?.toString() ?? "";
+      return __privateGet(this, _uri)?.toString() ?? "";
     }
     getModuleName() {
-      return this.#nameOrAddress ?? "";
+      return __privateGet(this, _nameOrAddress) ?? "";
     }
     /**
      * Builds a new `DbConnection` with the parameters set on this `DbConnectionBuilder` and attempts to connect to the SpacetimeDB server.
@@ -5875,36 +5948,37 @@ ${ty.variants.map(
      * ```
      */
     build() {
-      if (!this.#uri) {
+      if (!__privateGet(this, _uri)) {
         throw new Error("URI is required to connect to SpacetimeDB");
       }
-      if (!this.#nameOrAddress) {
+      if (!__privateGet(this, _nameOrAddress)) {
         throw new Error(
           "Database name or address is required to connect to SpacetimeDB"
         );
       }
       ensureMinimumVersionOrThrow(this.remoteModule.versionInfo?.cliVersion);
       return this.dbConnectionCtor({
-        uri: this.#uri,
-        nameOrAddress: this.#nameOrAddress,
-        identity: this.#identity,
-        token: this.#token,
-        emitter: this.#emitter,
-        compression: this.#compression,
-        lightMode: this.#lightMode,
-        confirmedReads: this.#confirmedReads,
-        createWSFn: this.#createWSFn,
+        uri: __privateGet(this, _uri),
+        nameOrAddress: __privateGet(this, _nameOrAddress),
+        identity: __privateGet(this, _identity),
+        token: __privateGet(this, _token),
+        emitter: __privateGet(this, _emitter),
+        compression: __privateGet(this, _compression),
+        lightMode: __privateGet(this, _lightMode),
+        confirmedReads: __privateGet(this, _confirmedReads),
+        createWSFn: __privateGet(this, _createWSFn),
         remoteModule: this.remoteModule
       });
     }
-  };
-  var INTERNAL_REMOTE_MODULE = /* @__PURE__ */ Symbol("INTERNAL_REMOTE_MODULE");
-  var SubscriptionBuilderImpl = class {
+  }, _uri = new WeakMap(), _nameOrAddress = new WeakMap(), _identity = new WeakMap(), _token = new WeakMap(), _emitter = new WeakMap(), _compression = new WeakMap(), _lightMode = new WeakMap(), _confirmedReads = new WeakMap(), _createWSFn = new WeakMap(), _a11);
+  var INTERNAL_REMOTE_MODULE = Symbol("INTERNAL_REMOTE_MODULE");
+  var _onApplied, _onError, _a12;
+  var SubscriptionBuilderImpl = (_a12 = class {
     constructor(db) {
+      __privateAdd(this, _onApplied, void 0);
+      __privateAdd(this, _onError, void 0);
       this.db = db;
     }
-    #onApplied = void 0;
-    #onError = void 0;
     /**
      * Registers `callback` to run when this query is successfully added to our subscribed set,
      * I.e. when its `SubscriptionApplied` message is received.
@@ -5921,7 +5995,7 @@ ${ty.variants.map(
      * @returns The current `SubscriptionBuilder` instance.
      */
     onApplied(cb) {
-      this.#onApplied = cb;
+      __privateSet(this, _onApplied, cb);
       return this;
     }
     /**
@@ -5945,7 +6019,7 @@ ${ty.variants.map(
      * @returns The current `SubscriptionBuilder` instance.
      */
     onError(cb) {
-      this.#onError = cb;
+      __privateSet(this, _onError, cb);
       return this;
     }
     subscribe(query_sql) {
@@ -5961,15 +6035,17 @@ ${ty.variants.map(
         throw new Error("Subscriptions must have at least one query");
       }
       const queryStrings = queries.map((q) => {
-        if (typeof q === "string") return q;
-        if (isRowTypedQuery(q)) return toSql(q);
+        if (typeof q === "string")
+          return q;
+        if (isRowTypedQuery(q))
+          return toSql(q);
         throw new Error("Subscriptions must be SQL strings or typed queries");
       });
       return new SubscriptionHandleImpl(
         this.db,
         queryStrings,
-        this.#onApplied,
-        this.#onError
+        __privateGet(this, _onApplied),
+        __privateGet(this, _onError)
       );
     }
     /**
@@ -5996,59 +6072,62 @@ ${ty.variants.map(
       );
       this.subscribe(queries);
     }
-  };
+  }, _onApplied = new WeakMap(), _onError = new WeakMap(), _a12);
   var SubscriptionManager = class {
-    subscriptions = /* @__PURE__ */ new Map();
+    constructor() {
+      __publicField(this, "subscriptions", /* @__PURE__ */ new Map());
+    }
   };
-  var SubscriptionHandleImpl = class {
+  var _querySetId, _unsubscribeCalled, _endedState, _activeState, _emitter2, _a13;
+  var SubscriptionHandleImpl = (_a13 = class {
     constructor(db, querySql, onApplied, onError) {
+      __privateAdd(this, _querySetId, void 0);
+      __privateAdd(this, _unsubscribeCalled, false);
+      __privateAdd(this, _endedState, false);
+      __privateAdd(this, _activeState, false);
+      __privateAdd(this, _emitter2, new EventEmitter());
       this.db = db;
-      this.#emitter.on(
+      __privateGet(this, _emitter2).on(
         "applied",
         (ctx) => {
-          this.#activeState = true;
+          __privateSet(this, _activeState, true);
           if (onApplied) {
             onApplied(ctx);
           }
         }
       );
-      this.#emitter.on(
+      __privateGet(this, _emitter2).on(
         "error",
         (ctx, error) => {
-          this.#activeState = false;
-          this.#endedState = true;
+          __privateSet(this, _activeState, false);
+          __privateSet(this, _endedState, true);
           if (onError) {
             onError(ctx, error);
           }
         }
       );
-      this.#querySetId = this.db.registerSubscription(
+      __privateSet(this, _querySetId, this.db.registerSubscription(
         this,
-        this.#emitter,
+        __privateGet(this, _emitter2),
         querySql
-      );
+      ));
     }
-    #querySetId;
-    #unsubscribeCalled = false;
-    #endedState = false;
-    #activeState = false;
-    #emitter = new EventEmitter();
     /**
      * Consumes self and issues an `Unsubscribe` message,
      * removing this query from the client's set of subscribed queries.
      * It is only valid to call this method if `is_active()` is `true`.
      */
     unsubscribe() {
-      if (this.#unsubscribeCalled) {
+      if (__privateGet(this, _unsubscribeCalled)) {
         throw new Error("Unsubscribe has already been called");
       }
-      this.#unsubscribeCalled = true;
-      this.db.unregisterSubscription(this.#querySetId);
-      this.#emitter.on(
+      __privateSet(this, _unsubscribeCalled, true);
+      this.db.unregisterSubscription(__privateGet(this, _querySetId));
+      __privateGet(this, _emitter2).on(
         "end",
         (_ctx) => {
-          this.#endedState = true;
-          this.#activeState = false;
+          __privateSet(this, _endedState, true);
+          __privateSet(this, _activeState, false);
         }
       );
     }
@@ -6063,19 +6142,19 @@ ${ty.variants.map(
      * @param onEnd - Callback to run upon successful unsubscribe.
      */
     unsubscribeThen(onEnd) {
-      if (this.#endedState) {
+      if (__privateGet(this, _endedState)) {
         throw new Error("Subscription has already ended");
       }
-      if (this.#unsubscribeCalled) {
+      if (__privateGet(this, _unsubscribeCalled)) {
         throw new Error("Unsubscribe has already been called");
       }
-      this.#unsubscribeCalled = true;
-      this.db.unregisterSubscription(this.#querySetId);
-      this.#emitter.on(
+      __privateSet(this, _unsubscribeCalled, true);
+      this.db.unregisterSubscription(__privateGet(this, _querySetId));
+      __privateGet(this, _emitter2).on(
         "end",
         (ctx) => {
-          this.#endedState = true;
-          this.#activeState = false;
+          __privateSet(this, _endedState, true);
+          __privateSet(this, _activeState, false);
           onEnd(ctx);
         }
       );
@@ -6088,7 +6167,7 @@ ${ty.variants.map(
      * A subscription which has not yet been applied is not active, but is also not ended.
      */
     isEnded() {
-      return this.#endedState;
+      return __privateGet(this, _endedState);
     }
     /**
      * True if this `SubscriptionHandle` is active, meaning it has been successfully applied
@@ -6098,66 +6177,11 @@ ${ty.variants.map(
      * and at the end by either the `on_end` or `on_error` callback.
      */
     isActive() {
-      return this.#activeState;
+      return __privateGet(this, _activeState);
     }
-  };
-  var DbConnectionImpl = class {
-    /**
-     * Whether or not the connection is active.
-     */
-    isActive = false;
-    /**
-     * This connection's public identity.
-     */
-    identity = void 0;
-    /**
-     * This connection's private authentication token.
-     */
-    token = void 0;
-    /** @internal */
-    [INTERNAL_REMOTE_MODULE]() {
-      return this.#remoteModule;
-    }
-    /**
-     * The accessor field to access the tables in the database and associated
-     * callback functions.
-     */
-    db;
-    /**
-     * The accessor field to access the reducers in the database.
-     */
-    reducers;
-    /**
-     * The accessor field to access the procedures in the database.
-     */
-    procedures;
-    /**
-     * The `ConnectionId` of the connection to to the database.
-     */
-    connectionId = ConnectionId.random();
-    // These fields are meant to be strictly private.
-    #queryId = 0;
-    #requestId = 0;
-    #eventId = 0;
-    #emitter;
-    #messageQueue = Promise.resolve();
-    #outboundQueue = [];
-    #subscriptionManager = new SubscriptionManager();
-    #remoteModule;
-    #reducerCallbacks = /* @__PURE__ */ new Map();
-    #reducerCallInfo = /* @__PURE__ */ new Map();
-    #procedureCallbacks = /* @__PURE__ */ new Map();
-    #rowDeserializers;
-    #reducerArgsSerializers;
-    #procedureSerializers;
-    #sourceNameToTableDef;
-    // These fields are not part of the public API, but in a pinch you
-    // could use JavaScript to access them by bypassing TypeScript's
-    // private fields.
-    // We use them in testing.
-    clientCache;
-    ws;
-    wsPromise;
+  }, _querySetId = new WeakMap(), _unsubscribeCalled = new WeakMap(), _endedState = new WeakMap(), _activeState = new WeakMap(), _emitter2 = new WeakMap(), _a13);
+  var _queryId, _requestId, _eventId, _emitter3, _messageQueue, _outboundQueue, _subscriptionManager, _remoteModule, _reducerCallbacks, _reducerCallInfo, _procedureCallbacks, _rowDeserializers, _reducerArgsSerializers, _procedureSerializers, _sourceNameToTableDef, _getNextQueryId, _getNextRequestId, _makeDbView, makeDbView_fn, _makeReducers, makeReducers_fn, _makeProcedures, makeProcedures_fn, _makeEventContext, makeEventContext_fn, _parseRowList, parseRowList_fn, _mergeTableUpdates, mergeTableUpdates_fn, _queryRowsToTableUpdates, queryRowsToTableUpdates_fn, _tableUpdateRowsToOperations, tableUpdateRowsToOperations_fn, _querySetUpdateToTableUpdates, querySetUpdateToTableUpdates_fn, _flushOutboundQueue, flushOutboundQueue_fn, _clientMessageEncoder, _sendMessage, sendMessage_fn, _nextEventId, nextEventId_fn, _handleOnOpen, handleOnOpen_fn, _applyTableUpdates, applyTableUpdates_fn, _applyTransactionUpdates, applyTransactionUpdates_fn, _processMessage, processMessage_fn, _handleOnMessage, handleOnMessage_fn, _a14;
+  var DbConnectionImpl = (_a14 = class {
     constructor({
       uri,
       nameOrAddress,
@@ -6170,6 +6194,100 @@ ${ty.variants.map(
       lightMode,
       confirmedReads
     }) {
+      __privateAdd(this, _makeDbView);
+      __privateAdd(this, _makeReducers);
+      __privateAdd(this, _makeProcedures);
+      __privateAdd(this, _makeEventContext);
+      __privateAdd(this, _parseRowList);
+      // Take a bunch of table updates and ensure that there is at most one update per table.
+      __privateAdd(this, _mergeTableUpdates);
+      __privateAdd(this, _queryRowsToTableUpdates);
+      __privateAdd(this, _tableUpdateRowsToOperations);
+      __privateAdd(this, _querySetUpdateToTableUpdates);
+      __privateAdd(this, _flushOutboundQueue);
+      __privateAdd(this, _sendMessage);
+      __privateAdd(this, _nextEventId);
+      /**
+       * Handles WebSocket onOpen event.
+       */
+      __privateAdd(this, _handleOnOpen);
+      __privateAdd(this, _applyTableUpdates);
+      __privateAdd(this, _applyTransactionUpdates);
+      __privateAdd(this, _processMessage);
+      /**
+       * Handles WebSocket onMessage event.
+       * @param wsMessage MessageEvent object.
+       */
+      __privateAdd(this, _handleOnMessage);
+      /**
+       * Whether or not the connection is active.
+       */
+      __publicField(this, "isActive", false);
+      /**
+       * This connection's public identity.
+       */
+      __publicField(this, "identity");
+      /**
+       * This connection's private authentication token.
+       */
+      __publicField(this, "token");
+      /**
+       * The accessor field to access the tables in the database and associated
+       * callback functions.
+       */
+      __publicField(this, "db");
+      /**
+       * The accessor field to access the reducers in the database.
+       */
+      __publicField(this, "reducers");
+      /**
+       * The accessor field to access the procedures in the database.
+       */
+      __publicField(this, "procedures");
+      /**
+       * The `ConnectionId` of the connection to to the database.
+       */
+      __publicField(this, "connectionId", ConnectionId.random());
+      // These fields are meant to be strictly private.
+      __privateAdd(this, _queryId, 0);
+      __privateAdd(this, _requestId, 0);
+      __privateAdd(this, _eventId, 0);
+      __privateAdd(this, _emitter3, void 0);
+      __privateAdd(this, _messageQueue, Promise.resolve());
+      __privateAdd(this, _outboundQueue, []);
+      __privateAdd(this, _subscriptionManager, new SubscriptionManager());
+      __privateAdd(this, _remoteModule, void 0);
+      __privateAdd(this, _reducerCallbacks, /* @__PURE__ */ new Map());
+      __privateAdd(this, _reducerCallInfo, /* @__PURE__ */ new Map());
+      __privateAdd(this, _procedureCallbacks, /* @__PURE__ */ new Map());
+      __privateAdd(this, _rowDeserializers, void 0);
+      __privateAdd(this, _reducerArgsSerializers, void 0);
+      __privateAdd(this, _procedureSerializers, void 0);
+      __privateAdd(this, _sourceNameToTableDef, void 0);
+      // These fields are not part of the public API, but in a pinch you
+      // could use JavaScript to access them by bypassing TypeScript's
+      // private fields.
+      // We use them in testing.
+      __publicField(this, "clientCache");
+      __publicField(this, "ws");
+      __publicField(this, "wsPromise");
+      __privateAdd(this, _getNextQueryId, () => {
+        const queryId = __privateGet(this, _queryId);
+        __privateSet(this, _queryId, __privateGet(this, _queryId) + 1);
+        return queryId;
+      });
+      __privateAdd(this, _getNextRequestId, () => __privateWrapper(this, _requestId)._++);
+      // NOTE: This is very important!!! This is the actual function that
+      // gets called when you call `connection.subscriptionBuilder()`.
+      // The `subscriptionBuilder` function which is generated, just shadows
+      // this function in the type system, but not the actual implementation!
+      // Do not remove this function, or shoot yourself in the foot please.
+      // It's not clear what would be a better way to do this at this exact
+      // moment.
+      __publicField(this, "subscriptionBuilder", () => {
+        return new SubscriptionBuilderImpl(this);
+      });
+      __privateAdd(this, _clientMessageEncoder, new BinaryWriter(1024));
       stdbLogger("info", "Connecting to SpacetimeDB WS...");
       const url = new URL(uri.toString());
       if (!/^wss?:/.test(uri.protocol)) {
@@ -6177,26 +6295,26 @@ ${ty.variants.map(
       }
       this.identity = identity;
       this.token = token;
-      this.#remoteModule = remoteModule;
-      this.#emitter = emitter;
-      this.#rowDeserializers = /* @__PURE__ */ Object.create(null);
-      this.#sourceNameToTableDef = /* @__PURE__ */ Object.create(null);
+      __privateSet(this, _remoteModule, remoteModule);
+      __privateSet(this, _emitter3, emitter);
+      __privateSet(this, _rowDeserializers, /* @__PURE__ */ Object.create(null));
+      __privateSet(this, _sourceNameToTableDef, /* @__PURE__ */ Object.create(null));
       for (const table2 of Object.values(remoteModule.tables)) {
-        this.#rowDeserializers[table2.sourceName] = ProductType.makeDeserializer(
+        __privateGet(this, _rowDeserializers)[table2.sourceName] = ProductType.makeDeserializer(
           table2.rowType
         );
-        this.#sourceNameToTableDef[table2.sourceName] = table2;
+        __privateGet(this, _sourceNameToTableDef)[table2.sourceName] = table2;
       }
-      this.#reducerArgsSerializers = /* @__PURE__ */ Object.create(null);
+      __privateSet(this, _reducerArgsSerializers, /* @__PURE__ */ Object.create(null));
       for (const reducer of remoteModule.reducers) {
-        this.#reducerArgsSerializers[reducer.name] = {
+        __privateGet(this, _reducerArgsSerializers)[reducer.name] = {
           serialize: ProductType.makeSerializer(reducer.paramsType),
           deserialize: ProductType.makeDeserializer(reducer.paramsType)
         };
       }
-      this.#procedureSerializers = /* @__PURE__ */ Object.create(null);
+      __privateSet(this, _procedureSerializers, /* @__PURE__ */ Object.create(null));
       for (const procedure of remoteModule.procedures) {
-        this.#procedureSerializers[procedure.name] = {
+        __privateGet(this, _procedureSerializers)[procedure.name] = {
           serializeArgs: ProductType.makeSerializer(
             new ProductBuilder(procedure.params).algebraicType.value
           ),
@@ -6208,9 +6326,9 @@ ${ty.variants.map(
       const connectionId = this.connectionId.toHexString();
       url.searchParams.set("connection_id", connectionId);
       this.clientCache = new ClientCache();
-      this.db = this.#makeDbView();
-      this.reducers = this.#makeReducers(remoteModule);
-      this.procedures = this.#makeProcedures(remoteModule);
+      this.db = __privateMethod(this, _makeDbView, makeDbView_fn).call(this);
+      this.reducers = __privateMethod(this, _makeReducers, makeReducers_fn).call(this, remoteModule);
+      this.procedures = __privateMethod(this, _makeProcedures, makeProcedures_fn).call(this, remoteModule);
       this.wsPromise = createWSFn({
         url,
         nameOrAddress,
@@ -6222,482 +6340,50 @@ ${ty.variants.map(
       }).then((v) => {
         this.ws = v;
         this.ws.onclose = () => {
-          this.#emitter.emit("disconnect", this);
+          __privateGet(this, _emitter3).emit("disconnect", this);
           this.isActive = false;
         };
         this.ws.onerror = (e) => {
-          this.#emitter.emit("connectError", this, e);
+          __privateGet(this, _emitter3).emit("connectError", this, e);
           this.isActive = false;
         };
-        this.ws.onopen = this.#handleOnOpen.bind(this);
-        this.ws.onmessage = this.#handleOnMessage.bind(this);
+        this.ws.onopen = __privateMethod(this, _handleOnOpen, handleOnOpen_fn).bind(this);
+        this.ws.onmessage = __privateMethod(this, _handleOnMessage, handleOnMessage_fn).bind(this);
         return v;
       }).catch((e) => {
         stdbLogger("error", "Error connecting to SpacetimeDB WS");
-        this.#emitter.emit("connectError", this, e);
+        __privateGet(this, _emitter3).emit("connectError", this, e);
         return void 0;
       });
     }
-    #getNextQueryId = () => {
-      const queryId = this.#queryId;
-      this.#queryId += 1;
-      return queryId;
-    };
-    #getNextRequestId = () => this.#requestId++;
-    #makeDbView() {
-      const view = /* @__PURE__ */ Object.create(null);
-      for (const tbl of Object.values(this.#sourceNameToTableDef)) {
-        const key = tbl.accessorName;
-        Object.defineProperty(view, key, {
-          enumerable: true,
-          configurable: false,
-          get: () => this.clientCache.getOrCreateTable(tbl)
-        });
-      }
-      return view;
+    /** @internal */
+    [INTERNAL_REMOTE_MODULE]() {
+      return __privateGet(this, _remoteModule);
     }
-    #makeReducers(def) {
-      const out = {};
-      const writer = new BinaryWriter(1024);
-      for (const reducer of def.reducers) {
-        const reducerName = reducer.name;
-        const key = reducer.accessorName;
-        const { serialize: serializeArgs } = this.#reducerArgsSerializers[reducerName];
-        out[key] = (params) => {
-          writer.clear();
-          serializeArgs(writer, params);
-          const argsBuffer = writer.getBuffer();
-          return this.callReducer(reducerName, argsBuffer, params);
-        };
-      }
-      return out;
-    }
-    #makeProcedures(def) {
-      const out = {};
-      const writer = new BinaryWriter(1024);
-      for (const procedure of def.procedures) {
-        const procedureName = procedure.name;
-        const key = procedure.accessorName;
-        const { serializeArgs, deserializeReturn } = this.#procedureSerializers[procedureName];
-        out[key] = (params) => {
-          writer.clear();
-          serializeArgs(writer, params);
-          const argsBuffer = writer.getBuffer();
-          return this.callProcedure(procedureName, argsBuffer).then((returnBuf) => {
-            return deserializeReturn(new BinaryReader(returnBuf));
-          });
-        };
-      }
-      return out;
-    }
-    #makeEventContext(event) {
-      return {
-        db: this.db,
-        reducers: this.reducers,
-        isActive: this.isActive,
-        subscriptionBuilder: this.subscriptionBuilder.bind(this),
-        disconnect: this.disconnect.bind(this),
-        event
-      };
-    }
-    // NOTE: This is very important!!! This is the actual function that
-    // gets called when you call `connection.subscriptionBuilder()`.
-    // The `subscriptionBuilder` function which is generated, just shadows
-    // this function in the type system, but not the actual implementation!
-    // Do not remove this function, or shoot yourself in the foot please.
-    // It's not clear what would be a better way to do this at this exact
-    // moment.
-    subscriptionBuilder = () => {
-      return new SubscriptionBuilderImpl(this);
-    };
     getTablesMap() {
-      return makeQueryBuilder({ tables: this.#remoteModule.tables });
+      return makeQueryBuilder({ tables: __privateGet(this, _remoteModule).tables });
     }
     registerSubscription(handle, handleEmitter, querySql) {
-      const querySetId = this.#getNextQueryId();
-      this.#subscriptionManager.subscriptions.set(querySetId, {
+      const querySetId = __privateGet(this, _getNextQueryId).call(this);
+      __privateGet(this, _subscriptionManager).subscriptions.set(querySetId, {
         handle,
         emitter: handleEmitter
       });
-      const requestId = this.#getNextRequestId();
-      this.#sendMessage(
-        ClientMessage.Subscribe({
-          queryStrings: querySql,
-          querySetId: { id: querySetId },
-          requestId
-        })
-      );
+      const requestId = __privateGet(this, _getNextRequestId).call(this);
+      __privateMethod(this, _sendMessage, sendMessage_fn).call(this, ClientMessage.Subscribe({
+        queryStrings: querySql,
+        querySetId: { id: querySetId },
+        requestId
+      }));
       return querySetId;
     }
     unregisterSubscription(querySetId) {
-      const requestId = this.#getNextRequestId();
-      this.#sendMessage(
-        ClientMessage.Unsubscribe({
-          querySetId: { id: querySetId },
-          requestId,
-          flags: UnsubscribeFlags.SendDroppedRows
-        })
-      );
-    }
-    #parseRowList(type, tableName, rowList) {
-      const buffer = rowList.rowsData;
-      const reader = new BinaryReader(buffer);
-      const rows = [];
-      const deserializeRow = this.#rowDeserializers[tableName];
-      const table2 = this.#sourceNameToTableDef[tableName];
-      const columnsArray = Object.entries(table2.columns);
-      const primaryKeyColumnEntry = columnsArray.find(
-        (col) => col[1].columnMetadata.isPrimaryKey
-      );
-      let previousOffset = 0;
-      while (reader.remaining > 0) {
-        const row = deserializeRow(reader);
-        let rowId = void 0;
-        if (primaryKeyColumnEntry !== void 0) {
-          const primaryKeyColName = primaryKeyColumnEntry[0];
-          const primaryKeyColType = primaryKeyColumnEntry[1].typeBuilder.algebraicType;
-          rowId = AlgebraicType.intoMapKey(
-            primaryKeyColType,
-            row[primaryKeyColName]
-          );
-        } else {
-          const rowBytes = buffer.subarray(previousOffset, reader.offset);
-          const asBase64 = (0, import_base64_js.fromByteArray)(rowBytes);
-          rowId = asBase64;
-        }
-        previousOffset = reader.offset;
-        rows.push({
-          type,
-          rowId,
-          row
-        });
-      }
-      return rows;
-    }
-    // Take a bunch of table updates and ensure that there is at most one update per table.
-    #mergeTableUpdates(updates) {
-      const merged = /* @__PURE__ */ new Map();
-      for (const update of updates) {
-        const ops = merged.get(update.tableName);
-        if (ops) {
-          for (const op of update.operations) ops.push(op);
-        } else {
-          merged.set(update.tableName, update.operations.slice());
-        }
-      }
-      return Array.from(merged, ([tableName, operations]) => ({
-        tableName,
-        operations
+      const requestId = __privateGet(this, _getNextRequestId).call(this);
+      __privateMethod(this, _sendMessage, sendMessage_fn).call(this, ClientMessage.Unsubscribe({
+        querySetId: { id: querySetId },
+        requestId,
+        flags: UnsubscribeFlags.SendDroppedRows
       }));
-    }
-    #queryRowsToTableUpdates(rows, opType) {
-      const updates = [];
-      for (const tableRows of rows.tables) {
-        updates.push({
-          tableName: tableRows.table,
-          operations: this.#parseRowList(opType, tableRows.table, tableRows.rows)
-        });
-      }
-      return this.#mergeTableUpdates(updates);
-    }
-    #tableUpdateRowsToOperations(tableName, rows) {
-      if (rows.tag === "PersistentTable") {
-        const inserts = this.#parseRowList(
-          "insert",
-          tableName,
-          rows.value.inserts
-        );
-        const deletes = this.#parseRowList(
-          "delete",
-          tableName,
-          rows.value.deletes
-        );
-        return inserts.concat(deletes);
-      }
-      if (rows.tag === "EventTable") {
-        return this.#parseRowList("insert", tableName, rows.value.events);
-      }
-      return [];
-    }
-    #querySetUpdateToTableUpdates(querySetUpdate) {
-      const updates = [];
-      for (const tableUpdate of querySetUpdate.tables) {
-        let operations = [];
-        for (const rows of tableUpdate.rows) {
-          operations = operations.concat(
-            this.#tableUpdateRowsToOperations(tableUpdate.tableName, rows)
-          );
-        }
-        updates.push({
-          tableName: tableUpdate.tableName,
-          operations
-        });
-      }
-      return this.#mergeTableUpdates(updates);
-    }
-    #flushOutboundQueue(wsResolved) {
-      const pending = this.#outboundQueue.splice(0);
-      for (const message of pending) {
-        wsResolved.send(message);
-      }
-    }
-    #clientMessageEncoder = new BinaryWriter(1024);
-    #sendMessage(message) {
-      const writer = this.#clientMessageEncoder;
-      writer.clear();
-      ClientMessage.serialize(writer, message);
-      const encoded = writer.getBuffer();
-      if (this.ws && this.isActive) {
-        if (this.#outboundQueue.length) this.#flushOutboundQueue(this.ws);
-        stdbLogger(
-          "trace",
-          () => `Sending message to server: ${stringify2(message)}`
-        );
-        this.ws.send(encoded);
-      } else {
-        stdbLogger(
-          "trace",
-          () => `Queuing message to server: ${stringify2(message)}`
-        );
-        this.#outboundQueue.push(encoded.slice());
-      }
-    }
-    #nextEventId() {
-      this.#eventId += 1;
-      return `${this.connectionId.toHexString()}:${this.#eventId}`;
-    }
-    /**
-     * Handles WebSocket onOpen event.
-     */
-    #handleOnOpen() {
-      this.isActive = true;
-      if (this.ws) {
-        this.#flushOutboundQueue(this.ws);
-      }
-    }
-    #applyTableUpdates(tableUpdates, eventContext) {
-      const pendingCallbacks = [];
-      for (const tableUpdate of tableUpdates) {
-        const tableName = tableUpdate.tableName;
-        const tableDef = this.#sourceNameToTableDef[tableName];
-        const table2 = this.clientCache.getOrCreateTable(tableDef);
-        const newCallbacks = table2.applyOperations(
-          tableUpdate.operations,
-          eventContext
-        );
-        for (const callback of newCallbacks) {
-          pendingCallbacks.push(callback);
-        }
-      }
-      return pendingCallbacks;
-    }
-    #applyTransactionUpdates(eventContext, tu) {
-      const allUpdates = [];
-      for (const querySetUpdate of tu.querySets) {
-        const tableUpdates = this.#querySetUpdateToTableUpdates(querySetUpdate);
-        for (const update of tableUpdates) {
-          allUpdates.push(update);
-        }
-      }
-      return this.#applyTableUpdates(
-        this.#mergeTableUpdates(allUpdates),
-        eventContext
-      );
-    }
-    async #processMessage(data) {
-      const serverMessage = ServerMessage.deserialize(new BinaryReader(data));
-      stdbLogger(
-        "trace",
-        () => `Processing server message: ${stringify2(serverMessage)}`
-      );
-      switch (serverMessage.tag) {
-        case "InitialConnection": {
-          this.identity = serverMessage.value.identity;
-          if (!this.token && serverMessage.value.token) {
-            this.token = serverMessage.value.token;
-          }
-          this.connectionId = serverMessage.value.connectionId;
-          this.#emitter.emit("connect", this, this.identity, this.token);
-          break;
-        }
-        case "SubscribeApplied": {
-          const querySetId = serverMessage.value.querySetId.id;
-          const subscription = this.#subscriptionManager.subscriptions.get(querySetId);
-          if (!subscription) {
-            stdbLogger(
-              "error",
-              `Received SubscribeApplied for unknown querySetId ${querySetId}.`
-            );
-            return;
-          }
-          const event = {
-            id: this.#nextEventId(),
-            tag: "SubscribeApplied"
-          };
-          const eventContext = this.#makeEventContext(event);
-          const tableUpdates = this.#queryRowsToTableUpdates(
-            serverMessage.value.rows,
-            "insert"
-          );
-          const callbacks = this.#applyTableUpdates(tableUpdates, eventContext);
-          const { event: _, ...subscriptionEventContext } = eventContext;
-          subscription.emitter.emit("applied", subscriptionEventContext);
-          stdbLogger(
-            "trace",
-            () => `Calling ${callbacks.length} triggered row callbacks`
-          );
-          for (const callback of callbacks) {
-            callback.cb();
-          }
-          break;
-        }
-        case "UnsubscribeApplied": {
-          const querySetId = serverMessage.value.querySetId.id;
-          const subscription = this.#subscriptionManager.subscriptions.get(querySetId);
-          if (!subscription) {
-            stdbLogger(
-              "error",
-              `Received UnsubscribeApplied for unknown querySetId ${querySetId}.`
-            );
-            return;
-          }
-          const event = {
-            id: this.#nextEventId(),
-            tag: "UnsubscribeApplied"
-          };
-          const eventContext = this.#makeEventContext(event);
-          const tableUpdates = serverMessage.value.rows ? this.#queryRowsToTableUpdates(serverMessage.value.rows, "delete") : [];
-          const callbacks = this.#applyTableUpdates(tableUpdates, eventContext);
-          const { event: _, ...subscriptionEventContext } = eventContext;
-          subscription.emitter.emit("end", subscriptionEventContext);
-          this.#subscriptionManager.subscriptions.delete(querySetId);
-          stdbLogger(
-            "trace",
-            () => `Calling ${callbacks.length} triggered row callbacks`
-          );
-          for (const callback of callbacks) {
-            callback.cb();
-          }
-          break;
-        }
-        case "SubscriptionError": {
-          const querySetId = serverMessage.value.querySetId.id;
-          const requestId = serverMessage.value.requestId;
-          const error = Error(serverMessage.value.error);
-          const event = {
-            id: this.#nextEventId(),
-            tag: "Error",
-            value: error
-          };
-          const eventContext = this.#makeEventContext(event);
-          const errorContext = {
-            ...eventContext,
-            event: error
-          };
-          if (requestId == null) {
-            stdbLogger(
-              "error",
-              `Disconnecting due to error for a previously applied subscription: ${serverMessage.value.error}`
-            );
-            this.disconnect();
-            break;
-          }
-          const subscription = this.#subscriptionManager.subscriptions.get(querySetId);
-          if (subscription) {
-            subscription.emitter.emit("error", errorContext, error);
-            this.#subscriptionManager.subscriptions.delete(querySetId);
-          } else {
-            stdbLogger(
-              "error",
-              `Received SubscriptionError for unknown querySetId ${querySetId}:`,
-              error
-            );
-          }
-          break;
-        }
-        case "TransactionUpdate": {
-          const event = {
-            id: this.#nextEventId(),
-            tag: "Transaction"
-          };
-          const eventContext = this.#makeEventContext(event);
-          const callbacks = this.#applyTransactionUpdates(
-            eventContext,
-            serverMessage.value
-          );
-          stdbLogger(
-            "trace",
-            () => `Calling ${callbacks.length} triggered row callbacks`
-          );
-          for (const callback of callbacks) {
-            callback.cb();
-          }
-          break;
-        }
-        case "ReducerResult": {
-          const { requestId, result } = serverMessage.value;
-          if (result.tag === "Ok") {
-            const reducerInfo = this.#reducerCallInfo.get(requestId);
-            const eventId = this.#nextEventId();
-            const event = reducerInfo ? {
-              id: eventId,
-              tag: "Reducer",
-              value: {
-                timestamp: serverMessage.value.timestamp,
-                outcome: result,
-                reducer: {
-                  name: reducerInfo.name,
-                  args: reducerInfo.args
-                }
-              }
-            } : {
-              id: eventId,
-              tag: "Transaction"
-            };
-            const eventContext = this.#makeEventContext(event);
-            const callbacks = this.#applyTransactionUpdates(
-              eventContext,
-              result.value.transactionUpdate
-            );
-            stdbLogger(
-              "trace",
-              () => `Calling ${callbacks.length} triggered row callbacks`
-            );
-            for (const callback of callbacks) {
-              callback.cb();
-            }
-          }
-          this.#reducerCallInfo.delete(requestId);
-          const cb = this.#reducerCallbacks.get(requestId);
-          this.#reducerCallbacks.delete(requestId);
-          cb?.(result);
-          break;
-        }
-        case "ProcedureResult": {
-          const { status, requestId } = serverMessage.value;
-          const result = status.tag === "Returned" ? { tag: "Ok", value: status.value } : { tag: "Err", value: status.value };
-          const cb = this.#procedureCallbacks.get(requestId);
-          this.#procedureCallbacks.delete(requestId);
-          cb?.(result);
-          break;
-        }
-        case "OneOffQueryResult": {
-          stdbLogger(
-            "warn",
-            "Received OneOffQueryResult but SDK does not expose one-off query APIs yet."
-          );
-          break;
-        }
-      }
-    }
-    /**
-     * Handles WebSocket onMessage event.
-     * @param wsMessage MessageEvent object.
-     */
-    #handleOnMessage(wsMessage) {
-      this.#messageQueue = this.#messageQueue.then(() => {
-        return this.#processMessage(wsMessage.data);
-      });
     }
     /**
      * Call a reducer on your SpacetimeDB module.
@@ -6707,21 +6393,21 @@ ${ty.variants.map(
      */
     callReducer(reducerName, argsBuffer, reducerArgs) {
       const { promise, resolve, reject } = Promise.withResolvers();
-      const requestId = this.#getNextRequestId();
+      const requestId = __privateGet(this, _getNextRequestId).call(this);
       const message = ClientMessage.CallReducer({
         reducer: reducerName,
         args: argsBuffer,
         requestId,
         flags: 0
       });
-      this.#sendMessage(message);
+      __privateMethod(this, _sendMessage, sendMessage_fn).call(this, message);
       if (reducerArgs) {
-        this.#reducerCallInfo.set(requestId, {
+        __privateGet(this, _reducerCallInfo).set(requestId, {
           name: reducerName,
           args: reducerArgs
         });
       }
-      this.#reducerCallbacks.set(requestId, (result) => {
+      __privateGet(this, _reducerCallbacks).set(requestId, (result) => {
         if (result.tag === "Ok" || result.tag === "OkEmpty") {
           resolve();
         } else {
@@ -6746,7 +6432,7 @@ ${ty.variants.map(
      */
     callReducerWithParams(reducerName, _paramsType, params) {
       const writer = new BinaryWriter(1024);
-      this.#reducerArgsSerializers[reducerName].serialize(writer, params);
+      __privateGet(this, _reducerArgsSerializers)[reducerName].serialize(writer, params);
       const argsBuffer = writer.getBuffer();
       return this.callReducer(reducerName, argsBuffer, params);
     }
@@ -6758,7 +6444,7 @@ ${ty.variants.map(
      */
     callProcedure(procedureName, argsBuffer) {
       const { promise, resolve, reject } = Promise.withResolvers();
-      const requestId = this.#getNextRequestId();
+      const requestId = __privateGet(this, _getNextRequestId).call(this);
       const message = ClientMessage.CallProcedure({
         procedure: procedureName,
         args: argsBuffer,
@@ -6766,8 +6452,8 @@ ${ty.variants.map(
         // reserved for future use - 0 is the only valid value
         flags: 0
       });
-      this.#sendMessage(message);
-      this.#procedureCallbacks.set(requestId, (result) => {
+      __privateMethod(this, _sendMessage, sendMessage_fn).call(this, message);
+      __privateGet(this, _procedureCallbacks).set(requestId, (result) => {
         if (result.tag === "Ok") {
           resolve(result.value);
         } else {
@@ -6784,7 +6470,7 @@ ${ty.variants.map(
      */
     callProcedureWithParams(procedureName, _paramsType, params, _returnType) {
       const writer = new BinaryWriter(1024);
-      const { serializeArgs, deserializeReturn } = this.#procedureSerializers[procedureName];
+      const { serializeArgs, deserializeReturn } = __privateGet(this, _procedureSerializers)[procedureName];
       serializeArgs(writer, params);
       const argsBuffer = writer.getBuffer();
       return this.callProcedure(procedureName, argsBuffer).then((returnBuf) => {
@@ -6805,30 +6491,402 @@ ${ty.variants.map(
       this.wsPromise.then((ws) => ws?.close());
     }
     on(eventName, callback) {
-      this.#emitter.on(eventName, callback);
+      __privateGet(this, _emitter3).on(eventName, callback);
     }
     off(eventName, callback) {
-      this.#emitter.off(eventName, callback);
+      __privateGet(this, _emitter3).off(eventName, callback);
     }
     onConnect(callback) {
-      this.#emitter.on("connect", callback);
+      __privateGet(this, _emitter3).on("connect", callback);
     }
     onDisconnect(callback) {
-      this.#emitter.on("disconnect", callback);
+      __privateGet(this, _emitter3).on("disconnect", callback);
     }
     onConnectError(callback) {
-      this.#emitter.on("connectError", callback);
+      __privateGet(this, _emitter3).on("connectError", callback);
     }
     removeOnConnect(callback) {
-      this.#emitter.off("connect", callback);
+      __privateGet(this, _emitter3).off("connect", callback);
     }
     removeOnDisconnect(callback) {
-      this.#emitter.off("disconnect", callback);
+      __privateGet(this, _emitter3).off("disconnect", callback);
     }
     removeOnConnectError(callback) {
-      this.#emitter.off("connectError", callback);
+      __privateGet(this, _emitter3).off("connectError", callback);
     }
-  };
+  }, _queryId = new WeakMap(), _requestId = new WeakMap(), _eventId = new WeakMap(), _emitter3 = new WeakMap(), _messageQueue = new WeakMap(), _outboundQueue = new WeakMap(), _subscriptionManager = new WeakMap(), _remoteModule = new WeakMap(), _reducerCallbacks = new WeakMap(), _reducerCallInfo = new WeakMap(), _procedureCallbacks = new WeakMap(), _rowDeserializers = new WeakMap(), _reducerArgsSerializers = new WeakMap(), _procedureSerializers = new WeakMap(), _sourceNameToTableDef = new WeakMap(), _getNextQueryId = new WeakMap(), _getNextRequestId = new WeakMap(), _makeDbView = new WeakSet(), makeDbView_fn = function() {
+    const view = /* @__PURE__ */ Object.create(null);
+    for (const tbl of Object.values(__privateGet(this, _sourceNameToTableDef))) {
+      const key = tbl.accessorName;
+      Object.defineProperty(view, key, {
+        enumerable: true,
+        configurable: false,
+        get: () => this.clientCache.getOrCreateTable(tbl)
+      });
+    }
+    return view;
+  }, _makeReducers = new WeakSet(), makeReducers_fn = function(def) {
+    const out = {};
+    const writer = new BinaryWriter(1024);
+    for (const reducer of def.reducers) {
+      const reducerName = reducer.name;
+      const key = reducer.accessorName;
+      const { serialize: serializeArgs } = __privateGet(this, _reducerArgsSerializers)[reducerName];
+      out[key] = (params) => {
+        writer.clear();
+        serializeArgs(writer, params);
+        const argsBuffer = writer.getBuffer();
+        return this.callReducer(reducerName, argsBuffer, params);
+      };
+    }
+    return out;
+  }, _makeProcedures = new WeakSet(), makeProcedures_fn = function(def) {
+    const out = {};
+    const writer = new BinaryWriter(1024);
+    for (const procedure of def.procedures) {
+      const procedureName = procedure.name;
+      const key = procedure.accessorName;
+      const { serializeArgs, deserializeReturn } = __privateGet(this, _procedureSerializers)[procedureName];
+      out[key] = (params) => {
+        writer.clear();
+        serializeArgs(writer, params);
+        const argsBuffer = writer.getBuffer();
+        return this.callProcedure(procedureName, argsBuffer).then((returnBuf) => {
+          return deserializeReturn(new BinaryReader(returnBuf));
+        });
+      };
+    }
+    return out;
+  }, _makeEventContext = new WeakSet(), makeEventContext_fn = function(event) {
+    return {
+      db: this.db,
+      reducers: this.reducers,
+      isActive: this.isActive,
+      subscriptionBuilder: this.subscriptionBuilder.bind(this),
+      disconnect: this.disconnect.bind(this),
+      event
+    };
+  }, _parseRowList = new WeakSet(), parseRowList_fn = function(type, tableName, rowList) {
+    const buffer = rowList.rowsData;
+    const reader = new BinaryReader(buffer);
+    const rows = [];
+    const deserializeRow = __privateGet(this, _rowDeserializers)[tableName];
+    const table2 = __privateGet(this, _sourceNameToTableDef)[tableName];
+    const columnsArray = Object.entries(table2.columns);
+    const primaryKeyColumnEntry = columnsArray.find(
+      (col) => col[1].columnMetadata.isPrimaryKey
+    );
+    let previousOffset = 0;
+    while (reader.remaining > 0) {
+      const row = deserializeRow(reader);
+      let rowId = void 0;
+      if (primaryKeyColumnEntry !== void 0) {
+        const primaryKeyColName = primaryKeyColumnEntry[0];
+        const primaryKeyColType = primaryKeyColumnEntry[1].typeBuilder.algebraicType;
+        rowId = AlgebraicType.intoMapKey(
+          primaryKeyColType,
+          row[primaryKeyColName]
+        );
+      } else {
+        const rowBytes = buffer.subarray(previousOffset, reader.offset);
+        const asBase64 = (0, import_base64_js.fromByteArray)(rowBytes);
+        rowId = asBase64;
+      }
+      previousOffset = reader.offset;
+      rows.push({
+        type,
+        rowId,
+        row
+      });
+    }
+    return rows;
+  }, _mergeTableUpdates = new WeakSet(), mergeTableUpdates_fn = function(updates) {
+    const merged = /* @__PURE__ */ new Map();
+    for (const update of updates) {
+      const ops = merged.get(update.tableName);
+      if (ops) {
+        for (const op of update.operations)
+          ops.push(op);
+      } else {
+        merged.set(update.tableName, update.operations.slice());
+      }
+    }
+    return Array.from(merged, ([tableName, operations]) => ({
+      tableName,
+      operations
+    }));
+  }, _queryRowsToTableUpdates = new WeakSet(), queryRowsToTableUpdates_fn = function(rows, opType) {
+    const updates = [];
+    for (const tableRows of rows.tables) {
+      updates.push({
+        tableName: tableRows.table,
+        operations: __privateMethod(this, _parseRowList, parseRowList_fn).call(this, opType, tableRows.table, tableRows.rows)
+      });
+    }
+    return __privateMethod(this, _mergeTableUpdates, mergeTableUpdates_fn).call(this, updates);
+  }, _tableUpdateRowsToOperations = new WeakSet(), tableUpdateRowsToOperations_fn = function(tableName, rows) {
+    if (rows.tag === "PersistentTable") {
+      const inserts = __privateMethod(this, _parseRowList, parseRowList_fn).call(this, "insert", tableName, rows.value.inserts);
+      const deletes = __privateMethod(this, _parseRowList, parseRowList_fn).call(this, "delete", tableName, rows.value.deletes);
+      return inserts.concat(deletes);
+    }
+    if (rows.tag === "EventTable") {
+      return __privateMethod(this, _parseRowList, parseRowList_fn).call(this, "insert", tableName, rows.value.events);
+    }
+    return [];
+  }, _querySetUpdateToTableUpdates = new WeakSet(), querySetUpdateToTableUpdates_fn = function(querySetUpdate) {
+    const updates = [];
+    for (const tableUpdate of querySetUpdate.tables) {
+      let operations = [];
+      for (const rows of tableUpdate.rows) {
+        operations = operations.concat(
+          __privateMethod(this, _tableUpdateRowsToOperations, tableUpdateRowsToOperations_fn).call(this, tableUpdate.tableName, rows)
+        );
+      }
+      updates.push({
+        tableName: tableUpdate.tableName,
+        operations
+      });
+    }
+    return __privateMethod(this, _mergeTableUpdates, mergeTableUpdates_fn).call(this, updates);
+  }, _flushOutboundQueue = new WeakSet(), flushOutboundQueue_fn = function(wsResolved) {
+    const pending = __privateGet(this, _outboundQueue).splice(0);
+    for (const message of pending) {
+      wsResolved.send(message);
+    }
+  }, _clientMessageEncoder = new WeakMap(), _sendMessage = new WeakSet(), sendMessage_fn = function(message) {
+    const writer = __privateGet(this, _clientMessageEncoder);
+    writer.clear();
+    ClientMessage.serialize(writer, message);
+    const encoded = writer.getBuffer();
+    if (this.ws && this.isActive) {
+      if (__privateGet(this, _outboundQueue).length)
+        __privateMethod(this, _flushOutboundQueue, flushOutboundQueue_fn).call(this, this.ws);
+      stdbLogger(
+        "trace",
+        () => `Sending message to server: ${stringify2(message)}`
+      );
+      this.ws.send(encoded);
+    } else {
+      stdbLogger(
+        "trace",
+        () => `Queuing message to server: ${stringify2(message)}`
+      );
+      __privateGet(this, _outboundQueue).push(encoded.slice());
+    }
+  }, _nextEventId = new WeakSet(), nextEventId_fn = function() {
+    __privateSet(this, _eventId, __privateGet(this, _eventId) + 1);
+    return `${this.connectionId.toHexString()}:${__privateGet(this, _eventId)}`;
+  }, _handleOnOpen = new WeakSet(), handleOnOpen_fn = function() {
+    this.isActive = true;
+    if (this.ws) {
+      __privateMethod(this, _flushOutboundQueue, flushOutboundQueue_fn).call(this, this.ws);
+    }
+  }, _applyTableUpdates = new WeakSet(), applyTableUpdates_fn = function(tableUpdates, eventContext) {
+    const pendingCallbacks = [];
+    for (const tableUpdate of tableUpdates) {
+      const tableName = tableUpdate.tableName;
+      const tableDef = __privateGet(this, _sourceNameToTableDef)[tableName];
+      const table2 = this.clientCache.getOrCreateTable(tableDef);
+      const newCallbacks = table2.applyOperations(
+        tableUpdate.operations,
+        eventContext
+      );
+      for (const callback of newCallbacks) {
+        pendingCallbacks.push(callback);
+      }
+    }
+    return pendingCallbacks;
+  }, _applyTransactionUpdates = new WeakSet(), applyTransactionUpdates_fn = function(eventContext, tu) {
+    const allUpdates = [];
+    for (const querySetUpdate of tu.querySets) {
+      const tableUpdates = __privateMethod(this, _querySetUpdateToTableUpdates, querySetUpdateToTableUpdates_fn).call(this, querySetUpdate);
+      for (const update of tableUpdates) {
+        allUpdates.push(update);
+      }
+    }
+    return __privateMethod(this, _applyTableUpdates, applyTableUpdates_fn).call(this, __privateMethod(this, _mergeTableUpdates, mergeTableUpdates_fn).call(this, allUpdates), eventContext);
+  }, _processMessage = new WeakSet(), processMessage_fn = async function(data) {
+    const serverMessage = ServerMessage.deserialize(new BinaryReader(data));
+    stdbLogger(
+      "trace",
+      () => `Processing server message: ${stringify2(serverMessage)}`
+    );
+    switch (serverMessage.tag) {
+      case "InitialConnection": {
+        this.identity = serverMessage.value.identity;
+        if (!this.token && serverMessage.value.token) {
+          this.token = serverMessage.value.token;
+        }
+        this.connectionId = serverMessage.value.connectionId;
+        __privateGet(this, _emitter3).emit("connect", this, this.identity, this.token);
+        break;
+      }
+      case "SubscribeApplied": {
+        const querySetId = serverMessage.value.querySetId.id;
+        const subscription = __privateGet(this, _subscriptionManager).subscriptions.get(querySetId);
+        if (!subscription) {
+          stdbLogger(
+            "error",
+            `Received SubscribeApplied for unknown querySetId ${querySetId}.`
+          );
+          return;
+        }
+        const event = {
+          id: __privateMethod(this, _nextEventId, nextEventId_fn).call(this),
+          tag: "SubscribeApplied"
+        };
+        const eventContext = __privateMethod(this, _makeEventContext, makeEventContext_fn).call(this, event);
+        const tableUpdates = __privateMethod(this, _queryRowsToTableUpdates, queryRowsToTableUpdates_fn).call(this, serverMessage.value.rows, "insert");
+        const callbacks = __privateMethod(this, _applyTableUpdates, applyTableUpdates_fn).call(this, tableUpdates, eventContext);
+        const { event: _, ...subscriptionEventContext } = eventContext;
+        subscription.emitter.emit("applied", subscriptionEventContext);
+        stdbLogger(
+          "trace",
+          () => `Calling ${callbacks.length} triggered row callbacks`
+        );
+        for (const callback of callbacks) {
+          callback.cb();
+        }
+        break;
+      }
+      case "UnsubscribeApplied": {
+        const querySetId = serverMessage.value.querySetId.id;
+        const subscription = __privateGet(this, _subscriptionManager).subscriptions.get(querySetId);
+        if (!subscription) {
+          stdbLogger(
+            "error",
+            `Received UnsubscribeApplied for unknown querySetId ${querySetId}.`
+          );
+          return;
+        }
+        const event = {
+          id: __privateMethod(this, _nextEventId, nextEventId_fn).call(this),
+          tag: "UnsubscribeApplied"
+        };
+        const eventContext = __privateMethod(this, _makeEventContext, makeEventContext_fn).call(this, event);
+        const tableUpdates = serverMessage.value.rows ? __privateMethod(this, _queryRowsToTableUpdates, queryRowsToTableUpdates_fn).call(this, serverMessage.value.rows, "delete") : [];
+        const callbacks = __privateMethod(this, _applyTableUpdates, applyTableUpdates_fn).call(this, tableUpdates, eventContext);
+        const { event: _, ...subscriptionEventContext } = eventContext;
+        subscription.emitter.emit("end", subscriptionEventContext);
+        __privateGet(this, _subscriptionManager).subscriptions.delete(querySetId);
+        stdbLogger(
+          "trace",
+          () => `Calling ${callbacks.length} triggered row callbacks`
+        );
+        for (const callback of callbacks) {
+          callback.cb();
+        }
+        break;
+      }
+      case "SubscriptionError": {
+        const querySetId = serverMessage.value.querySetId.id;
+        const requestId = serverMessage.value.requestId;
+        const error = Error(serverMessage.value.error);
+        const event = {
+          id: __privateMethod(this, _nextEventId, nextEventId_fn).call(this),
+          tag: "Error",
+          value: error
+        };
+        const eventContext = __privateMethod(this, _makeEventContext, makeEventContext_fn).call(this, event);
+        const errorContext = {
+          ...eventContext,
+          event: error
+        };
+        if (requestId == null) {
+          stdbLogger(
+            "error",
+            `Disconnecting due to error for a previously applied subscription: ${serverMessage.value.error}`
+          );
+          this.disconnect();
+          break;
+        }
+        const subscription = __privateGet(this, _subscriptionManager).subscriptions.get(querySetId);
+        if (subscription) {
+          subscription.emitter.emit("error", errorContext, error);
+          __privateGet(this, _subscriptionManager).subscriptions.delete(querySetId);
+        } else {
+          stdbLogger(
+            "error",
+            `Received SubscriptionError for unknown querySetId ${querySetId}:`,
+            error
+          );
+        }
+        break;
+      }
+      case "TransactionUpdate": {
+        const event = {
+          id: __privateMethod(this, _nextEventId, nextEventId_fn).call(this),
+          tag: "Transaction"
+        };
+        const eventContext = __privateMethod(this, _makeEventContext, makeEventContext_fn).call(this, event);
+        const callbacks = __privateMethod(this, _applyTransactionUpdates, applyTransactionUpdates_fn).call(this, eventContext, serverMessage.value);
+        stdbLogger(
+          "trace",
+          () => `Calling ${callbacks.length} triggered row callbacks`
+        );
+        for (const callback of callbacks) {
+          callback.cb();
+        }
+        break;
+      }
+      case "ReducerResult": {
+        const { requestId, result } = serverMessage.value;
+        if (result.tag === "Ok") {
+          const reducerInfo = __privateGet(this, _reducerCallInfo).get(requestId);
+          const eventId = __privateMethod(this, _nextEventId, nextEventId_fn).call(this);
+          const event = reducerInfo ? {
+            id: eventId,
+            tag: "Reducer",
+            value: {
+              timestamp: serverMessage.value.timestamp,
+              outcome: result,
+              reducer: {
+                name: reducerInfo.name,
+                args: reducerInfo.args
+              }
+            }
+          } : {
+            id: eventId,
+            tag: "Transaction"
+          };
+          const eventContext = __privateMethod(this, _makeEventContext, makeEventContext_fn).call(this, event);
+          const callbacks = __privateMethod(this, _applyTransactionUpdates, applyTransactionUpdates_fn).call(this, eventContext, result.value.transactionUpdate);
+          stdbLogger(
+            "trace",
+            () => `Calling ${callbacks.length} triggered row callbacks`
+          );
+          for (const callback of callbacks) {
+            callback.cb();
+          }
+        }
+        __privateGet(this, _reducerCallInfo).delete(requestId);
+        const cb = __privateGet(this, _reducerCallbacks).get(requestId);
+        __privateGet(this, _reducerCallbacks).delete(requestId);
+        cb?.(result);
+        break;
+      }
+      case "ProcedureResult": {
+        const { status, requestId } = serverMessage.value;
+        const result = status.tag === "Returned" ? { tag: "Ok", value: status.value } : { tag: "Err", value: status.value };
+        const cb = __privateGet(this, _procedureCallbacks).get(requestId);
+        __privateGet(this, _procedureCallbacks).delete(requestId);
+        cb?.(result);
+        break;
+      }
+      case "OneOffQueryResult": {
+        stdbLogger(
+          "warn",
+          "Received OneOffQueryResult but SDK does not expose one-off query APIs yet."
+        );
+        break;
+      }
+    }
+  }, _handleOnMessage = new WeakSet(), handleOnMessage_fn = function(wsMessage) {
+    __privateSet(this, _messageQueue, __privateGet(this, _messageQueue).then(() => {
+      return __privateMethod(this, _processMessage, processMessage_fn).call(this, wsMessage.data);
+    }));
+  }, _a14);
   function tablesToSchema(ctx, tables2) {
     const tableDefs = /* @__PURE__ */ Object.create(null);
     for (const [accName, schema2] of Object.entries(tables2)) {
@@ -6892,35 +6950,40 @@ ${ty.variants.map(
       ...tableDef.isEvent ? { isEvent: true } : {}
     };
   }
-  var ModuleContext = class {
-    #compoundTypes = /* @__PURE__ */ new Map();
-    /**
-     * The global module definition that gets populated by calls to `reducer()` and lifecycle hooks.
-     */
-    #moduleDef = {
-      typespace: { types: [] },
-      tables: [],
-      reducers: [],
-      types: [],
-      rowLevelSecurity: [],
-      schedules: [],
-      procedures: [],
-      views: [],
-      lifeCycleReducers: [],
-      caseConversionPolicy: { tag: "SnakeCase" },
-      explicitNames: {
-        entries: []
-      }
-    };
+  var _compoundTypes, _moduleDef, _registerCompoundTypeRecursively, registerCompoundTypeRecursively_fn, _a15;
+  var ModuleContext = (_a15 = class {
+    constructor() {
+      __privateAdd(this, _registerCompoundTypeRecursively);
+      __privateAdd(this, _compoundTypes, /* @__PURE__ */ new Map());
+      /**
+       * The global module definition that gets populated by calls to `reducer()` and lifecycle hooks.
+       */
+      __privateAdd(this, _moduleDef, {
+        typespace: { types: [] },
+        tables: [],
+        reducers: [],
+        types: [],
+        rowLevelSecurity: [],
+        schedules: [],
+        procedures: [],
+        views: [],
+        lifeCycleReducers: [],
+        caseConversionPolicy: { tag: "SnakeCase" },
+        explicitNames: {
+          entries: []
+        }
+      });
+    }
     get moduleDef() {
-      return this.#moduleDef;
+      return __privateGet(this, _moduleDef);
     }
     rawModuleDefV10() {
       const sections = [];
       const push = (s) => {
-        if (s) sections.push(s);
+        if (s)
+          sections.push(s);
       };
-      const module = this.#moduleDef;
+      const module = __privateGet(this, _moduleDef);
       push(module.typespace && { tag: "Typespace", value: module.typespace });
       push(module.types && { tag: "Types", value: module.types });
       push(module.tables && { tag: "Tables", value: module.tables });
@@ -6959,10 +7022,10 @@ ${ty.variants.map(
      * Called by the settings mechanism.
      */
     setCaseConversionPolicy(policy) {
-      this.#moduleDef.caseConversionPolicy = policy;
+      __privateGet(this, _moduleDef).caseConversionPolicy = policy;
     }
     get typespace() {
-      return this.#moduleDef.typespace;
+      return __privateGet(this, _moduleDef).typespace;
     }
     /**
      * Resolves the actual type of a TypeBuilder by following its references until it reaches a non-ref type.
@@ -6986,7 +7049,7 @@ ${ty.variants.map(
      */
     registerTypesRecursively(typeBuilder) {
       if (typeBuilder instanceof ProductBuilder && !isUnit(typeBuilder) || typeBuilder instanceof SumBuilder || typeBuilder instanceof RowBuilder) {
-        return this.#registerCompoundTypeRecursively(typeBuilder);
+        return __privateMethod(this, _registerCompoundTypeRecursively, registerCompoundTypeRecursively_fn).call(this, typeBuilder);
       } else if (typeBuilder instanceof OptionBuilder) {
         return new OptionBuilder(
           this.registerTypesRecursively(typeBuilder.value)
@@ -7004,58 +7067,57 @@ ${ty.variants.map(
         return typeBuilder;
       }
     }
-    #registerCompoundTypeRecursively(typeBuilder) {
-      const ty = typeBuilder.algebraicType;
-      const name = typeBuilder.typeName;
-      if (name === void 0) {
-        throw new Error(
-          `Missing type name for ${typeBuilder.constructor.name ?? "TypeBuilder"} ${JSON.stringify(typeBuilder)}`
-        );
-      }
-      let r = this.#compoundTypes.get(ty);
-      if (r != null) {
-        return r;
-      }
-      const newTy = typeBuilder instanceof RowBuilder || typeBuilder instanceof ProductBuilder ? {
-        tag: "Product",
-        value: { elements: [] }
-      } : {
-        tag: "Sum",
-        value: { variants: [] }
-      };
-      r = new RefBuilder(this.#moduleDef.typespace.types.length);
-      this.#moduleDef.typespace.types.push(newTy);
-      this.#compoundTypes.set(ty, r);
-      if (typeBuilder instanceof RowBuilder) {
-        for (const [name2, elem] of Object.entries(typeBuilder.row)) {
-          newTy.value.elements.push({
-            name: name2,
-            algebraicType: this.registerTypesRecursively(elem.typeBuilder).algebraicType
-          });
-        }
-      } else if (typeBuilder instanceof ProductBuilder) {
-        for (const [name2, elem] of Object.entries(typeBuilder.elements)) {
-          newTy.value.elements.push({
-            name: name2,
-            algebraicType: this.registerTypesRecursively(elem).algebraicType
-          });
-        }
-      } else if (typeBuilder instanceof SumBuilder) {
-        for (const [name2, variant] of Object.entries(typeBuilder.variants)) {
-          newTy.value.variants.push({
-            name: name2,
-            algebraicType: this.registerTypesRecursively(variant).algebraicType
-          });
-        }
-      }
-      this.#moduleDef.types.push({
-        sourceName: splitName(name),
-        ty: r.ref,
-        customOrdering: true
-      });
+  }, _compoundTypes = new WeakMap(), _moduleDef = new WeakMap(), _registerCompoundTypeRecursively = new WeakSet(), registerCompoundTypeRecursively_fn = function(typeBuilder) {
+    const ty = typeBuilder.algebraicType;
+    const name = typeBuilder.typeName;
+    if (name === void 0) {
+      throw new Error(
+        `Missing type name for ${typeBuilder.constructor.name ?? "TypeBuilder"} ${JSON.stringify(typeBuilder)}`
+      );
+    }
+    let r = __privateGet(this, _compoundTypes).get(ty);
+    if (r != null) {
       return r;
     }
-  };
+    const newTy = typeBuilder instanceof RowBuilder || typeBuilder instanceof ProductBuilder ? {
+      tag: "Product",
+      value: { elements: [] }
+    } : {
+      tag: "Sum",
+      value: { variants: [] }
+    };
+    r = new RefBuilder(__privateGet(this, _moduleDef).typespace.types.length);
+    __privateGet(this, _moduleDef).typespace.types.push(newTy);
+    __privateGet(this, _compoundTypes).set(ty, r);
+    if (typeBuilder instanceof RowBuilder) {
+      for (const [name2, elem] of Object.entries(typeBuilder.row)) {
+        newTy.value.elements.push({
+          name: name2,
+          algebraicType: this.registerTypesRecursively(elem.typeBuilder).algebraicType
+        });
+      }
+    } else if (typeBuilder instanceof ProductBuilder) {
+      for (const [name2, elem] of Object.entries(typeBuilder.elements)) {
+        newTy.value.elements.push({
+          name: name2,
+          algebraicType: this.registerTypesRecursively(elem).algebraicType
+        });
+      }
+    } else if (typeBuilder instanceof SumBuilder) {
+      for (const [name2, variant] of Object.entries(typeBuilder.variants)) {
+        newTy.value.variants.push({
+          name: name2,
+          algebraicType: this.registerTypesRecursively(variant).algebraicType
+        });
+      }
+    }
+    __privateGet(this, _moduleDef).types.push({
+      sourceName: splitName(name),
+      ty: r.ref,
+      customOrdering: true
+    });
+    return r;
+  }, _a15);
   function isUnit(typeBuilder) {
     return typeBuilder.typeName == null && typeBuilder.algebraicType.value.elements.length === 0;
   }
@@ -7791,8 +7853,8 @@ ${ty.variants.map(
     };
   }
   var Reducers = class {
-    reducersType;
     constructor(handles) {
+      __publicField(this, "reducersType");
       this.reducersType = reducersToSchema(handles);
     }
   };
@@ -7838,39 +7900,36 @@ ${ty.variants.map(
     return { procedures: procedures2 };
   }
 
-  // client-bindings/src/claim_npc_host_reducer.ts
+  // src/claim_npc_host_reducer.ts
   var claim_npc_host_reducer_default = {};
 
-  // client-bindings/src/heartbeat_npc_host_reducer.ts
-  var heartbeat_npc_host_reducer_default = {};
-
-  // client-bindings/src/damage_npc_reducer.ts
+  // src/damage_npc_reducer.ts
   var damage_npc_reducer_default = {
     npcId: t.u32(),
     damage: t.f32(),
     attackerName: t.string()
   };
 
-  // client-bindings/src/damage_wingman_reducer.ts
+  // src/damage_wingman_reducer.ts
   var damage_wingman_reducer_default = {
     wingmanId: t.string(),
     damage: t.f32(),
     attackerName: t.string()
   };
 
-  // client-bindings/src/deal_damage_reducer.ts
+  // src/deal_damage_reducer.ts
   var deal_damage_reducer_default = {
     victimIdentityHex: t.string(),
     damage: t.f32(),
     attackerName: t.string()
   };
 
-  // client-bindings/src/delete_wingman_reducer.ts
+  // src/delete_wingman_reducer.ts
   var delete_wingman_reducer_default = {
     wingmanId: t.string()
   };
 
-  // client-bindings/src/fire_projectile_reducer.ts
+  // src/fire_projectile_reducer.ts
   var fire_projectile_reducer_default = {
     x: t.f32(),
     y: t.f32(),
@@ -7881,13 +7940,16 @@ ${ty.variants.map(
     ttlMs: t.u32()
   };
 
-  // client-bindings/src/heal_player_reducer.ts
+  // src/heal_player_reducer.ts
   var heal_player_reducer_default = {
     healHp: t.f32(),
     healShield: t.f32()
   };
 
-  // client-bindings/src/join_game_reducer.ts
+  // src/heartbeat_npc_host_reducer.ts
+  var heartbeat_npc_host_reducer_default = {};
+
+  // src/join_game_reducer.ts
   var join_game_reducer_default = {
     name: t.string(),
     ship: t.string(),
@@ -7896,22 +7958,22 @@ ${ty.variants.map(
     maxShield: t.f32()
   };
 
-  // client-bindings/src/leave_game_reducer.ts
+  // src/leave_game_reducer.ts
   var leave_game_reducer_default = {};
 
-  // client-bindings/src/prune_events_reducer.ts
+  // src/prune_events_reducer.ts
   var prune_events_reducer_default = {};
 
-  // client-bindings/src/prune_projectiles_reducer.ts
+  // src/prune_projectiles_reducer.ts
   var prune_projectiles_reducer_default = {};
 
-  // client-bindings/src/report_kill_reducer.ts
+  // src/report_kill_reducer.ts
   var report_kill_reducer_default = {
     killerName: t.string(),
     victimName: t.string()
   };
 
-  // client-bindings/src/respawn_npc_reducer.ts
+  // src/respawn_npc_reducer.ts
   var respawn_npc_reducer_default = {
     npcId: t.u32(),
     x: t.f32(),
@@ -7920,19 +7982,19 @@ ${ty.variants.map(
     shield: t.f32()
   };
 
-  // client-bindings/src/respawn_player_reducer.ts
+  // src/respawn_player_reducer.ts
   var respawn_player_reducer_default = {};
 
-  // client-bindings/src/seed_world_reducer.ts
+  // src/seed_world_reducer.ts
   var seed_world_reducer_default = {};
 
-  // client-bindings/src/send_chat_reducer.ts
+  // src/send_chat_reducer.ts
   var send_chat_reducer_default = {
     senderName: t.string(),
     text: t.string()
   };
 
-  // client-bindings/src/spawn_npc_reducer.ts
+  // src/spawn_npc_reducer.ts
   var spawn_npc_reducer_default = {
     npcId: t.u32(),
     name: t.string(),
@@ -7951,7 +8013,7 @@ ${ty.variants.map(
     totalEarned: t.u32()
   };
 
-  // client-bindings/src/spawn_wingman_reducer.ts
+  // src/spawn_wingman_reducer.ts
   var spawn_wingman_reducer_default = {
     wingmanId: t.string(),
     name: t.string(),
@@ -7964,7 +8026,7 @@ ${ty.variants.map(
     maxShield: t.f32()
   };
 
-  // client-bindings/src/submit_score_reducer.ts
+  // src/submit_score_reducer.ts
   var submit_score_reducer_default = {
     name: t.string(),
     credits: t.u64(),
@@ -7974,7 +8036,7 @@ ${ty.variants.map(
     color: t.string()
   };
 
-  // client-bindings/src/update_npc_reducer.ts
+  // src/update_npc_reducer.ts
   var update_npc_reducer_default = {
     npcId: t.u32(),
     x: t.f32(),
@@ -7993,7 +8055,7 @@ ${ty.variants.map(
     totalEarned: t.u32()
   };
 
-  // client-bindings/src/update_player_reducer.ts
+  // src/update_player_reducer.ts
   var update_player_reducer_default = {
     x: t.f32(),
     y: t.f32(),
@@ -8015,7 +8077,7 @@ ${ty.variants.map(
     miningOre: t.string()
   };
 
-  // client-bindings/src/update_wingman_reducer.ts
+  // src/update_wingman_reducer.ts
   var update_wingman_reducer_default = {
     wingmanId: t.string(),
     x: t.f32(),
@@ -8028,7 +8090,7 @@ ${ty.variants.map(
     shield: t.f32()
   };
 
-  // client-bindings/src/chat_message_table.ts
+  // src/chat_message_table.ts
   var chat_message_table_default = t.row({
     id: t.u64().primaryKey(),
     sender: t.string(),
@@ -8036,7 +8098,7 @@ ${ty.variants.map(
     timestamp: t.u64()
   });
 
-  // client-bindings/src/kill_event_table.ts
+  // src/kill_event_table.ts
   var kill_event_table_default = t.row({
     id: t.u64().primaryKey(),
     killer: t.string(),
@@ -8044,7 +8106,7 @@ ${ty.variants.map(
     timestamp: t.u64()
   });
 
-  // client-bindings/src/leaderboard_entry_table.ts
+  // src/leaderboard_entry_table.ts
   var leaderboard_entry_table_default = t.row({
     id: t.u64().primaryKey(),
     name: t.string(),
@@ -8056,7 +8118,7 @@ ${ty.variants.map(
     timestamp: t.u64()
   });
 
-  // client-bindings/src/npc_table.ts
+  // src/npc_table.ts
   var npc_table_default = t.row({
     id: t.u32().primaryKey(),
     name: t.string(),
@@ -8082,14 +8144,14 @@ ${ty.variants.map(
     lastUpdate: t.u64().name("last_update")
   });
 
-  // client-bindings/src/npc_host_table.ts
+  // src/npc_host_table.ts
   var npc_host_table_default = t.row({
     id: t.u32().primaryKey(),
     hostIdentity: t.string().name("host_identity"),
     claimedAt: t.u64().name("claimed_at")
   });
 
-  // client-bindings/src/player_table.ts
+  // src/player_table.ts
   var player_table_default = t.row({
     identity: t.identity().primaryKey(),
     name: t.string(),
@@ -8116,7 +8178,7 @@ ${ty.variants.map(
     miningOre: t.string().name("mining_ore")
   });
 
-  // client-bindings/src/projectile_table.ts
+  // src/projectile_table.ts
   var projectile_table_default = t.row({
     id: t.u64().primaryKey(),
     ownerId: t.string().name("owner_id"),
@@ -8132,7 +8194,7 @@ ${ty.variants.map(
     ttlMs: t.u32().name("ttl_ms")
   });
 
-  // client-bindings/src/wingman_table.ts
+  // src/wingman_table.ts
   var wingman_table_default = t.row({
     id: t.string().primaryKey(),
     ownerIdentityHex: t.string().name("owner_identity_hex"),
@@ -8154,13 +8216,13 @@ ${ty.variants.map(
     lastUpdate: t.u64().name("last_update")
   });
 
-  // client-bindings/src/world_state_table.ts
+  // src/world_state_table.ts
   var world_state_table_default = t.row({
     id: t.u32().primaryKey(),
     worldSeed: t.u64().name("world_seed")
   });
 
-  // client-bindings/src/index.ts
+  // src/index.ts
   var tablesSchema = schema({
     chat_message: table({
       name: "chat_message",
@@ -8264,13 +8326,13 @@ ${ty.variants.map(
   });
   var reducersSchema = reducers(
     reducerSchema("claim_npc_host", claim_npc_host_reducer_default),
-    reducerSchema("heartbeat_npc_host", heartbeat_npc_host_reducer_default),
     reducerSchema("damage_npc", damage_npc_reducer_default),
     reducerSchema("damage_wingman", damage_wingman_reducer_default),
     reducerSchema("deal_damage", deal_damage_reducer_default),
     reducerSchema("delete_wingman", delete_wingman_reducer_default),
     reducerSchema("fire_projectile", fire_projectile_reducer_default),
     reducerSchema("heal_player", heal_player_reducer_default),
+    reducerSchema("heartbeat_npc_host", heartbeat_npc_host_reducer_default),
     reducerSchema("join_game", join_game_reducer_default),
     reducerSchema("leave_game", leave_game_reducer_default),
     reducerSchema("prune_events", prune_events_reducer_default),
@@ -8302,15 +8364,19 @@ ${ty.variants.map(
   };
   var DbConnectionBuilder2 = class extends DbConnectionBuilder {
   };
-  var DbConnection = class _DbConnection extends DbConnectionImpl {
-    /** Creates a new {@link DbConnectionBuilder} to configure and connect to the remote SpacetimeDB instance. */
-    static builder = () => {
-      return new DbConnectionBuilder2(REMOTE_MODULE, (config) => new _DbConnection(config));
-    };
-    /** Creates a new {@link SubscriptionBuilder} to configure a subscription to the remote SpacetimeDB instance. */
-    subscriptionBuilder = () => {
-      return new SubscriptionBuilder(this);
-    };
+  var _DbConnection = class _DbConnection extends DbConnectionImpl {
+    constructor() {
+      super(...arguments);
+      /** Creates a new {@link SubscriptionBuilder} to configure a subscription to the remote SpacetimeDB instance. */
+      __publicField(this, "subscriptionBuilder", () => {
+        return new SubscriptionBuilder(this);
+      });
+    }
   };
-  return __toCommonJS(index_exports);
+  /** Creates a new {@link DbConnectionBuilder} to configure and connect to the remote SpacetimeDB instance. */
+  __publicField(_DbConnection, "builder", () => {
+    return new DbConnectionBuilder2(REMOTE_MODULE, (config) => new _DbConnection(config));
+  });
+  var DbConnection = _DbConnection;
+  return __toCommonJS(src_exports);
 })();
