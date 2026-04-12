@@ -661,7 +661,7 @@ export const claim_npc_host = spacetimedb.reducer(
       // Check if host claim is stale (no heartbeat in 10+ seconds)
       const now = BigInt(Date.now());
       const age = now - existing.claimed_at;
-      const HOST_STALE_MS = 10000n; // 10 seconds
+      const HOST_STALE_MS = 8000n; // 8 seconds
       const isStale = age > HOST_STALE_MS;
       
       if (hostAlive && !isStale && existing.host_identity !== myHex) {
