@@ -988,6 +988,8 @@ function updatePolice(dt){
     
     p.shootCD-=dt;p.thinkTimer-=dt;p.stateTimer-=dt;
     if(p.shield<p.maxShield)p.shield=Math.min(p.maxShield,p.shield+4*dt); // Faster shield regen
+    // Police heal hull in safe zone (they always patrol there)
+    if(p.hp<p.maxHp&&dist(p.x,p.y,0,0)<CFG.EARTH_SHIELD_R)p.hp=Math.min(p.maxHp,p.hp+40*dt);
     
     if(p.thinkTimer<=0){p.thinkTimer=rand(.5,1.2);policeThink(p);}
     policeAct(p,dt);
@@ -1477,6 +1479,8 @@ function updateWingmen(dt){
     
     w.shootCD-=dt;w.thinkTimer-=dt;w.stateTimer-=dt;
     if(w.shield<w.maxShield)w.shield=Math.min(w.maxShield,w.shield+2*dt);
+    // Wingmen heal hull in safe zone just like players
+    if(w.hp<w.maxHp&&dist(w.x,w.y,0,0)<CFG.EARTH_SHIELD_R)w.hp=Math.min(w.maxHp,w.hp+30*dt);
     
     // Think: pick action
     if(w.thinkTimer<=0){
@@ -2157,6 +2161,8 @@ function updateNPCs(dt){
     
     n.thinkTimer-=dt;n.stateTimer-=dt;n.shootCD-=dt;n.bounty=Math.max(0,n.bounty-dt);
     if(n.shield<n.maxShield)n.shield=Math.min(n.maxShield,n.shield+1.5*dt);
+    // NPCs heal hull in safe zone just like players
+    if(n.hp<n.maxHp&&dist(n.x,n.y,0,0)<CFG.EARTH_SHIELD_R)n.hp=Math.min(n.maxHp,n.hp+30*dt);
     n.maxShield=maxShield(n);n.maxHp=maxHull(n);
     
     if(n.thinkTimer<=0){n.thinkTimer=rand(.5,1.5);npcThink(n);}
