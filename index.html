@@ -2929,10 +2929,39 @@ function drawShipEntity(e){
     else if(e.personality==='denPirate'){ctx.fillStyle='rgba(255,60,40,.95)';ctx.font='bold 11px Courier New';ctx.strokeText('☠ DEN PIRATE',s.x,s.y-sz-20);ctx.fillText('☠ DEN PIRATE',s.x,s.y-sz-20);}
     else if(e.bounty>0){ctx.fillStyle='rgba(255,70,70,.85)';ctx.fillText('☠ BOUNTY',s.x,s.y-sz-20);}
     if(isAggressor(e)&&!e.isPolice){ctx.fillStyle='rgba(255,50,50,.85)';ctx.fillText('⚠ AGGRESSOR',s.x,s.y-sz-30);}
-    // Cargo indicator (diamond if carrying)
+    // Cargo indicator bar (visible loot indicator for non-player ships)
     if(totalCargo(e.cargo||{})>0&&!e.isPlayer){
-      ctx.fillStyle='rgba(255,210,80,.9)';ctx.font='9px Courier New';
-      ctx.fillText('◆',s.x,s.y+sz+18);
+      const tc=totalCargo(e.cargo);const mc=maxCargo(e);const cPct=Math.min(tc/Math.max(mc,1),1);
+      const bw=32;const bh=4;
+      // Position below HP/shield bars (offset depends on whether bars are visible)
+      const hasHpBar=(e.hp<e.maxHp||e.isPlayer);
+      const hasShieldBar=e.maxShield>0;
+      let cargoBarY=s.y+sz+6;
+      if(hasHpBar)cargoBarY+=6; // below HP bar
+      if(hasHpBar&&hasShieldBar)cargoBarY+=5; // below shield bar too
+      if(!hasHpBar)cargoBarY+=2; // slight offset when no HP bar
+      // Background
+      ctx.fillStyle='rgba(0,0,0,.8)';ctx.fillRect(s.x-bw/2,cargoBarY,bw,bh);
+      // Fill with amber/gold gradient based on fullness
+      const cGrad=ctx.createLinearGradient(s.x-bw/2,cargoBarY,s.x-bw/2+bw*cPct,cargoBarY);
+      cGrad.addColorStop(0,'#ffaa22');cGrad.addColorStop(1,cPct>=.8?'#ff5533':'#ffdd44');
+      ctx.fillStyle=cGrad;ctx.fillRect(s.x-bw/2,cargoBarY,bw*cPct,bh);
+      // Border
+      ctx.strokeStyle=cPct>=.8?'rgba(255,100,50,.9)':'rgba(255,210,80,.7)';
+      ctx.lineWidth=.5;ctx.strokeRect(s.x-bw/2,cargoBarY,bw,bh);
+      // Pulsing glow when cargo is nearly full
+      if(cPct>=.6){
+        const pulse=.3+.2*Math.sin(performance.now()*.004);
+        ctx.fillStyle=`rgba(255,180,40,${pulse})`;
+        ctx.fillRect(s.x-bw/2,cargoBarY,bw*cPct,bh);
+      }
+      // Cargo icon + text label
+      ctx.fillStyle=cPct>=.8?'rgba(255,120,50,.95)':'rgba(255,220,100,.95)';
+      ctx.font='bold 8px Courier New';ctx.textAlign='center';
+      ctx.strokeStyle='rgba(0,0,0,.9)';ctx.lineWidth=2;
+      const label='📦 '+tc;
+      ctx.strokeText(label,s.x,cargoBarY+bh+10);
+      ctx.fillText(label,s.x,cargoBarY+bh+10);
     }
   }
   
@@ -5803,6 +5832,38 @@ function drawRemotePlayers(){
       ctx.fillStyle='rgba(0,0,0,.4)';ctx.fillRect(s.x-bw/2,s.y+sz+10,bw,2);
       ctx.fillStyle='rgba(100,180,255,.8)';
       ctx.fillRect(s.x-bw/2,s.y+sz+10,bw*sPct,2);
+    }
+    // Cargo indicator bar for remote players carrying loot
+    if(rp.cargo>0){
+      const shipBase=SHIPS[rp.ship]||SHIPS.prospector;
+      const mc=shipBase.cargo; // base cargo capacity (no upgrade info for remote)
+      const cPct=Math.min(rp.cargo/Math.max(mc,1),1);
+      const cbw=bw;const cbh=3;
+      // Position below HP bar + optional shield bar
+      const hasShield=rp.shield>0&&rp.maxShield>0;
+      const cargoBarY=s.y+sz+(hasShield?14:10);
+      // Background
+      ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(s.x-cbw/2,cargoBarY,cbw,cbh);
+      // Fill with amber/gold gradient
+      const cGrad=ctx.createLinearGradient(s.x-cbw/2,cargoBarY,s.x-cbw/2+cbw*cPct,cargoBarY);
+      cGrad.addColorStop(0,'#ffaa22');cGrad.addColorStop(1,cPct>=.8?'#ff5533':'#ffdd44');
+      ctx.fillStyle=cGrad;ctx.fillRect(s.x-cbw/2,cargoBarY,cbw*cPct,cbh);
+      // Border
+      ctx.strokeStyle=cPct>=.8?'rgba(255,100,50,.9)':'rgba(255,210,80,.7)';
+      ctx.lineWidth=.5;ctx.strokeRect(s.x-cbw/2,cargoBarY,cbw,cbh);
+      // Pulsing glow when cargo is high
+      if(cPct>=.6){
+        const pulse=.3+.2*Math.sin(performance.now()*.004);
+        ctx.fillStyle=`rgba(255,180,40,${pulse})`;
+        ctx.fillRect(s.x-cbw/2,cargoBarY,cbw*cPct,cbh);
+      }
+      // Cargo icon + count label
+      ctx.fillStyle=cPct>=.8?'rgba(255,120,50,.95)':'rgba(255,220,100,.95)';
+      ctx.font='bold 8px Courier New';ctx.textAlign='center';
+      ctx.strokeStyle='rgba(0,0,0,.9)';ctx.lineWidth=2;
+      const label='📦 '+rp.cargo;
+      ctx.strokeText(label,s.x,cargoBarY+cbh+9);
+      ctx.fillText(label,s.x,cargoBarY+cbh+9);
     }
   });
 }
