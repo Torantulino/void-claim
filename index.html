@@ -74,6 +74,8 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 .hidden{display:none!important}
 #soundToggle{position:absolute;top:20px;right:20px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.35);color:rgba(255,255,255,.9);font-size:1rem;cursor:pointer;border-radius:4px;padding:4px 8px;z-index:55}
 #soundToggle:hover{border-color:rgba(255,255,255,.6);color:#fff}
+#musicToggle{position:absolute;top:20px;right:60px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.35);color:rgba(255,255,255,.9);font-size:1rem;cursor:pointer;border-radius:4px;padding:4px 8px;z-index:55}
+#musicToggle:hover{border-color:rgba(255,255,255,.6);color:#fff}
 ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}::-webkit-scrollbar-thumb{background:rgba(100,150,255,.2);border-radius:2px}
 #chatBox{position:absolute;bottom:70px;left:16px;width:340px;max-width:45vw;z-index:55;transition:opacity .4s;pointer-events:none}
 #chatBox.active{pointer-events:auto}
@@ -122,6 +124,7 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
   #abilityHint{display:none}
   #marketBtn{display:none!important}
   #soundToggle{top:12px;right:12px;font-size:.85rem;padding:3px 6px}
+  #musicToggle{top:12px;right:50px;font-size:.85rem;padding:3px 6px}
   #aboutLink{display:none!important}
   #onlineCount{top:36px;right:12px;font-size:.6rem}
   #notifications{top:38px}
@@ -157,7 +160,8 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 <div id="zoneIndicator">SAFE ZONE</div>
 <div id="notifications"></div>
 <button id="soundToggle">🔊</button>
-<a href="./about.html" id="aboutLink" style="position:absolute;top:20px;right:70px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.35);color:rgba(255,255,255,.9);font-size:.75rem;cursor:pointer;border-radius:4px;padding:4px 8px;z-index:55;text-decoration:none;font-family:inherit;letter-spacing:.1em;transition:all .3s" onmouseover="this.style.borderColor='rgba(100,150,255,.6)';this.style.color='#4488ff'" onmouseout="this.style.borderColor='rgba(255,255,255,.35)';this.style.color='rgba(255,255,255,.9)'">ℹ ABOUT</a>
+<button id="musicToggle">🎵</button>
+<a href="./about.html" id="aboutLink" style="position:absolute;top:20px;right:110px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.35);color:rgba(255,255,255,.9);font-size:.75rem;cursor:pointer;border-radius:4px;padding:4px 8px;z-index:55;text-decoration:none;font-family:inherit;letter-spacing:.1em;transition:all .3s" onmouseover="this.style.borderColor='rgba(100,150,255,.6)';this.style.color='#4488ff'" onmouseout="this.style.borderColor='rgba(255,255,255,.35)';this.style.color='rgba(255,255,255,.9)'">ℹ ABOUT</a>
 <div id="onlineCount" style="position:absolute;top:48px;right:20px;font-size:.72rem;color:rgba(100,200,150,.85);letter-spacing:.1em;pointer-events:none;text-shadow:0 1px 4px rgba(0,0,0,.8);background:rgba(0,0,0,.5);padding:2px 8px;border-radius:4px">🌐 1 online</div>
 <div id="stdbDebug" style="position:absolute;bottom:8px;left:8px;font-size:.6rem;color:rgba(100,255,150,.6);pointer-events:none;font-family:monospace;text-shadow:0 1px 2px #000;z-index:60;display:none"></div>
 <button class="btn btn-sm" id="marketBtn">⬡ MARKET</button>
@@ -531,6 +535,7 @@ const MUSIC_TRACKS={
   green:{id:'green',file:'snd/green',loop:true},
   yellow:{id:'yellow',file:'snd/yellow',loop:true},
   red:{id:'red',file:'snd/red',loop:true},
+  void:{id:'void',file:'snd/void',loop:true},
   police:{id:'police',file:'snd/police',loop:true},
   combat:{id:'combat',file:'snd/combat',loop:true},
   death:{id:'death',file:'snd/death',loop:false},
@@ -551,7 +556,7 @@ const _musicExt=_canPlayOgg()?'.ogg':'.mp3';
 
 function initMusicBus(){
   if(!audioCtx||!masterGain)return;
-  musicBusGain=audioCtx.createGain();musicBusGain.gain.value=0.7;
+  musicBusGain=audioCtx.createGain();musicBusGain.gain.value=0.35;
   musicDuckGain=audioCtx.createGain();musicDuckGain.gain.value=1.0;
   musicDuckGain.connect(musicBusGain);musicBusGain.connect(masterGain);
   musicLimiter=audioCtx.createDynamicsCompressor();
@@ -574,7 +579,7 @@ async function loadMusicTrack(id){
   finally{musicLoadingSet.delete(id);}
 }
 
-const ZONE_NEIGHBORS={safe:['green','death','combat'],green:['safe','yellow','combat'],yellow:['green','red','combat'],red:['yellow','police','combat'],void:['red','combat','death']};
+const ZONE_NEIGHBORS={safe:['green','death','combat'],green:['safe','yellow','combat'],yellow:['green','red','combat'],red:['yellow','void','police','combat'],void:['red','combat','death']};
 function preloadMusicNeighbors(zone){(ZONE_NEIGHBORS[zone]||[]).forEach(id=>{if(!musicBuffers[id])loadMusicTrack(id);});}
 
 function startMusicTrack(id,initGain){
@@ -599,7 +604,7 @@ function stopMusicTrack(id,fadeTime){
 }
 
 function stateToTrackId(s){
-  const m={[MS.TITLE]:'title',[MS.SAFE]:'safe',[MS.GREEN]:'green',[MS.YELLOW]:'yellow',[MS.RED]:'red',[MS.VOID]:'red',[MS.COMBAT]:'combat',[MS.POLICE]:'police',[MS.DEATH]:'death'};
+  const m={[MS.TITLE]:'title',[MS.SAFE]:'safe',[MS.GREEN]:'green',[MS.YELLOW]:'yellow',[MS.RED]:'red',[MS.VOID]:'void',[MS.COMBAT]:'combat',[MS.POLICE]:'police',[MS.DEATH]:'death'};
   return m[s]||null;
 }
 
@@ -649,7 +654,7 @@ function finishCrossfade(s){prevMusic=curMusic;curMusic=s;musicFadeLocked=false;
 function _detectCombat(){
   if(!player||player.dead)return false;
   const now=performance.now();
-  return(player.lastDamageTime&&(now-player.lastDamageTime)<3000)||player.shootCD>0||npcs.some(n=>!n.dead&&(n.state==='attack'||n.state==='hunt')&&n.target===player&&dist(n.x,n.y,player.x,player.y)<800);
+  return(player.lastDamageTime&&(now-player.lastDamageTime)<3000)||npcs.some(n=>!n.dead&&(n.state==='attack'||n.state==='hunt')&&n.target===player&&dist(n.x,n.y,player.x,player.y)<800);
 }
 function isCombatActive(){if(_detectCombat())combatActiveUntil=performance.now()+COMBAT_HOLD;return performance.now()<combatActiveUntil;}
 function _isPoliceChasing(){return policeUnits.some(p=>p.state==='hunt'&&p.target===player);}
@@ -5066,6 +5071,12 @@ document.getElementById('soundToggle').onclick=()=>{
   soundEnabled=!soundEnabled;
   document.getElementById('soundToggle').textContent=soundEnabled?'🔊':'🔇';
   if(masterGain)masterGain.gain.value=soundEnabled?.35:0;
+};
+let musicEnabled=true;
+document.getElementById('musicToggle').onclick=()=>{
+  musicEnabled=!musicEnabled;
+  document.getElementById('musicToggle').textContent=musicEnabled?'🎵':'🚫🎵';
+  if(musicBusGain)musicBusGain.gain.value=musicEnabled?0.35:0;
 };
 
 // ═══════════════════════════════════════════
