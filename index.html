@@ -203,6 +203,13 @@ const CFG={
   PROJ_SPEED:700,PROJ_TTL:2.4,PROJ_DMG:8,
   MINE_RANGE:120,MINE_RATE:25,COLLECT_RANGE:60,SHOOT_CD:.35,
   RESPAWN_TIME:3,NPC_COUNT:14,AST_COUNT:350,LOOT_TTL:25,BOUNTY_TIME:90,
+  // Pirate Den system — red zone pirates with staggered respawn
+  DEN_PIRATE_COUNT:8,        // Max den pirates alive at once
+  DEN_RESPAWN_MIN:30,        // Min seconds before a den pirate respawns
+  DEN_RESPAWN_MAX:60,        // Max seconds (randomized per pirate)
+  DEN_COUNT:4,               // Number of pirate dens in the red zone
+  DEN_HUNT_RANGE:3000,       // How far den pirates roam from their den to hunt
+  DEN_LEASH_R:4000,          // Max distance from den before pirate returns
   CAM_LERP:.08,SHAKE_DECAY:.9,MINIMAP_R:140,MINIMAP_SCALE:0.02,
   STAR_LAYERS:[{count:200,size:1,speed:.05,alpha:.3},{count:150,size:1.5,speed:.15,alpha:.5},{count:80,size:2,speed:.3,alpha:.8}],
   WS_URL:null, // legacy — kept for backwards compat
@@ -244,6 +251,15 @@ const UPGRADES={
 
 const NPC_NAMES=['StarMiner','CosmicDrift','NebulaNomad','VoidWalker','RockHound','OreLord','AstralPirate','DustRunner','DeepCore','BeltRider','MeteorJack','NovaBlade','CraterKing','SpaceHawk','IronClad','SolarFlare','DarkMatter','GravPull','PhotonAce','WarpDive','QuantumRex','OreThief','AsteroidAce','NightOwl','ZeroG','CometTail','Nebulous','RoidRage','GoldRush','ClaimJumper'];
 const NPC_SUFFIXES=['','42','_x','99','HD','','777','_','00','X'];
+
+// ── Pirate Den names & config ──
+const DEN_PIRATE_NAMES=['BloodFang','RedSkull','VoidReaper','ShadowMaw','IronJaw','DeathCoil','RazorWing','NightFang','Scourge','BoneClaw','HellKite','DarkClaw','VenomStrike','Marauder','SkullCrush','GrimTalon','WarpFiend','DreadNova','ChainBlade','TorchEye'];
+const DEN_NAME_SUFFIXES=['','_XIII','☠','_X','_666','','_RED','_V'];
+
+// Pirate dens — fixed landmark positions in the red zone (generated once at init)
+// Each den is at a specific angle in the red zone ring
+let pirateDens=[]; // [{x,y,angle,id}] — populated by initPirateDens()
+let denPirates=[]; // Separate array for den pirates (but also mirrored in npcs[] for combat compat)
 
 // ═══════════════════════════════════════════
 // Sound Engine (Web Audio API – procedural)
@@ -1505,6 +1521,102 @@ function createNPC(npcIndex){
 function spawnNPCs(){
   npcs=[];
   for(let i=0;i<CFG.NPC_COUNT;i++)npcs.push(createNPC(i));
+  // Initialize pirate dens and den pirates
+  initPirateDens();
+}
+
+// ═══════════════════════════════════════════
+// Pirate Den System — Red Zone hunter pirates
+// ═══════════════════════════════════════════
+
+function initPirateDens(){
+  pirateDens=[];
+  denPirates=[];
+  // Place dens evenly around the red zone ring — DETERMINISTIC positions
+  // so all clients see the same den landmarks
+  const denRadius=(CFG.YELLOW_R+CFG.RED_R)/2; // ~9000 — middle of red zone
+  const denOffsets=[0.4,1.9,3.5,5.1]; // Fixed angles (radians) for 4 dens
+  const denRadii=[8500,9500,8800,9200]; // Fixed radii per den
+  for(let i=0;i<CFG.DEN_COUNT;i++){
+    const a=denOffsets[i]||((i/CFG.DEN_COUNT)*Math.PI*2+0.4);
+    const r=denRadii[i]||denRadius;
+    pirateDens.push({
+      x:Math.cos(a)*r,
+      y:Math.sin(a)*r,
+      angle:a,
+      id:'den_'+i,
+      activeCount:0 // how many pirates from this den are alive
+    });
+  }
+  // Spawn initial den pirates (2 per den = 8 total)
+  const piratesPerDen=Math.ceil(CFG.DEN_PIRATE_COUNT/CFG.DEN_COUNT);
+  for(let i=0;i<CFG.DEN_PIRATE_COUNT;i++){
+    const denIndex=i%CFG.DEN_COUNT;
+    const dp=createDenPirate(i,denIndex);
+    denPirates.push(dp);
+    npcs.push(dp); // Also add to npcs array for combat/rendering compat
+  }
+}
+
+function createDenPirate(slotIndex,denIndex){
+  const den=pirateDens[denIndex];
+  const shipType=pick(['corsair','corsair','corsair','phantom','sentinel']);
+  const name=pick(DEN_PIRATE_NAMES)+pick(DEN_NAME_SUFFIXES);
+  const base=SHIPS[shipType];
+  const upgLvl=randInt(2,4); // Den pirates are tougher than regular NPCs
+  // Spawn near their den with some scatter
+  const spawnAngle=rand(0,Math.PI*2);
+  const spawnDist=rand(100,500);
+  const x=den.x+Math.cos(spawnAngle)*spawnDist;
+  const y=den.y+Math.sin(spawnAngle)*spawnDist;
+  
+  const npcId=CFG.NPC_COUNT+slotIndex; // Offset past regular NPCs for unique server IDs
+  return{
+    npcId:npcId,
+    id:uid(),name,x,y,vx:0,vy:0,angle:rand(0,Math.PI*2),
+    hp:base.hull*1.3, // 30% tougher
+    maxHp:base.hull*1.3,
+    shield:base.shield*1.5,
+    maxShield:base.shield*1.5,
+    ship:shipType,credits:randInt(100,500),cargo:{},
+    upgrades:{engine:upgLvl,laser:upgLvl,shields:upgLvl,cargo:1,scanner:0},
+    shootCD:0,dead:false,respawnTimer:0,cloaked:false,bounty:0,
+    personality:'denPirate', // Distinguishes from regular pirates
+    denIndex:denIndex,       // Which den this pirate belongs to
+    slotIndex:slotIndex,     // Stable slot for respawn tracking
+    state:'patrol',target:null,stateTimer:rand(2,5),
+    thinkTimer:0,fleeHP:.2,isPlayer:false,isNPC:true,
+    color:pick(['#ff3333','#ff4422','#cc2211','#ff5533','#dd3344']), // Red-tinted colors
+    stunTimer:0,aggressor:false,
+    totalKills:randInt(3,15),totalMined:0,totalEarned:randInt(500,5000)
+  };
+}
+
+function updateDenPirates(dt){
+  // Only run on host (or single-player) — den pirates are in npcs[] so
+  // the regular updateNPCs handles their physics. This function only
+  // handles the respawn queue logic.
+  if(stdbConn&&stdbConnected&&!isNpcHost)return;
+  
+  denPirates.forEach(dp=>{
+    if(!dp.dead)return;
+    dp.respawnTimer-=dt;
+    if(dp.respawnTimer<=0){
+      // Respawn at a random den (not necessarily the same one — feels more organic)
+      const denIndex=pick([dp.denIndex,randInt(0,CFG.DEN_COUNT-1)]); // 50% same den, 50% random
+      const den=pirateDens[denIndex];
+      const spawnAngle=rand(0,Math.PI*2);
+      const spawnDist=rand(150,600);
+      dp.x=den.x+Math.cos(spawnAngle)*spawnDist;
+      dp.y=den.y+Math.sin(spawnAngle)*spawnDist;
+      dp.vx=0;dp.vy=0;
+      dp.hp=dp.maxHp;dp.shield=dp.maxShield;
+      dp.dead=false;dp.cargo={};dp.state='patrol';dp.bounty=0;dp.stunTimer=0;
+      dp.denIndex=denIndex;
+      clearAggressor(dp);
+      serverRespawnNPC(dp);
+    }
+  });
 }
 
 // Host pushes all NPC initial state to SpacetimeDB
@@ -1631,6 +1743,22 @@ function handleNpcDelete(sn){
 function rebuildNpcsFromServerMap(){
   if(isNpcHost)return;
   npcs=Array.from(npcServerMap.values());
+  // Also rebuild denPirates reference for non-host clients
+  denPirates=npcs.filter(n=>n.personality==='denPirate');
+  // Ensure pirate den landmarks are initialized (deterministic positions)
+  if(pirateDens.length===0)initPirateDenLandmarks();
+}
+
+// Initialize just the den landmark positions (no pirates) — for non-host clients
+function initPirateDenLandmarks(){
+  if(pirateDens.length>0)return; // Already initialized
+  const denOffsets=[0.4,1.9,3.5,5.1];
+  const denRadii=[8500,9500,8800,9200];
+  for(let i=0;i<CFG.DEN_COUNT;i++){
+    const a=denOffsets[i]||((i/CFG.DEN_COUNT)*Math.PI*2+0.4);
+    const r=denRadii[i]||(CFG.YELLOW_R+CFG.RED_R)/2;
+    pirateDens.push({x:Math.cos(a)*r,y:Math.sin(a)*r,angle:a,id:'den_'+i,activeCount:0});
+  }
 }
 
 // Non-host: interpolate NPC positions each frame
@@ -1759,6 +1887,8 @@ function updateNPCs(dt){
   // HOST path (or single-player): run full NPC AI locally
   npcs.forEach(n=>{
     if(n.dead){
+      // Den pirates have their own respawn system (longer timers, spawn at dens)
+      if(n.personality==='denPirate')return; // handled by updateDenPirates()
       n.respawnTimer-=dt;
       if(n.respawnTimer<=0){
         const d=rand(CFG.GREEN_R,CFG.RED_R);const a=rand(0,Math.PI*2);
@@ -1804,6 +1934,12 @@ function npcThink(n){
   const mc=maxCargo(n);const tc=totalCargo(n.cargo);
   const hpPct=n.hp/n.maxHp;
   
+  // ── Den Pirate AI — completely separate behavior tree ──
+  if(n.personality==='denPirate'){
+    denPirateThink(n,hpPct);
+    return;
+  }
+  
   if(hpPct<n.fleeHP){n.state='flee';n.target=null;return;}
   if(tc>=mc*.8&&dToEarth>CFG.EARTH_SHIELD_R){n.state='return';n.target=null;return;}
   if(tc>0&&dToEarth<CFG.EARTH_SHIELD_R+100){n.state='sell';return;}
@@ -1840,6 +1976,65 @@ function npcThink(n){
     if(bestAst){n.state='mine';n.target=bestAst;return;}
   }
   n.state='wander';
+}
+
+// ── Den Pirate AI: hunt miners near den, never go to Earth, leash back to den ──
+function denPirateThink(n,hpPct){
+  const den=pirateDens[n.denIndex];
+  if(!den)return;
+  const dToDen=dist(n.x,n.y,den.x,den.y);
+  
+  // Flee from Leviathan (even den pirates fear it)
+  if(leviathan&&!leviathan.dead){
+    const dLev=dist(n.x,n.y,leviathan.x,leviathan.y);
+    if(dLev<800){n.state='fleeToDen';n.target=null;return;}
+  }
+  
+  // Low HP: flee back toward den (NOT Earth — den pirates never go to Earth)
+  if(hpPct<n.fleeHP){n.state='fleeToDen';n.target=null;return;}
+  
+  // Too far from den: return to leash range
+  if(dToDen>CFG.DEN_LEASH_R){n.state='returnToDen';n.target=null;return;}
+  
+  // Hunt nearby targets — prioritize players with cargo, then NPC miners
+  const huntRange=CFG.DEN_HUNT_RANGE;
+  let bestTarget=null,bestDist=huntRange;
+  
+  // Prefer players (juicier targets)
+  if(player&&!player.dead&&!player.cloaked){
+    const dp=dist(n.x,n.y,player.x,player.y);
+    if(dp<bestDist){
+      // Attack players regardless of cargo (den pirates are aggressive)
+      bestDist=dp;bestTarget=player;
+    }
+  }
+  // Also hunt wingmen near the den
+  wingmen.forEach(w=>{
+    if(w.dead)return;
+    const dw=dist(n.x,n.y,w.x,w.y);
+    if(dw<bestDist*.8){bestDist=dw;bestTarget=w;}
+  });
+  // Hunt NPC miners carrying cargo
+  npcs.forEach(other=>{
+    if(other.id===n.id||other.dead||other.personality==='denPirate')return;
+    if(other.personality==='miner'&&totalCargo(other.cargo)>0){
+      const d=dist(n.x,n.y,other.x,other.y);
+      if(d<bestDist){bestDist=d;bestTarget=other;}
+    }
+  });
+  // Hunt remote players too
+  if(remotePlayers){
+    remotePlayers.forEach(rp=>{
+      if(rp.dead)return;
+      const drp=dist(n.x,n.y,rp.x,rp.y);
+      if(drp<bestDist){bestDist=drp;bestTarget=rp;}
+    });
+  }
+  
+  if(bestTarget){n.state='attack';n.target=bestTarget;return;}
+  
+  // No targets: patrol around den
+  n.state='denPatrol';
 }
 
 function npcAct(n,dt){
@@ -1886,6 +2081,42 @@ function npcAct(n,dt){
     case 'sell':{
       const val=cargoValue(n.cargo);n.credits+=val;n.totalEarned+=val;n.cargo={};
       n.hp=Math.min(n.maxHp,n.hp+n.maxHp*.5);n.shield=n.maxShield;n.state='idle';
+      break;
+    }
+    // ── Den Pirate states ──
+    case 'fleeToDen':case 'returnToDen':{
+      const den=pirateDens[n.denIndex];
+      if(den){
+        const thrustMult=n.state==='fleeToDen'?1.3:1;
+        moveToward(n,den.x,den.y,thrust*thrustMult,dt);
+        const dToDen=dist(n.x,n.y,den.x,den.y);
+        if(dToDen<400){
+          // Arrived at den — heal slowly and switch to patrol
+          n.hp=Math.min(n.maxHp,n.hp+n.maxHp*.15*dt);
+          n.shield=Math.min(n.maxShield,n.shield+n.maxShield*.25*dt);
+          n.state='denPatrol';
+        }
+      }else{n.state='wander';}
+      break;
+    }
+    case 'denPatrol':{
+      // Orbit around den in a lazy patrol pattern
+      const den=pirateDens[n.denIndex];
+      if(den){
+        if(n.stateTimer<=0){
+          n.stateTimer=rand(3,7);
+          // Pick a new patrol point within den range
+          const pa=rand(0,Math.PI*2);
+          const pr=rand(200,CFG.DEN_HUNT_RANGE*.6);
+          n._patrolX=den.x+Math.cos(pa)*pr;
+          n._patrolY=den.y+Math.sin(pa)*pr;
+        }
+        if(n._patrolX!==undefined){
+          const dPat=dist(n.x,n.y,n._patrolX,n._patrolY);
+          if(dPat>100)moveToward(n,n._patrolX,n._patrolY,thrust*.6,dt);
+          else{n.stateTimer=0;} // Pick new point next think
+        }
+      }else{n.state='wander';}
       break;
     }
     default:{
@@ -2335,6 +2566,17 @@ function drawShipEntity(e){
   const s=worldToScreen(e.x,e.y);
   if(!inView(e.x,e.y,sz+40))return;
   
+  // Den pirate menacing red aura
+  if(e.personality==='denPirate'){
+    const pulse=Math.sin(performance.now()*.004+e.x)*.15+.15;
+    const auraR=sz+12+Math.sin(performance.now()*.003)*3;
+    ctx.save();ctx.globalAlpha=pulse;
+    const dg=ctx.createRadialGradient(s.x,s.y,sz*.3,s.x,s.y,auraR);
+    dg.addColorStop(0,'rgba(255,30,30,.4)');dg.addColorStop(.6,'rgba(255,50,20,.15)');dg.addColorStop(1,'rgba(200,0,0,0)');
+    ctx.fillStyle=dg;ctx.beginPath();ctx.arc(s.x,s.y,auraR,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  }
+  
   // Kill streak aura
   if(e.isPlayer&&killStreak>=3){
     const auraR=sz+10+Math.sin(performance.now()*.005)*3;
@@ -2387,6 +2629,7 @@ function drawShipEntity(e){
     ctx.strokeStyle='rgba(0,0,0,.85)';ctx.lineWidth=3;ctx.strokeText(e.name,s.x,s.y-sz-10);
     ctx.fillText(e.name,s.x,s.y-sz-10);
     if(e.isPolice){ctx.fillStyle='rgba(68,136,255,.9)';ctx.font='bold 12px Courier New';ctx.strokeText('⛨ POLICE',s.x,s.y-sz-20);ctx.fillText('⛨ POLICE',s.x,s.y-sz-20);ctx.font='bold 11px Courier New';}
+    else if(e.personality==='denPirate'){ctx.fillStyle='rgba(255,60,40,.95)';ctx.font='bold 11px Courier New';ctx.strokeText('☠ DEN PIRATE',s.x,s.y-sz-20);ctx.fillText('☠ DEN PIRATE',s.x,s.y-sz-20);}
     else if(e.bounty>0){ctx.fillStyle='rgba(255,70,70,.85)';ctx.fillText('☠ BOUNTY',s.x,s.y-sz-20);}
     if(isAggressor(e)&&!e.isPolice){ctx.fillStyle='rgba(255,50,50,.85)';ctx.fillText('⚠ AGGRESSOR',s.x,s.y-sz-30);}
     // Cargo indicator (diamond if carrying)
@@ -2546,8 +2789,9 @@ function drawMinimap(){
     if(n.dead)return;
     const nx=mx+(n.x-player.x)*scale,ny=my+(n.y-player.y)*scale;
     if(dist(nx,ny,mx,my)<mr){
-      const isHostile=n.bounty>0||n.personality==='pirate';
-      const col=n.bounty>0?'#ff4444':(n.personality==='pirate'?'#ff6644':totalCargo(n.cargo)>0?'#44ff88':'#5588ff');
+      const isDenPirate=n.personality==='denPirate';
+      const isHostile=n.bounty>0||n.personality==='pirate'||isDenPirate;
+      const col=isDenPirate?'#ff2222':(n.bounty>0?'#ff4444':(n.personality==='pirate'?'#ff6644':totalCargo(n.cargo)>0?'#44ff88':'#5588ff'));
       // Hostile pulsing glow
       if(isHostile){
         const pulse=.3+Math.sin(t*4+n.x)*.2;
@@ -2568,6 +2812,24 @@ function drawMinimap(){
           ctx.globalAlpha=1;
         }
       }
+    }
+  });
+
+  // ── Pirate Dens (skull landmarks on minimap) ──
+  pirateDens.forEach(den=>{
+    const dx=mx+(den.x-player.x)*scale,dy=my+(den.y-player.y)*scale;
+    if(dist(dx,dy,mx,my)<mr){
+      // Danger zone circle around den
+      const denR=CFG.DEN_HUNT_RANGE*scale;
+      ctx.strokeStyle='rgba(255,40,30,.12)';ctx.lineWidth=.5;
+      ctx.beginPath();ctx.arc(dx,dy,denR,0,Math.PI*2);ctx.stroke();
+      // Red pulsing core
+      const pulse=.3+Math.sin(performance.now()*.003+den.x)*.15;
+      ctx.fillStyle='rgba(255,40,30,'+pulse+')';
+      ctx.beginPath();ctx.arc(dx,dy,5,0,Math.PI*2);ctx.fill();
+      // Skull icon (tiny ☠)
+      ctx.fillStyle='rgba(255,80,60,.9)';ctx.font='bold 8px Courier New';ctx.textAlign='center';
+      ctx.fillText('☠',dx,dy+3);
     }
   });
 
@@ -3281,7 +3543,9 @@ function killEntity(target,attackerId){
     }
     return;
   }
-  target.dead=true;target.respawnTimer=CFG.RESPAWN_TIME;
+  target.dead=true;
+  // Den pirates use their own longer respawn timer (30-60s instead of 3s)
+  target.respawnTimer=target.personality==='denPirate'?rand(CFG.DEN_RESPAWN_MIN,CFG.DEN_RESPAWN_MAX):CFG.RESPAWN_TIME;
   const near=target.isPlayer||distToPlayer(target.x,target.y)<FX_RANGE;
   if(near){
     emitBurst(target.x,target.y,30,150,target.color||'#ff5555',3,.7,12);
@@ -3299,7 +3563,7 @@ function killEntity(target,attackerId){
   target.cargo={};
   
   if(attackerId===player?.id&&!target.isPlayer){
-    if(totalCargo(target.cargo)===0&&target.personality!=='pirate'){
+    if(totalCargo(target.cargo)===0&&target.personality!=='pirate'&&target.personality!=='denPirate'){
       player.bounty+=CFG.BOUNTY_TIME;
       notify('⚠ BOUNTY — you attacked a peaceful miner','#ff4444');
     }
@@ -3659,6 +3923,43 @@ function killLeviathan(lev){
   if(voidLoot)loot.push(voidLoot);
   voidTimeAccum=0;leviathanWarnPhase=0;radarGlitchIntensity=0;leviathanDreadTimer=0;
   minimapEvents.push({x:lev.x,y:lev.y,color:'#cc33ff',t:0,maxT:3,type:'explosion'});
+}
+
+// ── Pirate Den World Landmarks ──
+function drawPirateDens(){
+  const t=performance.now()*.001;
+  pirateDens.forEach(den=>{
+    const s=worldToScreen(den.x,den.y);
+    if(!inView(den.x,den.y,200))return;
+    
+    // Danger zone aura (subtle red haze)
+    const auraR=180;
+    const pulse=.04+Math.sin(t*1.5+den.x*.01)*.02;
+    const ag=ctx.createRadialGradient(s.x,s.y,20,s.x,s.y,auraR);
+    ag.addColorStop(0,'rgba(255,30,20,'+pulse*2+')');
+    ag.addColorStop(.5,'rgba(200,20,10,'+pulse+')');
+    ag.addColorStop(1,'rgba(150,0,0,0)');
+    ctx.fillStyle=ag;ctx.beginPath();ctx.arc(s.x,s.y,auraR,0,Math.PI*2);ctx.fill();
+    
+    // Wreckage/debris ring (gives the den a "base" feel)
+    ctx.save();ctx.translate(s.x,s.y);
+    ctx.strokeStyle='rgba(180,60,40,.25)';ctx.lineWidth=1;
+    for(let i=0;i<6;i++){
+      const da=i*Math.PI/3+t*.1;
+      const dr=rand(30,60);
+      const dx=Math.cos(da)*dr,dy=Math.sin(da)*dr;
+      ctx.beginPath();ctx.moveTo(dx-5,dy-3);ctx.lineTo(dx+6,dy+2);ctx.lineTo(dx+2,dy+5);ctx.closePath();ctx.stroke();
+    }
+    ctx.restore();
+    
+    // Skull marker
+    ctx.fillStyle='rgba(255,60,40,.7)';ctx.font='bold 16px Courier New';ctx.textAlign='center';
+    ctx.strokeStyle='rgba(0,0,0,.8)';ctx.lineWidth=3;
+    ctx.strokeText('☠',s.x,s.y+5);ctx.fillText('☠',s.x,s.y+5);
+    // Label
+    ctx.fillStyle='rgba(255,80,60,.5)';ctx.font='bold 9px Courier New';
+    ctx.strokeText('PIRATE DEN',s.x,s.y+20);ctx.fillText('PIRATE DEN',s.x,s.y+20);
+  });
 }
 
 // ── Void Leviathan Rendering ──
@@ -4904,6 +5205,8 @@ function updateHUD(){
   if(zone!==lastPlayerZone){
     if(zone==='safe'){
       notify('⛨ SSPD Protected Zone — Attacking civilians here alerts police','#44ff88');
+    }else if(zone==='red'&&lastPlayerZone!=='red'){
+      notify('☠ RED ZONE — Pirate dens detected. Hunt or be hunted.','#ff4433');
     }else if(lastPlayerZone==='safe'&&isAggressor(player)){
       notify('⚠ You are still flagged as an aggressor — police will pursue','#ff8844');
     }
@@ -5108,7 +5411,7 @@ function gameLoop(timestamp){
     }
     if(gameState==='dead'&&player)player.respawnTimer-=dt;
     
-    updateNPCs(dt);updateWingmen(dt);updatePolice(dt);updateProjectiles(dt);updateLeviathan(dt);updateRemotePlayers(dt);updateRemoteProjectiles(dt);
+    updateNPCs(dt);updateDenPirates(dt);updateWingmen(dt);updatePolice(dt);updateProjectiles(dt);updateLeviathan(dt);updateRemotePlayers(dt);updateRemoteProjectiles(dt);
     // Decay minimap events
     for(let i=minimapEvents.length-1;i>=0;i--){minimapEvents[i].t+=dt;if(minimapEvents[i].t>=minimapEvents[i].maxT)minimapEvents.splice(i,1);}updateLoot(dt);
     updateAsteroidRespawn(dt);updateParticles(dt);updateCamera(dt);
@@ -5129,6 +5432,7 @@ function gameLoop(timestamp){
     asteroids.forEach(a=>drawAsteroidEntity(a));
     loot.forEach(l=>drawLootEntity(l));
     drawMiningBeam();
+    drawPirateDens();
     npcs.forEach(n=>drawShipEntity(n));
     policeUnits.forEach(p=>{if(!p.dead)drawShipEntity(p);});
     wingmen.forEach(w=>{if(!w.dead)drawShipEntity(w);});
