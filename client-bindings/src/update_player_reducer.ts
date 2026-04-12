@@ -26,4 +26,7 @@ export default {
   color: __t.string(),
   maxHp: __t.f32(),
   maxShield: __t.f32(),
+  miningX: __t.f32(),
+  miningY: __t.f32(),
+  miningOre: __t.string(),
 };

@@ -31,4 +31,7 @@ export default __t.row({
   lastUpdate: __t.u64().name("last_update"),
   vx: __t.f32(),
   vy: __t.f32(),
+  miningX: __t.f32().name("mining_x"),
+  miningY: __t.f32().name("mining_y"),
+  miningOre: __t.string().name("mining_ore"),
 });

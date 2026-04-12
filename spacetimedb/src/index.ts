@@ -37,6 +37,9 @@ const spacetimedb = schema({
       last_update: t.u64(),
       vx:          t.f32(),  // velocity for dead-reckoning (added at end)
       vy:          t.f32(),
+      mining_x:    t.f32(),  // mining beam target position (0,0 = not mining)
+      mining_y:    t.f32(),
+      mining_ore:  t.string(), // ore type being mined ('' = not mining)
     }
   ),
 
@@ -286,6 +289,9 @@ export const join_game = spacetimedb.reducer(
       kills:       0,
       earned:      BigInt(0),
       last_update: BigInt(Date.now()),
+      mining_x:    0,
+      mining_y:    0,
+      mining_ore:  '',
     });
 
     console.log(`${args.name} joined in a ${args.ship}`);
@@ -311,6 +317,9 @@ export const update_player = spacetimedb.reducer(
     color: t.string(),
     max_hp: t.f32(),
     max_shield: t.f32(),
+    mining_x: t.f32(),
+    mining_y: t.f32(),
+    mining_ore: t.string(),
   },
   (ctx, args) => {
     const existing = ctx.db.player.identity.find(ctx.sender);
@@ -335,6 +344,9 @@ export const update_player = spacetimedb.reducer(
       earned:      args.earned,
       ship:        args.ship,
       color:       args.color,
+      mining_x:    args.mining_x,
+      mining_y:    args.mining_y,
+      mining_ore:  args.mining_ore,
       last_update: BigInt(Date.now()),
     });
   }

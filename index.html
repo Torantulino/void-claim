@@ -2915,19 +2915,104 @@ function drawLootEntity(l){
   ctx.globalAlpha=1;
 }
 
-function drawMiningBeam(){
-  if(!miningTarget||!player||player.dead)return;
-  if(!miningTarget.alive)return;
-  const ps=worldToScreen(player.x,player.y);
-  const as=worldToScreen(miningTarget.x,miningTarget.y);
-  const ore=ORES[miningTarget.oreType];
-  const t=performance.now()*.005;
-  ctx.save();ctx.strokeStyle=ore.glow;ctx.lineWidth=1.5+Math.sin(t)*.5;
-  ctx.shadowColor=ore.glow;ctx.shadowBlur=4;
-  ctx.globalAlpha=.85+Math.sin(t*2)*.15;
-  ctx.setLineDash([4,6]);ctx.lineDashOffset=-performance.now()*.05;
-  ctx.beginPath();ctx.moveTo(ps.x,ps.y);ctx.lineTo(as.x,as.y);ctx.stroke();
-  ctx.setLineDash([]);ctx.shadowBlur=0;ctx.globalAlpha=1;ctx.restore();
+// ═══════════════════════════════════════════
+// Mining Beam Renderer — world-space, visible to all
+// ═══════════════════════════════════════════
+
+function drawMiningBeamFX(sx,sy,tx,ty,color,glowColor,intensity){
+  // Multi-layered animated beam from (sx,sy) to (tx,ty) in screen coords
+  const t=performance.now();
+  const pulse=Math.sin(t*.006)*.3+.7; // gentle pulse
+  const dx=tx-sx,dy=ty-sy;
+  const len=Math.sqrt(dx*dx+dy*dy);
+  if(len<2)return;
+
+  ctx.save();
+
+  // Layer 1: Wide soft outer glow
+  ctx.globalAlpha=.15*intensity*pulse;
+  ctx.strokeStyle=glowColor;ctx.lineWidth=12+Math.sin(t*.004)*3;
+  ctx.shadowColor=glowColor;ctx.shadowBlur=20;
+  ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(tx,ty);ctx.stroke();
+
+  // Layer 2: Core beam with animated dash pattern (energy flow)
+  ctx.globalAlpha=.7*intensity;
+  ctx.strokeStyle=color;ctx.lineWidth=2.5+Math.sin(t*.008)*.8;
+  ctx.shadowColor=glowColor;ctx.shadowBlur=8;
+  ctx.setLineDash([8,4]);ctx.lineDashOffset=-t*.08; // fast-moving energy
+  ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(tx,ty);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Layer 3: Thin bright inner core
+  ctx.globalAlpha=(.5+Math.sin(t*.01)*.3)*intensity;
+  ctx.strokeStyle='#fff';ctx.lineWidth=1;
+  ctx.shadowColor=color;ctx.shadowBlur=6;
+  ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(tx,ty);ctx.stroke();
+
+  // Layer 4: Crawling energy nodes along the beam
+  const nodeCount=Math.max(2,Math.floor(len/30));
+  for(let i=0;i<nodeCount;i++){
+    const progress=((t*.0003+i/nodeCount)%1); // each node crawls from source to target
+    const nx=sx+dx*progress,ny=sy+dy*progress;
+    const nodeSize=1.5+Math.sin(t*.01+i*2)*.8;
+    ctx.globalAlpha=(.4+Math.sin(t*.008+i)*0.3)*intensity;
+    ctx.fillStyle=glowColor;ctx.shadowColor=glowColor;ctx.shadowBlur=10;
+    ctx.beginPath();ctx.arc(nx,ny,nodeSize,0,Math.PI*2);ctx.fill();
+  }
+
+  // Layer 5: Impact point glow at target
+  const impactPulse=.5+Math.sin(t*.01)*.3;
+  ctx.globalAlpha=impactPulse*intensity;
+  ctx.fillStyle=glowColor;ctx.shadowColor=glowColor;ctx.shadowBlur=25;
+  ctx.beginPath();ctx.arc(tx,ty,6+Math.sin(t*.007)*3,0,Math.PI*2);ctx.fill();
+  // Inner bright impact
+  ctx.globalAlpha=(.3+Math.sin(t*.012)*.2)*intensity;
+  ctx.fillStyle='#fff';ctx.shadowBlur=12;
+  ctx.beginPath();ctx.arc(tx,ty,2.5+Math.sin(t*.009)*1.5,0,Math.PI*2);ctx.fill();
+
+  ctx.shadowBlur=0;ctx.globalAlpha=1;ctx.restore();
+}
+
+function drawAllMiningBeams(){
+  // 1) Local player's mining beam
+  if(miningTarget&&player&&!player.dead&&miningTarget.alive){
+    const ps=worldToScreen(player.x,player.y);
+    const as=worldToScreen(miningTarget.x,miningTarget.y);
+    const ore=ORES[miningTarget.oreType];
+    drawMiningBeamFX(ps.x,ps.y,as.x,as.y,ore.glow,ore.glow,1.0);
+  }
+
+  // 2) NPC mining beams
+  npcs.forEach(n=>{
+    if(n.dead||n.state!=='mine'||!n.target||!n.target.alive)return;
+    if(!inView(n.x,n.y,300)&&!inView(n.target.x,n.target.y,300))return;
+    const ns=worldToScreen(n.x,n.y);
+    const as=worldToScreen(n.target.x,n.target.y);
+    const ore=ORES[n.target.oreType];
+    drawMiningBeamFX(ns.x,ns.y,as.x,as.y,ore.glow,ore.glow,0.7);
+  });
+
+  // 3) Wingmen mining beams
+  wingmen.forEach(w=>{
+    if(w.dead||w.state!=='mine'||!w.target||!w.target.alive)return;
+    if(!inView(w.x,w.y,300)&&!inView(w.target.x,w.target.y,300))return;
+    const ws=worldToScreen(w.x,w.y);
+    const as=worldToScreen(w.target.x,w.target.y);
+    const ore=ORES[w.target.oreType];
+    drawMiningBeamFX(ws.x,ws.y,as.x,as.y,ore.glow,ore.glow,0.8);
+  });
+
+  // 4) Remote players' mining beams (synced via SpacetimeDB)
+  remotePlayers.forEach(rp=>{
+    if(rp.dead||rp.cloaked||!rp.miningOre||rp.miningOre==='')return;
+    if(rp.miningX===0&&rp.miningY===0)return;
+    if(!inView(rp.x,rp.y,300)&&!inView(rp.miningX,rp.miningY,300))return;
+    const ps=worldToScreen(rp.x,rp.y);
+    const as=worldToScreen(rp.miningX,rp.miningY);
+    const ore=ORES[rp.miningOre];
+    if(!ore)return;
+    drawMiningBeamFX(ps.x,ps.y,as.x,as.y,ore.glow,ore.glow,0.85);
+  });
 }
 
 function drawParticles(){
@@ -5002,7 +5087,8 @@ function handlePlayerInsert(p){
     shield:p.shield,maxShield:p.maxShield,
     cargo:p.cargoUsed,
     dead:p.dead,cloaked:p.cloaked,bounty:p.bounty,
-    kills:p.kills,earned:Number(p.earned)
+    kills:p.kills,earned:Number(p.earned),
+    miningX:p.miningX||0,miningY:p.miningY||0,miningOre:p.miningOre||''
   };
   remotePlayerMap.set(id,rp);
   rebuildRemotePlayers();
@@ -5047,6 +5133,7 @@ function handlePlayerUpdate(oldP,newP){
   existing.cargo=newP.cargoUsed;
   existing.dead=newP.dead;existing.cloaked=newP.cloaked;existing.bounty=newP.bounty;
   existing.kills=newP.kills;existing.earned=Number(newP.earned);
+  existing.miningX=newP.miningX||0;existing.miningY=newP.miningY||0;existing.miningOre=newP.miningOre||'';
 }
 
 function handlePlayerDelete(p){
@@ -5118,7 +5205,8 @@ function initialSyncPlayers(){
       shield:p.shield,maxShield:p.maxShield,
       cargo:p.cargoUsed,
       dead:p.dead,cloaked:p.cloaked,bounty:p.bounty,
-      kills:p.kills,earned:Number(p.earned)
+      kills:p.kills,earned:Number(p.earned),
+      miningX:p.miningX||0,miningY:p.miningY||0,miningOre:p.miningOre||''
     });
   }
   rebuildRemotePlayers();
@@ -5263,7 +5351,10 @@ function sendState(){
         ship:player.ship,
         color:player.color,
         maxHp:player.maxHp,
-        maxShield:player.maxShield
+        maxShield:player.maxShield,
+        miningX:miningTarget?Math.round(miningTarget.x):0,
+        miningY:miningTarget?Math.round(miningTarget.y):0,
+        miningOre:miningTarget?miningTarget.oreType:''
       });
     }catch(e){console.error('[STDB] ❌ update_player failed:',e);}
     return;
@@ -5282,7 +5373,10 @@ function sendState(){
       shield:Math.round(player.shield),maxShield:player.maxShield,
       cargo:totalCargo(player.cargo),dead:player.dead,
       cloaked:player.cloaked,bounty:player.bounty>0,
-      kills:player.totalKills,earned:player.totalEarned
+      kills:player.totalKills,earned:player.totalEarned,
+      miningX:miningTarget?Math.round(miningTarget.x):0,
+      miningY:miningTarget?Math.round(miningTarget.y):0,
+      miningOre:miningTarget?miningTarget.oreType:''
     }));
   }catch(e){}
 }
@@ -5731,7 +5825,7 @@ function gameLoop(timestamp){
     if(returnPortal)drawPortal(returnPortal,'← RETURN','rgb(100,200,255)',false);
     asteroids.forEach(a=>drawAsteroidEntity(a));
     loot.forEach(l=>drawLootEntity(l));
-    drawMiningBeam();
+    drawAllMiningBeams();
     drawPirateDens();
     npcs.forEach(n=>{if(!n.isPolice)drawShipEntity(n);});
     policeUnits.forEach(p=>{if(!p.dead)drawShipEntity(p);});

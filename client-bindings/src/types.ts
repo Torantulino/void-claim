@@ -92,6 +92,9 @@ export const Player = __t.object("Player", {
   lastUpdate: __t.u64(),
   vx: __t.f32(),
   vy: __t.f32(),
+  miningX: __t.f32(),
+  miningY: __t.f32(),
+  miningOre: __t.string(),
 });
 export type Player = __Infer<typeof Player>;
 
