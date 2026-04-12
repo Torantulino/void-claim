@@ -2161,13 +2161,18 @@ function npcThink(n){
       if(d<bestLD){bestLD=d;bestLoot=l;}
     });
     if(bestLoot){
-      // 3-second delay before going to collect — use lootNoticeTime
+      // Very close loot (< 150px) — go collect immediately (no delay)
+      if(bestLD<150){
+        n.state='collectLoot';n._lootTarget=bestLoot;
+        n._lootNoticeTime=null;n._noticedLootId=null;
+        return;
+      }
+      // Distant loot — 3-second delay before going to collect
       if(!n._lootNoticeTime){
         n._lootNoticeTime=performance.now()/1000;
         n._noticedLootId=bestLoot.id;
       }else if(n._noticedLootId!==bestLoot.id){
-        // Different loot, reset timer
-        n._lootNoticeTime=performance.now()/1000;
+        // Noticed closer loot — keep the existing timer running (don't reset)
         n._noticedLootId=bestLoot.id;
       }
       const waited=performance.now()/1000-n._lootNoticeTime;
@@ -2176,6 +2181,9 @@ function npcThink(n){
         n._lootNoticeTime=null;n._noticedLootId=null;
         return;
       }
+      // Still waiting to notice loot — don't pick up new tasks (like mining)
+      // Let the NPC finish its current activity but block new task assignment
+      return;
     }else{
       n._lootNoticeTime=null;n._noticedLootId=null;
     }
