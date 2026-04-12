@@ -607,7 +607,8 @@ function markAggressor(entity){
   entity.aggressor=true;
   aggressorMap.set(entity.id,true);
   if(entity.isPlayer){
-    notify('⚠ AGGRESSOR — Police are hunting you!','#ff4444');
+    notify('⚠ AGGRESSOR — You attacked a civilian in the Safe Zone!','#ff4444');
+    notify('SSPD Police have been dispatched to your location','#ff8844');
     SFX.shieldHit();haptic(40);
   }
 }
@@ -878,6 +879,7 @@ let projPruneTimer=2; // prune server projectiles every 2s
 // Void Leviathan state
 let leviathan=null;
 let voidTimeAccum=0;
+let lastPlayerZone='safe'; // Track zone transitions for entry notifications
 let leviathanWarnPhase=0;
 let leviathanPingTimer=0;
 let leviathanScreenFX={darkness:0,distortion:0,tint:0};
@@ -901,7 +903,7 @@ function screenToWorld(sx,sy){return{x:sx-W/2+camera.x,y:sy-H/2+camera.y}}
 function inView(wx,wy,margin){const s=worldToScreen(wx,wy);return s.x>-margin&&s.x<W+margin&&s.y>-margin&&s.y<H+margin}
 function getZone(x,y){const d=dist(x,y,0,0);if(d<CFG.EARTH_SHIELD_R)return'safe';if(d<CFG.GREEN_R)return'green';if(d<CFG.YELLOW_R)return'yellow';if(d<CFG.RED_R)return'red';return'void'}
 function zoneColor(z){return{safe:'rgba(68,255,136,.12)',green:'rgba(68,200,100,.08)',yellow:'rgba(255,200,68,.08)',red:'rgba(255,80,60,.08)',void:'rgba(160,60,255,.08)'}[z]}
-function zoneName(z){return{safe:'⛨ SAFE ZONE',green:'GREEN ZONE',yellow:'⚠ YELLOW ZONE',red:'☠ RED ZONE',void:'◈ THE VOID'}[z]}
+function zoneName(z){return{safe:'⛨ SAFE ZONE — SSPD Patrolled',green:'GREEN ZONE',yellow:'⚠ YELLOW ZONE',red:'☠ RED ZONE',void:'◈ THE VOID'}[z]}
 function zoneTextColor(z){return{safe:'#44ff88',green:'#66cc88',yellow:'#ffcc44',red:'#ff5544',void:'#bb66ff'}[z]}
 
 function totalCargo(cargo){let t=0;for(let k in cargo)t+=cargo[k];return t}
@@ -2384,7 +2386,7 @@ function drawShipEntity(e){
     ctx.font='bold 11px Courier New';ctx.textAlign='center';
     ctx.strokeStyle='rgba(0,0,0,.85)';ctx.lineWidth=3;ctx.strokeText(e.name,s.x,s.y-sz-10);
     ctx.fillText(e.name,s.x,s.y-sz-10);
-    if(e.isPolice){ctx.fillStyle='rgba(68,136,255,.9)';ctx.fillText('⛨ SSPD',s.x,s.y-sz-20);}
+    if(e.isPolice){ctx.fillStyle='rgba(68,136,255,.9)';ctx.font='bold 12px Courier New';ctx.strokeText('⛨ POLICE',s.x,s.y-sz-20);ctx.fillText('⛨ POLICE',s.x,s.y-sz-20);ctx.font='bold 11px Courier New';}
     else if(e.bounty>0){ctx.fillStyle='rgba(255,70,70,.85)';ctx.fillText('☠ BOUNTY',s.x,s.y-sz-20);}
     if(isAggressor(e)&&!e.isPolice){ctx.fillStyle='rgba(255,50,50,.85)';ctx.fillText('⚠ AGGRESSOR',s.x,s.y-sz-30);}
     // Cargo indicator (diamond if carrying)
@@ -2507,7 +2509,7 @@ function drawMinimap(){
 
   // ── Zone rings with zone labels ──
   const zones=[
-    {r:CFG.EARTH_SHIELD_R,c:'rgba(68,255,136,.4)',label:'SAFE'},
+    {r:CFG.EARTH_SHIELD_R,c:'rgba(68,255,136,.4)',label:'SAFE (SSPD)'},
     {r:CFG.GREEN_R,c:'rgba(68,200,100,.3)',label:'GREEN'},
     {r:CFG.YELLOW_R,c:'rgba(255,200,68,.3)',label:'YELLOW'},
     {r:CFG.RED_R,c:'rgba(255,80,60,.25)',label:'RED'}
@@ -3329,8 +3331,11 @@ function killEntity(target,attackerId){
       }
     });
     wingmen=[];
+    const killedByPolice=policeUnits.some(pu=>pu.id===attackerId);
     if(killedByLeviathan){
       document.getElementById('lostInfo').textContent='The Void Leviathan consumed you'+(val>0?` and ${val} credits worth of ore.`:'.')+(wmCount>0?' Your wingmen were lost.':'');
+    }else if(killedByPolice){
+      document.getElementById('lostInfo').textContent='SSPD Police destroyed you for attacking civilians in the Safe Zone.'+(val>0?` You lost ${val} credits worth of ore.`:'')+(wmCount>0?' Your wingmen were lost.':'');
     }else{
       document.getElementById('lostInfo').textContent=(val>0?`You lost ${val} credits worth of ore.`:'Your empty ship was destroyed.')+(wmCount>0?' Your wingmen were lost.':'');
     }
@@ -4895,6 +4900,15 @@ function updateHUD(){
   if(!player)return;
   document.getElementById('credits').textContent='⬡ '+player.credits;
   const zone=getZone(player.x,player.y);
+  // Zone transition notifications
+  if(zone!==lastPlayerZone){
+    if(zone==='safe'){
+      notify('⛨ SSPD Protected Zone — Attacking civilians here alerts police','#44ff88');
+    }else if(lastPlayerZone==='safe'&&isAggressor(player)){
+      notify('⚠ You are still flagged as an aggressor — police will pursue','#ff8844');
+    }
+    lastPlayerZone=zone;
+  }
   const zi=document.getElementById('zoneIndicator');
   let zoneText=zoneName(zone);
   if(zone==='void'&&voidTimeAccum>15){
@@ -4904,7 +4918,7 @@ function updateHUD(){
   }
   // Aggressor warning overrides zone indicator
   if(isAggressor(player)){
-    zoneText='⚠ AGGRESSOR — POLICE HUNTING YOU';
+    zoneText='⚠ SAFE ZONE VIOLATION — SSPD HUNTING YOU';
     zi.textContent=zoneText;zi.style.color='#ff4444';
     zi.style.background='rgba(255,0,0,.15)';zi.style.border='1px solid rgba(255,68,68,.4)';
   }else{
