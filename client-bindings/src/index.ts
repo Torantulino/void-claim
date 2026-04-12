@@ -35,6 +35,7 @@ import {
 
 // Import all reducer arg schemas
 import ClaimNpcHostReducer from "./claim_npc_host_reducer";
+import HeartbeatNpcHostReducer from "./heartbeat_npc_host_reducer";
 import DamageNpcReducer from "./damage_npc_reducer";
 import DamageWingmanReducer from "./damage_wingman_reducer";
 import DealDamageReducer from "./deal_damage_reducer";
@@ -178,6 +179,7 @@ const tablesSchema = __schema({
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
   __reducerSchema("claim_npc_host", ClaimNpcHostReducer),
+  __reducerSchema("heartbeat_npc_host", HeartbeatNpcHostReducer),
   __reducerSchema("damage_npc", DamageNpcReducer),
   __reducerSchema("damage_wingman", DamageWingmanReducer),
   __reducerSchema("deal_damage", DealDamageReducer),

@@ -628,7 +628,21 @@ export const prune_events = spacetimedb.reducer(
 // One client runs NPC AI locally and pushes state updates here.
 // All other clients read from the npc table and just render.
 
-// claim_npc_host — first caller wins; if existing host disconnected, anyone can reclaim
+// heartbeat_npc_host — host refreshes its claim timestamp to prove liveness
+export const heartbeat_npc_host = spacetimedb.reducer(
+  (ctx) => {
+    const myHex = ctx.sender.toHexString();
+    const host = ctx.db.npc_host.id.find(0);
+    if (!host || host.host_identity !== myHex) return; // only the current host can heartbeat
+    ctx.db.npc_host.id.update({
+      id: 0,
+      host_identity: myHex,
+      claimed_at: BigInt(Date.now()),
+    });
+  }
+);
+
+// claim_npc_host — first caller wins; if existing host disconnected or stale, anyone can reclaim
 export const claim_npc_host = spacetimedb.reducer(
   (ctx) => {
     const myHex = ctx.sender.toHexString();
@@ -643,16 +657,28 @@ export const claim_npc_host = spacetimedb.reducer(
           break;
         }
       }
-      if (hostAlive && existing.host_identity !== myHex) {
-        // Another live client is already hosting — reject
-        console.log(`NPC host claim rejected: ${myHex.slice(0,8)} (host=${existing.host_identity.slice(0,8)})`);
+      
+      // Check if host claim is stale (no heartbeat in 10+ seconds)
+      const now = BigInt(Date.now());
+      const age = now - existing.claimed_at;
+      const HOST_STALE_MS = 10000n; // 10 seconds
+      const isStale = age > HOST_STALE_MS;
+      
+      if (hostAlive && !isStale && existing.host_identity !== myHex) {
+        // Another live, non-stale client is hosting — reject
+        console.log(`NPC host claim rejected: ${myHex.slice(0,8)} (host=${existing.host_identity.slice(0,8)}, age=${age}ms)`);
         return;
       }
-      // Host disconnected or it's us re-claiming — update
+      
+      if (isStale) {
+        console.log(`NPC host stale (age=${age}ms) — allowing takeover by ${myHex.slice(0,8)}`);
+      }
+      
+      // Host disconnected, stale, or it's us re-claiming — update
       ctx.db.npc_host.id.update({
         id: 0,
         host_identity: myHex,
-        claimed_at: BigInt(Date.now()),
+        claimed_at: now,
       });
     } else {
       // No host exists — claim it

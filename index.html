@@ -581,6 +581,10 @@ let npcHostCheckDone=false;  // Have we attempted to claim host?
 let npcSyncTimer=0;          // Timer for batching NPC state to server (10Hz)
 const NPC_SYNC_RATE=0.1;     // Send NPC state every 100ms
 let npcHostRecheckTimer=5;   // Re-check host claim periodically
+let npcHostHeartbeatTimer=0; // Heartbeat timer for NPC host liveness
+const NPC_HOST_HEARTBEAT_RATE=3; // Send heartbeat every 3 seconds
+let lastSeenClaimedAt=0;     // Last observed claimedAt value from npc_host table
+let lastSeenClaimedAtLocalTime=0; // Local timestamp when claimedAt last changed
 // Event-driven NPC cache for non-host clients (SpacetimeDB recommended pattern)
 const npcServerMap=new Map(); // npcId → server NPC object with interpolation state
 
@@ -2038,18 +2042,48 @@ function tryClaimNpcHost(){
 function updateNPCs(dt){
   // If multiplayer is connected, handle host/non-host logic
   if(stdbConn&&stdbConnected){
-    // Periodically check if host slot is empty and try to claim
+    // Periodically check if host slot is empty or stale and try to claim
     // (isNpcHost itself is set by npc_host onInsert/onUpdate/onDelete callbacks — no polling)
     npcHostRecheckTimer-=dt;
     if(npcHostRecheckTimer<=0){
       npcHostRecheckTimer=3;
-      // If nobody is hosting (host left), try to claim
       if(!isNpcHost){
         let anyHost=false;
-        try{for(const h of stdbConn.db.npc_host.iter()){anyHost=true;break;}}catch(e){}
-        if(!anyHost){
+        let hostStale=false;
+        try{
+          for(const h of stdbConn.db.npc_host.iter()){
+            anyHost=true;
+            // Track claimedAt changes using local clock (immune to server-client clock skew)
+            const currentClaimedAt=Number(h.claimedAt);
+            if(currentClaimedAt!==lastSeenClaimedAt){
+              lastSeenClaimedAt=currentClaimedAt;
+              lastSeenClaimedAtLocalTime=Date.now();
+            }
+            // If claimedAt hasn't changed for 10+ seconds, host is stale
+            if(lastSeenClaimedAtLocalTime>0){
+              const localAge=Date.now()-lastSeenClaimedAtLocalTime;
+              if(localAge>10000){
+                hostStale=true;
+                console.log('[STDB-NPC] Host appears stale (no heartbeat for '+localAge+'ms) — attempting takeover');
+              }
+            }
+            break;
+          }
+        }catch(e){}
+        if(!anyHost||hostStale){
           tryClaimNpcHost();
         }
+      }
+    }
+    
+    // Host: send heartbeat to prove liveness
+    if(isNpcHost){
+      npcHostHeartbeatTimer-=dt;
+      if(npcHostHeartbeatTimer<=0){
+        npcHostHeartbeatTimer=NPC_HOST_HEARTBEAT_RATE;
+        try{
+          stdbConn.reducers.heartbeatNpcHost({});
+        }catch(e){console.warn('[STDB-NPC] heartbeat failed:',e);}
       }
     }
     
@@ -4922,9 +4956,13 @@ function connectSTDB(){
           const myHex=stdbConn&&stdbConn.identity?stdbConn.identity.toHexString():'';
           const wasHost=isNpcHost;
           isNpcHost=host.hostIdentity===myHex;
+          // Track claimedAt for staleness detection (local clock)
+          lastSeenClaimedAt=Number(host.claimedAt);
+          lastSeenClaimedAtLocalTime=Date.now();
           console.log('[STDB-NPC] Host set:',host.hostIdentity.slice(0,8),'isUs=',isNpcHost);
           if(isNpcHost&&!wasHost){
             // We just became host — take over NPC AI
+            npcHostHeartbeatTimer=0; // send first heartbeat immediately
             if(npcs.length>0)pushNPCsToServer();
             else{spawnNPCs();pushNPCsToServer();}
             npcServerMap.clear(); // host doesn't use server map
@@ -4934,11 +4972,21 @@ function connectSTDB(){
           }
         });
         conn.db.npc_host.onUpdate((ctx,oldHost,newHost)=>{
+          // Skip heartbeat-only updates (same host, just refreshed timestamp)
+          if(oldHost.hostIdentity===newHost.hostIdentity){
+            // Still track the timestamp change for staleness detection
+            lastSeenClaimedAt=Number(newHost.claimedAt);
+            lastSeenClaimedAtLocalTime=Date.now();
+            return;
+          }
           const myHex=stdbConn&&stdbConn.identity?stdbConn.identity.toHexString():'';
           const wasHost=isNpcHost;
           isNpcHost=newHost.hostIdentity===myHex;
+          lastSeenClaimedAt=Number(newHost.claimedAt);
+          lastSeenClaimedAtLocalTime=Date.now();
           console.log('[STDB-NPC] Host updated:',newHost.hostIdentity.slice(0,8),'isUs=',isNpcHost);
           if(isNpcHost&&!wasHost){
+            npcHostHeartbeatTimer=0; // send first heartbeat immediately
             if(npcs.length>0)pushNPCsToServer();
             else{spawnNPCs();pushNPCsToServer();}
             npcServerMap.clear();
@@ -4949,6 +4997,9 @@ function connectSTDB(){
         conn.db.npc_host.onDelete((ctx,host)=>{
           const myHex=stdbConn&&stdbConn.identity?stdbConn.identity.toHexString():'';
           if(host.hostIdentity===myHex)isNpcHost=false;
+          // Reset staleness tracking
+          lastSeenClaimedAt=0;
+          lastSeenClaimedAtLocalTime=0;
           console.log('[STDB-NPC] Host slot cleared — will attempt re-claim');
           npcHostRecheckTimer=0; // trigger immediate re-check
         });
@@ -5050,6 +5101,9 @@ function connectSTDB(){
         stdbSubscribed=false;
         isNpcHost=false;
         npcHostCheckDone=false;
+        npcHostHeartbeatTimer=0;
+        lastSeenClaimedAt=0;
+        lastSeenClaimedAtLocalTime=0;
         remotePlayerMap.clear();
         remotePlayers=[];
         npcServerMap.clear();
