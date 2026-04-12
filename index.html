@@ -738,20 +738,27 @@ function updateAggressorDecay(dt){
   });
 }
 
+// Police npcId offset: regular NPCs use 0..NPC_COUNT-1, den pirates use NPC_COUNT..NPC_COUNT+DEN_PIRATE_COUNT-1
+// Police use NPC_COUNT+DEN_PIRATE_COUNT onwards (8 units: 2 carriers + 6 fighters)
+function policeNpcIdBase(){return CFG.NPC_COUNT+CFG.DEN_PIRATE_COUNT;}
+
 function createPoliceCarrier(patrolIndex){
   const patrolAngle=(patrolIndex/2)*Math.PI; // 0 and PI (opposite sides)
   const px=Math.cos(patrolAngle)*POLICE_PATROL_R;
   const py=Math.sin(patrolAngle)*POLICE_PATROL_R;
   const base=SHIPS.carrier;
+  // npcId: policeBase + patrolIndex*4 (carrier=0, fighters=1,2,3 per patrol group)
+  const npcId=policeNpcIdBase()+patrolIndex*4;
   return{
+    npcId,
     id:'police_carrier_'+patrolIndex,name:'SSPD Carrier '+(patrolIndex+1),
     x:px,y:py,vx:0,vy:0,angle:patrolAngle+Math.PI/2,
     hp:base.hull*2,maxHp:base.hull*2,shield:base.shield*2,maxShield:base.shield*2,
     ship:'carrier',color:POLICE_CARRIER_COLOR,
     upgrades:{engine:3,laser:4,shields:4,cargo:0,scanner:3},
     shootCD:0,dead:false,respawnTimer:0,cloaked:false,bounty:0,
-    personality:'police',state:'patrol',target:null,stateTimer:rand(2,5),
-    thinkTimer:0,isPlayer:false,isNPC:false,isPolice:true,isWingman:false,
+    personality:'policeCarrier',state:'patrol',target:null,stateTimer:2+patrolIndex,
+    thinkTimer:0,isPlayer:false,isNPC:true,isPolice:true,isWingman:false,
     patrolIndex,patrolAngle,
     stunTimer:0,aggressor:false,
     totalKills:0,totalMined:0,totalEarned:0,cargo:{},credits:0
@@ -763,7 +770,9 @@ function createPoliceFighter(carrierRef,fighterIndex){
   const px=carrierRef.x+Math.cos(offset)*100;
   const py=carrierRef.y+Math.sin(offset)*100;
   const base=SHIPS.corsair;
+  const npcId=policeNpcIdBase()+carrierRef.patrolIndex*4+(fighterIndex+1);
   return{
+    npcId,
     id:'police_fighter_'+carrierRef.patrolIndex+'_'+fighterIndex,
     name:'SSPD Wing '+(carrierRef.patrolIndex+1)+'-'+(fighterIndex+1),
     x:px,y:py,vx:0,vy:0,angle:carrierRef.angle,
@@ -771,9 +780,9 @@ function createPoliceFighter(carrierRef,fighterIndex){
     ship:'corsair',color:POLICE_COLOR,
     upgrades:{engine:3,laser:4,shields:3,cargo:0,scanner:2},
     shootCD:0,dead:false,respawnTimer:0,cloaked:false,bounty:0,
-    personality:'police',state:'escort',target:null,stateTimer:rand(1,3),
-    thinkTimer:0,isPlayer:false,isNPC:false,isPolice:true,isWingman:false,
-    carrierRef,fighterIndex,
+    personality:'policeFighter',state:'escort',target:null,stateTimer:1+fighterIndex*0.5,
+    thinkTimer:0,isPlayer:false,isNPC:true,isPolice:true,isWingman:false,
+    carrierRef,fighterIndex,carrierNpcId:carrierRef.npcId,
     stunTimer:0,aggressor:false,
     totalKills:0,totalMined:0,totalEarned:0,cargo:{},credits:0
   };
@@ -784,9 +793,11 @@ function spawnPolice(){
   for(let i=0;i<2;i++){
     const carrier=createPoliceCarrier(i);
     policeUnits.push(carrier);
+    npcs.push(carrier); // Also add to npcs[] for server sync
     for(let j=0;j<3;j++){
       const fighter=createPoliceFighter(carrier,j);
       policeUnits.push(fighter);
+      npcs.push(fighter); // Also add to npcs[] for server sync
     }
   }
 }
@@ -927,6 +938,18 @@ function policeAct(p,dt){
 }
 
 function updatePolice(dt){
+  // Non-host in multiplayer: police are synced via NPC system, only do visual FX
+  if(stdbConn&&stdbConnected&&!isNpcHost){
+    policeUnits.forEach(p=>{
+      if(p.dead)return;
+      if(p.stunTimer>0&&Math.random()<.2&&distToPlayer(p.x,p.y)<FX_RANGE)
+        spawnParticle(p.x+rand(-20,20),p.y+rand(-20,20),0,-20,'#44ddff',1.5,.3,4);
+      const v=Math.sqrt(p.vx*p.vx+p.vy*p.vy);
+      if(v>30&&Math.random()<.3&&distToPlayer(p.x,p.y)<FX_RANGE)emitThrust(p.x,p.y,p.angle,v,p.color);
+    });
+    return;
+  }
+  // Host (or single-player): run full police AI
   policeUnits.forEach(p=>{
     if(p.dead){
       p.respawnTimer-=dt;
@@ -1639,6 +1662,7 @@ function spawnNPCs(){
 function initPirateDens(){
   pirateDens=[];
   denPirates=[];
+  console.log('[DEN] Initializing pirate dens...',CFG.DEN_COUNT,'dens,',CFG.DEN_PIRATE_COUNT,'pirates');
   // Place dens evenly around the red zone ring — DETERMINISTIC positions
   // so all clients see the same den landmarks
   const denRadius=(CFG.YELLOW_R+CFG.RED_R)/2; // ~9000 — middle of red zone
@@ -1663,6 +1687,7 @@ function initPirateDens(){
     denPirates.push(dp);
     npcs.push(dp); // Also add to npcs array for combat/rendering compat
   }
+  console.log('[DEN] Spawned',denPirates.length,'den pirates across',pirateDens.length,'dens. Total npcs:',npcs.length);
 }
 
 function createDenPirate(slotIndex,denIndex){
@@ -1772,8 +1797,9 @@ function handleNpcInsert(sn){
     handleNpcUpdateInner(existing,sn,now);
   }else{
     // Brand new NPC from server
+    const isPoliceNpc=sn.personality==='policeCarrier'||sn.personality==='policeFighter';
     const obj={
-      npcId:npcId,id:'npc_'+npcId,name:sn.name,
+      npcId:npcId,id:isPoliceNpc?('police_'+npcId):('npc_'+npcId),name:sn.name,
       x:sn.x,y:sn.y,vx:sn.vx||0,vy:sn.vy||0,angle:sn.angle||0,
       targetX:sn.x,targetY:sn.y,targetAngle:sn.angle||0,
       startX:sn.x,startY:sn.y,startAngle:sn.angle||0,
@@ -1784,6 +1810,7 @@ function handleNpcInsert(sn){
       shootCD:0,dead:sn.dead||false,respawnTimer:0,cloaked:false,bounty:0,
       personality:sn.personality,state:sn.state||'idle',target:null,stateTimer:1,
       thinkTimer:1,fleeHP:.25,isPlayer:false,isNPC:true,
+      isPolice:isPoliceNpc,isWingman:false,
       color:sn.color,stunTimer:sn.stunTimer||0,
       totalKills:sn.totalKills||0,totalMined:sn.totalMined||0,totalEarned:sn.totalEarned||0
     };
@@ -1834,6 +1861,7 @@ function handleNpcUpdateInner(existing,sn,now){
   existing.shield=sn.shield;existing.maxShield=sn.maxShield;
   existing.dead=sn.dead||false;existing.state=sn.state||'idle';
   existing.personality=sn.personality;existing.ship=sn.ship;
+  existing.isPolice=sn.personality==='policeCarrier'||sn.personality==='policeFighter';
   existing.color=sn.color;existing.name=sn.name;
   existing.stunTimer=sn.stunTimer||0;
   existing.totalKills=sn.totalKills||0;existing.totalMined=sn.totalMined||0;
@@ -1850,10 +1878,60 @@ function handleNpcDelete(sn){
 function rebuildNpcsFromServerMap(){
   if(isNpcHost)return;
   npcs=Array.from(npcServerMap.values());
-  // Also rebuild denPirates reference for non-host clients
-  denPirates=npcs.filter(n=>n.personality==='denPirate');
+  // Rebuild denPirates array and assign denIndex from nearest den
+  rebuildDenPirateRefs();
+}
+
+// Rebuild denPirates[] and policeUnits[] from npcs[] after server sync
+// Called for non-host clients who receive NPCs from server (server doesn't store denIndex or isPolice)
+function rebuildDenPirateRefs(){
   // Ensure pirate den landmarks are initialized (deterministic positions)
   if(pirateDens.length===0)initPirateDenLandmarks();
+  denPirates=npcs.filter(n=>n.personality==='denPirate');
+  // Assign denIndex to each den pirate based on closest den
+  denPirates.forEach(dp=>{
+    if(dp.denIndex!==undefined&&dp.denIndex>=0&&dp.denIndex<pirateDens.length)return; // already set
+    let bestIdx=0,bestDist=Infinity;
+    pirateDens.forEach((den,i)=>{
+      const d=Math.sqrt((dp.x-den.x)**2+(dp.y-den.y)**2);
+      if(d<bestDist){bestDist=d;bestIdx=i;}
+    });
+    dp.denIndex=bestIdx;
+  });
+  // Rebuild police from synced NPCs — reconstruct isPolice flag and carrierRef links
+  rebuildPoliceRefs();
+}
+
+function rebuildPoliceRefs(){
+  const policeNpcs=npcs.filter(n=>n.personality==='policeCarrier'||n.personality==='policeFighter');
+  if(policeNpcs.length===0)return;
+  policeUnits=[];
+  // First pass: add carriers
+  const carriers=policeNpcs.filter(n=>n.personality==='policeCarrier');
+  carriers.forEach(c=>{
+    c.isPolice=true;c.isNPC=true;
+    // Reconstruct patrol info from npcId
+    const base=policeNpcIdBase();
+    c.patrolIndex=Math.floor((c.npcId-base)/4);
+    c.patrolAngle=(c.patrolIndex/2)*Math.PI;
+    c.color=POLICE_CARRIER_COLOR;
+    policeUnits.push(c);
+  });
+  // Second pass: add fighters and link to carriers
+  const fighters=policeNpcs.filter(n=>n.personality==='policeFighter');
+  fighters.forEach(f=>{
+    f.isPolice=true;f.isNPC=true;
+    const base=policeNpcIdBase();
+    const groupOffset=f.npcId-base;
+    const carrierPatrolIdx=Math.floor(groupOffset/4);
+    f.fighterIndex=(groupOffset%4)-1;
+    f.patrolIndex=carrierPatrolIdx;
+    f.color=POLICE_COLOR;
+    // Link to carrier ref
+    const carrier=carriers.find(c=>c.patrolIndex===carrierPatrolIdx);
+    if(carrier){f.carrierRef=carrier;f.carrierNpcId=carrier.npcId;}
+    policeUnits.push(f);
+  });
 }
 
 // Initialize just the den landmark positions (no pirates) — for non-host clients
@@ -1993,6 +2071,8 @@ function updateNPCs(dt){
   
   // HOST path (or single-player): run full NPC AI locally
   npcs.forEach(n=>{
+    // Police are handled by updatePolice() — skip them here
+    if(n.isPolice)return;
     if(n.dead){
       // Den pirates have their own respawn system (longer timers, spawn at dens)
       if(n.personality==='denPirate')return; // handled by updateDenPirates()
@@ -2931,7 +3011,7 @@ function drawMinimap(){
 
   // ── NPCs with threat pulsing ──
   npcs.forEach(n=>{
-    if(n.dead)return;
+    if(n.dead||n.isPolice)return; // Police have their own minimap rendering
     const nx=mx+(n.x-player.x)*scale,ny=my+(n.y-player.y)*scale;
     if(dist(nx,ny,mx,my)<mr){
       const isDenPirate=n.personality==='denPirate';
@@ -3586,11 +3666,11 @@ function updateProjectiles(dt){
       }
     }
     if(hitAsteroid){projectiles.splice(i,1);continue;}
-    // Build target list: include police units as potential targets (non-police can hit police & vice versa)
-    const isPoliceProj=policeUnits.some(pu=>pu.id===p.ownerId);
-    const targets=p.isPlayerOwned?[...npcs,...policeUnits.filter(pu=>pu.id!==p.ownerId),...remotePlayers.filter(rp=>rp.id!==p.ownerId)]
-      :isPoliceProj?[player,...npcs,...wingmen,...remotePlayers].filter(t=>t&&t.id!==p.ownerId)
-      :[player,...npcs.filter(n=>n.id!==p.ownerId),...policeUnits,...wingmen.filter(w=>w.id!==p.ownerId),...remotePlayers.filter(rp=>rp.id!==p.ownerId)];
+    // Build target list: police are in npcs[] so no separate policeUnits needed
+    const isPoliceProj=p.isPoliceOwned||policeUnits.some(pu=>pu.id===p.ownerId);
+    const targets=p.isPlayerOwned?[...npcs.filter(n=>n.id!==p.ownerId),...remotePlayers.filter(rp=>rp.id!==p.ownerId)]
+      :isPoliceProj?[player,...npcs.filter(n=>!n.isPolice),...wingmen,...remotePlayers].filter(t=>t&&t.id!==p.ownerId)
+      :[player,...npcs.filter(n=>n.id!==p.ownerId),...wingmen.filter(w=>w.id!==p.ownerId),...remotePlayers.filter(rp=>rp.id!==p.ownerId)];
     let hit=false;
     targets.forEach(t=>{
       if(!t||t.dead||t.cloaked||hit)return;
@@ -3609,11 +3689,24 @@ function updateProjectiles(dt){
           wingmen.find(w=>w.id===p.ownerId)||null;
         checkAggressionRules(attacker,t);
         if(t.isPolice){
-          // Police take damage locally (they're client-side entities like NPCs on host)
-          applyDamage(t,p.dmg,p.ownerId,nearPlayer);
-          if(nearPlayer)emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
-          minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
-          if(nearPlayer){SFX.hit();shake(Math.max(0,1.5-distToPlayer(p.x,p.y)/FX_RANGE*1.5));}
+          // Police are now synced via NPC system — route player damage through server
+          if(stdbConn&&stdbConnected&&p.isPlayerOwned){
+            try{stdbConn.reducers.damageNpc({
+              npcId:t.npcId,
+              damage:p.dmg,
+              attackerName:player?player.name:'Unknown'
+            });}catch(e){console.warn('[STDB] damageNpc (police) failed:',e);}
+            // Local FX only (HP comes from server via host sync)
+            if(nearPlayer)emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
+            minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
+            if(nearPlayer){SFX.hit();shake(Math.max(0,1.5-distToPlayer(p.x,p.y)/FX_RANGE*1.5));}
+          }else{
+            // Offline / single-player: apply locally
+            applyDamage(t,p.dmg,p.ownerId,nearPlayer);
+            if(nearPlayer)emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
+            minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
+            if(nearPlayer){SFX.hit();shake(Math.max(0,1.5-distToPlayer(p.x,p.y)/FX_RANGE*1.5));}
+          }
         }else if(t.isRemotePlayer){
           // Server-authoritative: tell server to apply damage to remote player
           if(stdbConn&&stdbConnected&&p.isPlayerOwned){
@@ -3670,6 +3763,8 @@ function updateProjectiles(dt){
 }
 
 function applyDamage(target,dmg,attackerId,playFX){
+  // Guard: don't damage already-dead entities (prevents kill spam)
+  if(target.dead)return;
   if(playFX===undefined)playFX=target.isPlayer||distToPlayer(target.x,target.y)<FX_RANGE;
   if(target.shield>0){
     const sa=Math.min(target.shield,dmg*.7);
@@ -3684,6 +3779,8 @@ function applyDamage(target,dmg,attackerId,playFX){
 }
 
 function killEntity(target,attackerId){
+  // Guard: prevent double-kill (multiple projectiles in same frame)
+  if(target.dead)return;
   // Wingmen die permanently — use dedicated handler
   if(target.isWingman){killWingman(target,attackerId);return;}
   // Clear aggressor status on death
@@ -3806,7 +3903,7 @@ function updateLoot(dt){
     }
     // NPCs always auto-collect loot within range (same as player)
     npcs.forEach(n=>{
-      if(n.dead)return;
+      if(n.dead||n.isPolice)return; // Police don't collect loot
       if(dist(n.x,n.y,l.x,l.y)<CFG.COLLECT_RANGE){
         const mc=maxCargo(n);
         l.items.forEach(item=>{
@@ -5027,8 +5124,9 @@ function initialSyncNPCs(){
   const now=performance.now()/1000;
   let count=0;
   for(const sn of stdbConn.db.npc.iter()){
+    const isPoliceNpc=sn.personality==='policeCarrier'||sn.personality==='policeFighter';
     const obj={
-      npcId:sn.id,id:'npc_'+sn.id,name:sn.name,
+      npcId:sn.id,id:isPoliceNpc?('police_'+sn.id):('npc_'+sn.id),name:sn.name,
       x:sn.x,y:sn.y,vx:sn.vx||0,vy:sn.vy||0,angle:sn.angle||0,
       targetX:sn.x,targetY:sn.y,targetAngle:sn.angle||0,
       startX:sn.x,startY:sn.y,startAngle:sn.angle||0,
@@ -5039,6 +5137,7 @@ function initialSyncNPCs(){
       shootCD:0,dead:sn.dead||false,respawnTimer:0,cloaked:false,bounty:0,
       personality:sn.personality,state:sn.state||'idle',target:null,stateTimer:1,
       thinkTimer:1,fleeHP:.25,isPlayer:false,isNPC:true,
+      isPolice:isPoliceNpc,isWingman:false,
       color:sn.color,stunTimer:sn.stunTimer||0,
       totalKills:sn.totalKills||0,totalMined:sn.totalMined||0,totalEarned:sn.totalEarned||0
     };
@@ -5047,7 +5146,9 @@ function initialSyncNPCs(){
   }
   if(count>0){
     npcs=Array.from(npcServerMap.values());
-    console.log('[STDB-NPC] Initial sync:',count,'NPCs from server');
+    // Rebuild denPirates array and assign denIndex from nearest den
+    rebuildDenPirateRefs();
+    console.log('[STDB-NPC] Initial sync:',count,'NPCs from server (denPirates:',denPirates.length,')');
   }
 }
 
@@ -5624,7 +5725,7 @@ function gameLoop(timestamp){
     loot.forEach(l=>drawLootEntity(l));
     drawMiningBeam();
     drawPirateDens();
-    npcs.forEach(n=>drawShipEntity(n));
+    npcs.forEach(n=>{if(!n.isPolice)drawShipEntity(n);});
     policeUnits.forEach(p=>{if(!p.dead)drawShipEntity(p);});
     wingmen.forEach(w=>{if(!w.dead)drawShipEntity(w);});
     // Draw remote players' wingmen too
