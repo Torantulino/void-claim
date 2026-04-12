@@ -5063,6 +5063,8 @@ function connectSTDB(){
             if(player){
               console.log('[STDB] Joining game after subscription applied...');
               stdbJoinGame();
+              // Sync any wingmen restored from localStorage so other players can see them
+              syncExistingWingmenToServer();
             }
             // Check NPC host status from initial snapshot and claim if needed
             if(!npcHostCheckDone){
@@ -5126,6 +5128,21 @@ function connectSTDB(){
     console.warn('[STDB] Connection failed:',e);
     stdbConn=null;
   }
+}
+
+// Sync locally-restored wingmen (from localStorage) to SpacetimeDB so other players can see them
+function syncExistingWingmenToServer(){
+  if(!stdbConn||!stdbConnected||wingmen.length===0)return;
+  console.log('[STDB] Syncing',wingmen.length,'existing wingmen to server...');
+  wingmen.forEach(w=>{
+    if(w.dead)return;
+    try{
+      stdbConn.reducers.spawnWingman({
+        wingmanId:w.id,name:w.name,ship:w.ship,color:w.color,
+        wmType:w.wmType,hp:w.hp,maxHp:w.maxHp,shield:w.shield,maxShield:w.maxShield
+      });
+    }catch(e){console.warn('[STDB] syncExistingWingmen spawnWingman failed:',e);}
+  });
 }
 
 function stdbJoinGame(){
