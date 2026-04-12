@@ -90,8 +90,8 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 #chatHint{font-size:.6rem;color:rgba(150,180,255,.35);text-align:center;margin-top:2px;transition:opacity .3s}
 
 /* ═══ Mobile Touch Controls ═══ */
-#mobileControls{display:none;position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:52}
-#mobileControls>*{pointer-events:auto}
+#mobileControls{display:none;position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none!important;z-index:52}
+#mobileControls>.mobile-btn{pointer-events:auto}
 .mobile-btn{position:absolute;border-radius:50%;border:2px solid rgba(255,255,255,.25);background:rgba(0,0,0,.35);color:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;font-size:1.2rem;-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none;transition:background .15s,border-color .15s,transform .1s}
 .mobile-btn:active,.mobile-btn.pressed{background:rgba(100,150,255,.35);border-color:rgba(100,150,255,.7);transform:scale(.92)}
 .mobile-btn .btn-label{position:absolute;bottom:-16px;font-size:.55rem;color:rgba(255,255,255,.5);letter-spacing:.05em;white-space:nowrap;text-align:center;pointer-events:none}
@@ -2942,17 +2942,26 @@ function activateMobileFallback(){
   }
 }
 
-canvas.addEventListener('touchstart',e=>{
+// Joystick touch listeners on DOCUMENT (not canvas) so they work regardless of z-index layering.
+// Mobile buttons call stopPropagation so they won't trigger joysticks.
+document.addEventListener('touchstart',e=>{
+  // Only handle joystick touches when game is active
+  if(gameState!=='playing')return;
+  // Skip if touch started on an interactive element (buttons, inputs, links, market, etc.)
+  const tag=e.target.tagName;
+  if(tag==='BUTTON'||tag==='INPUT'||tag==='A'||tag==='SELECT'||tag==='TEXTAREA')return;
+  if(e.target.closest('.mobile-btn')||e.target.closest('#market')||e.target.closest('#chatInputRow')||e.target.closest('#startScreen')||e.target.closest('#deathScreen'))return;
   e.preventDefault();resumeAudio();
   activateMobileFallback();
+  const screenW=W||window.innerWidth;
   for(let t of e.changedTouches){
     // Left 40% of screen = movement joystick (dynamic origin)
-    if(t.clientX<W*0.4&&!touchMove){
+    if(t.clientX<screenW*0.4&&!touchMove){
       touchMove={id:t.identifier,sx:t.clientX,sy:t.clientY,cx:t.clientX,cy:t.clientY,active:false};
       haptic(8);
     }
     // Right side = aim + shoot joystick
-    else if(t.clientX>=W*0.4&&!touchShoot){
+    else if(t.clientX>=screenW*0.4&&!touchShoot){
       touchShoot={id:t.identifier,sx:t.clientX,sy:t.clientY,cx:t.clientX,cy:t.clientY};
       input.mouseDown=true;input.mx=t.clientX;input.my=t.clientY;input.mouseWorld=screenToWorld(t.clientX,t.clientY);
       input.lastMouseMoveTime=performance.now();
@@ -2960,7 +2969,8 @@ canvas.addEventListener('touchstart',e=>{
     }
   }
 },{passive:false});
-canvas.addEventListener('touchmove',e=>{
+document.addEventListener('touchmove',e=>{
+  if(!touchMove&&!touchShoot)return;
   e.preventDefault();
   for(let t of e.changedTouches){
     if(touchMove&&t.identifier===touchMove.id){
@@ -2975,7 +2985,13 @@ canvas.addEventListener('touchmove',e=>{
     }
   }
 },{passive:false});
-canvas.addEventListener('touchend',e=>{
+document.addEventListener('touchend',e=>{
+  for(let t of e.changedTouches){
+    if(touchMove&&t.identifier===touchMove.id){touchMove=null;}
+    if(touchShoot&&t.identifier===touchShoot.id){touchShoot=null;input.mouseDown=false;}
+  }
+});
+document.addEventListener('touchcancel',e=>{
   for(let t of e.changedTouches){
     if(touchMove&&t.identifier===touchMove.id){touchMove=null;}
     if(touchShoot&&t.identifier===touchShoot.id){touchShoot=null;input.mouseDown=false;}
