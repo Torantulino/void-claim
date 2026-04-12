@@ -608,20 +608,27 @@ const POLICE_PATROL_R=CFG.EARTH_SHIELD_R*0.75; // Patrol orbit radius within saf
 const POLICE_CHASE_MAX=CFG.GREEN_R+500; // How far police will chase into green zone
 const POLICE_RETURN_R=CFG.EARTH_SHIELD_R+200; // When to start returning
 
-// Aggressor tracking: entity id → {until: timestamp}
-// An aggressor is someone who attacks a non-aggressor inside safe zone, or attacks police anywhere
-const aggressorMap=new Map(); // id → true (for quick lookup during combat)
+// Aggressor tracking with warning system and time-based decay
+// aggressorMap: id → {warned:bool, aggressorTime:number, lastAggressionTime:number}
+const aggressorMap=new Map();
+const AGGRESSOR_WARNING_EXPIRY=60; // Warning forgotten after 60 seconds
+const AGGRESSOR_DECAY_TIME=45; // Aggressor status decays after 45s outside safe zone without aggression
+const AGGRESSOR_DECAY_CHECK_INTERVAL=1; // Check decay every 1s
 
 function isAggressor(entity){
   if(!entity)return false;
   if(entity.isPolice)return false; // Police are never aggressors
-  return entity.aggressor===true||aggressorMap.has(entity.id);
+  return entity.aggressor===true;
 }
 
 function markAggressor(entity){
   if(!entity||entity.isPolice)return;
   entity.aggressor=true;
-  aggressorMap.set(entity.id,true);
+  const data=aggressorMap.get(entity.id)||{};
+  data.aggressorTime=performance.now()/1000;
+  data.lastAggressionTime=performance.now()/1000;
+  data.warned=false; // Clear warning since they're now full aggressor
+  aggressorMap.set(entity.id,data);
   if(entity.isPlayer){
     notify('⚠ AGGRESSOR — You attacked a civilian in the Safe Zone!','#ff4444');
     notify('SSPD Police have been dispatched to your location','#ff8844');
@@ -635,20 +642,100 @@ function clearAggressor(entity){
   aggressorMap.delete(entity.id);
 }
 
+// Record that an aggressor is still actively fighting (resets decay timer)
+function refreshAggressionTimer(entity){
+  if(!entity||!isAggressor(entity))return;
+  const data=aggressorMap.get(entity.id);
+  if(data)data.lastAggressionTime=performance.now()/1000;
+}
+
 // Check if an attack should mark the attacker as aggressor
-// attacker: entity that fired, victim: entity that got hit
+// Now with warning system: first offense in safe zone gives a warning, not instant aggressor
 function checkAggressionRules(attacker,victim){
   if(!attacker||!victim)return;
   if(attacker.isPolice)return; // Police enforcing law is never aggression
-  // Rule: attacking police anywhere = aggression
-  if(victim.isPolice){markAggressor(attacker);return;}
-  // Rule: attacking a non-aggressor who is inside the safe zone = aggression
+  // Rule: attacking police anywhere = immediate aggression (no warning)
+  if(victim.isPolice){
+    refreshAggressionTimer(attacker);
+    if(!isAggressor(attacker))markAggressor(attacker);
+    return;
+  }
+  // Rule: attacking a non-aggressor who is inside the safe zone
   const victimZone=getZone(victim.x,victim.y);
   if(victimZone==='safe'&&!isAggressor(victim)){
-    markAggressor(attacker);return;
+    // If already aggressor, just refresh timer
+    if(isAggressor(attacker)){refreshAggressionTimer(attacker);return;}
+    // Warning system: first offense gets a warning instead of instant aggressor
+    const data=aggressorMap.get(attacker.id);
+    const now=performance.now()/1000;
+    if(data&&data.warned){
+      // Already warned — check if warning expired
+      if(now-data.warnedTime>AGGRESSOR_WARNING_EXPIRY){
+        // Warning expired, give a fresh warning instead
+        data.warnedTime=now;
+        aggressorMap.set(attacker.id,data);
+        if(attacker.isPlayer){
+          notify('⚠ WARNING — Watch your fire in the Safe Zone!','#ffaa00');
+          notify('Next offense will flag you as AGGRESSOR','#ff8844');
+          SFX.shieldHit();haptic(20);
+        }
+        return;
+      }
+      // Warning still active and they attacked again — mark as aggressor
+      markAggressor(attacker);
+    }else{
+      // No warning yet — issue first warning
+      aggressorMap.set(attacker.id,{warned:true,warnedTime:now});
+      if(attacker.isPlayer){
+        notify('⚠ WARNING — Watch your fire in the Safe Zone!','#ffaa00');
+        notify('Next offense will flag you as AGGRESSOR','#ff8844');
+        SFX.shieldHit();haptic(20);
+      }
+    }
+    return;
   }
+  // If attacker is aggressor and attacks anyone, refresh their timer
+  if(isAggressor(attacker))refreshAggressionTimer(attacker);
   // Retaliation: if victim is an aggressor, attacker is NOT marked
   // Attacking outside safe zone: NOT aggression
+}
+
+// Update aggressor decay: status wears off over time when outside safe zone and not attacking
+function updateAggressorDecay(dt){
+  const now=performance.now()/1000;
+  aggressorMap.forEach((data,entityId)=>{
+    // Skip warning-only entries (not full aggressors)
+    if(data.warned&&!data.aggressorTime)return;
+    // Clean up expired warnings
+    if(data.warned&&!data.aggressorTime){
+      if(now-data.warnedTime>AGGRESSOR_WARNING_EXPIRY)aggressorMap.delete(entityId);
+      return;
+    }
+    // Find the entity
+    let entity=null;
+    if(player&&player.id===entityId)entity=player;
+    if(!entity)entity=npcs.find(n=>n.id===entityId);
+    if(!entity)entity=remotePlayers.find(rp=>rp.id===entityId);
+    if(!entity){aggressorMap.delete(entityId);return;} // Entity gone, clean up
+    // Only decay outside safe zone
+    const zone=getZone(entity.x,entity.y);
+    if(zone==='safe')return; // Inside safe zone — no decay, police actively pursue
+    // Check time since last aggression
+    const timeSinceAggression=now-(data.lastAggressionTime||data.aggressorTime);
+    if(timeSinceAggression>=AGGRESSOR_DECAY_TIME){
+      clearAggressor(entity);
+      if(entity.isPlayer){
+        notify('✓ Aggressor status cleared — you\'ve laid low long enough','#44ff44');
+      }
+    }else if(entity.isPlayer&&timeSinceAggression>=AGGRESSOR_DECAY_TIME-10){
+      // Warn player they're almost clear (once, when 10s remain)
+      if(!data.decayWarned){
+        data.decayWarned=true;
+        const remaining=Math.ceil(AGGRESSOR_DECAY_TIME-timeSinceAggression);
+        notify(`Aggressor status fading... ${remaining}s remaining`,'#88ff88');
+      }
+    }
+  });
 }
 
 function createPoliceCarrier(patrolIndex){
@@ -1050,11 +1137,38 @@ function createProjectile(owner,x,y,ang,dmg){
   };
 }
 
-function createLoot(x,y,cargo){
+function createLoot(x,y,cargo,vx,vy){
   const items=[];
   for(let k in cargo){if(cargo[k]>0)items.push({ore:k,amount:cargo[k]});}
   if(items.length===0)return null;
-  return{id:uid(),x:x+rand(-20,20),y:y+rand(-20,20),items,ttl:CFG.LOOT_TTL,pulse:0};
+  return{id:uid(),x:x+rand(-20,20),y:y+rand(-20,20),vx:vx||0,vy:vy||0,items,ttl:CFG.LOOT_TTL,pulse:0};
+}
+
+// Destroy an asteroid and scatter its ore as individual loot drops with velocity
+function destroyAsteroid(ast,destroyerEntity){
+  const oreType=ast.oreType;
+  const totalAmt=randInt(2,5+Math.floor(ast.maxHp/25));
+  // Scatter individual ore units (or small clusters) as separate loot drops
+  const numDrops=Math.min(totalAmt,randInt(3,6));
+  let remaining=totalAmt;
+  for(let d=0;d<numDrops;d++){
+    const amt=d===numDrops-1?remaining:Math.max(1,randInt(1,Math.ceil(remaining/(numDrops-d))));
+    remaining-=amt;
+    if(amt<=0)continue;
+    const ang=rand(0,Math.PI*2);
+    const spd=rand(40,120);
+    const vx=Math.cos(ang)*spd;
+    const vy=Math.sin(ang)*spd;
+    const cargo={};cargo[oreType]=amt;
+    const l=createLoot(ast.x,ast.y,cargo,vx,vy);
+    if(l)loot.push(l);
+  }
+  // Track mining stats for the destroyer
+  if(destroyerEntity){
+    destroyerEntity.totalMined=(destroyerEntity.totalMined||0)+totalAmt;
+  }
+  emitBurst(ast.x,ast.y,15,100,ORES[oreType].glow,3,.6,10);
+  ast.alive=false;ast.respawnTimer=rand(15,35);
 }
 
 function spawnAsteroids(){
@@ -1443,15 +1557,8 @@ function wingmanAct(w,dt){
         w.target.hp-=rate*dt;
         if(Math.random()<.2)emitMiningParticles(w.target.x,w.target.y,ORES[w.target.oreType].glow);
         if(w.target.hp<=0){
-          // Give mined ore to player's cargo
-          const amt=randInt(1,3);const mc=maxCargo(player);const tc=totalCargo(player.cargo);
-          const canTake=Math.min(amt,mc-tc);
-          if(canTake>0){
-            player.cargo[w.target.oreType]=(player.cargo[w.target.oreType]||0)+canTake;
-            player.totalMined+=canTake;
-            addFloatingText(w.target.x,w.target.y,'+'+canTake+' '+ORES[w.target.oreType].name,ORES[w.target.oreType].color);
-          }
-          w.target.alive=false;w.target.respawnTimer=rand(15,35);w.state='follow';
+          destroyAsteroid(w.target,player);
+          w.state='follow';
         }
       }
       break;
@@ -1966,6 +2073,34 @@ function npcThink(n){
     if(bestTarget){n.state='attack';n.target=bestTarget;return;}
   }
   
+  // Check for nearby loot to collect (non-pirates only, with 3-second delay)
+  if(tc<mc&&n.personality!=='pirate'&&n.personality!=='denPirate'){
+    let bestLoot=null,bestLD=500; // 500px detection range for loot
+    loot.forEach(l=>{
+      const d=dist(n.x,n.y,l.x,l.y);
+      if(d<bestLD){bestLD=d;bestLoot=l;}
+    });
+    if(bestLoot){
+      // 3-second delay before going to collect — use lootNoticeTime
+      if(!n._lootNoticeTime){
+        n._lootNoticeTime=performance.now()/1000;
+        n._noticedLootId=bestLoot.id;
+      }else if(n._noticedLootId!==bestLoot.id){
+        // Different loot, reset timer
+        n._lootNoticeTime=performance.now()/1000;
+        n._noticedLootId=bestLoot.id;
+      }
+      const waited=performance.now()/1000-n._lootNoticeTime;
+      if(waited>=3){
+        n.state='collectLoot';n._lootTarget=bestLoot;
+        n._lootNoticeTime=null;n._noticedLootId=null;
+        return;
+      }
+    }else{
+      n._lootNoticeTime=null;n._noticedLootId=null;
+    }
+  }
+
   if(tc<mc){
     let bestAst=null,bestD=3000;
     asteroids.forEach(a=>{
@@ -2051,12 +2186,22 @@ function npcAct(n,dt){
         n.target.hp-=rate*dt;
         if(Math.random()<.2)emitMiningParticles(n.target.x,n.target.y,ORES[n.target.oreType].glow);
         if(n.target.hp<=0){
-          const amt=randInt(2,4);const mc=maxCargo(n);
-          const canTake=Math.min(amt,mc-totalCargo(n.cargo));
-          n.cargo[n.target.oreType]=(n.cargo[n.target.oreType]||0)+canTake;
-          n.totalMined+=canTake;
-          n.target.alive=false;n.target.respawnTimer=rand(15,35);n.state='idle';
+          destroyAsteroid(n.target,n);
+          n.state='idle';
         }
+      }
+      break;
+    }
+    case 'collectLoot':{
+      // Move toward targeted loot drop and collect it
+      const lt=n._lootTarget;
+      if(!lt||!loot.includes(lt)||lt.items.length===0){n.state='idle';n._lootTarget=null;break;}
+      const d=dist(n.x,n.y,lt.x,lt.y);
+      if(d>CFG.COLLECT_RANGE){
+        moveToward(n,lt.x,lt.y,thrust,dt);
+      }else{
+        // Close enough — loot pickup happens in updateLoot since state is 'collectLoot'
+        n.state='idle';n._lootTarget=null;
       }
       break;
     }
@@ -3398,15 +3543,10 @@ function updateMining(dt){
   if(Math.random()<.4)emitMiningParticles(closest.x+rand(-closest.size/2,closest.size/2),closest.y+rand(-closest.size/2,closest.size/2),ORES[closest.oreType].glow);
   mineSndCD-=dt;if(mineSndCD<=0){SFX.mine();mineSndCD=.12;}
   if(closest.hp<=0){
-    const oreType=closest.oreType;
-    const amount=randInt(2,5+Math.floor(closest.maxHp/25));
-    const canTake=Math.min(amount,mc-totalCargo(player.cargo));
-    player.cargo[oreType]=(player.cargo[oreType]||0)+canTake;
-    player.totalMined+=canTake;
-    addFloatingText(closest.x,closest.y,`+${canTake} ${ORES[oreType].name}`,ORES[oreType].glow);
-    emitBurst(closest.x,closest.y,15,100,ORES[oreType].glow,3,.6,10);
+    destroyAsteroid(closest,player);
+    addFloatingText(closest.x,closest.y,`${ORES[closest.oreType].name} scattered!`,ORES[closest.oreType].glow);
     SFX.pickup();haptic(12);
-    closest.alive=false;closest.respawnTimer=rand(15,35);miningTarget=null;
+    miningTarget=null;
   }
 }
 
@@ -3424,6 +3564,28 @@ function updateProjectiles(dt){
     if(p.ttl<=0){projectiles.splice(i,1);continue;}
     // Only spawn trail particles if near player
     if(Math.random()<.3&&distToPlayer(p.x,p.y)<FX_RANGE)spawnParticle(p.x,p.y,rand(-10,10),rand(-10,10),p.color,1,.15,4);
+    // ── Bullet-asteroid collision: asteroids act as cover ──
+    let hitAsteroid=false;
+    for(let ai=0;ai<asteroids.length;ai++){
+      const a=asteroids[ai];
+      if(!a.alive)continue;
+      if(dist(p.x,p.y,a.x,a.y)<a.size+4){
+        a.hp-=p.dmg;
+        const nearP=distToPlayer(p.x,p.y)<FX_RANGE;
+        if(nearP){
+          emitBurst(p.x,p.y,6,60,ORES[a.oreType].glow,2,.3,6);
+          SFX.hit();
+          shake(Math.max(0,0.8-distToPlayer(p.x,p.y)/FX_RANGE*0.8));
+        }
+        minimapEvents.push({x:p.x,y:p.y,color:ORES[a.oreType].glow,t:0,maxT:.5,type:'hit'});
+        if(a.hp<=0){
+          destroyAsteroid(a,null);
+          if(nearP)addFloatingText(a.x,a.y,'Asteroid destroyed!','#ffffff');
+        }
+        hitAsteroid=true;break;
+      }
+    }
+    if(hitAsteroid){projectiles.splice(i,1);continue;}
     // Build target list: include police units as potential targets (non-police can hit police & vice versa)
     const isPoliceProj=policeUnits.some(pu=>pu.id===p.ownerId);
     const targets=p.isPlayerOwned?[...npcs,...policeUnits.filter(pu=>pu.id!==p.ownerId),...remotePlayers.filter(rp=>rp.id!==p.ownerId)]
@@ -3618,6 +3780,12 @@ function updateLoot(dt){
   for(let i=loot.length-1;i>=0;i--){
     const l=loot[i];l.ttl-=dt;
     if(l.ttl<=0){loot.splice(i,1);continue;}
+    // Apply velocity with friction so scattered loot slows down
+    if(l.vx||l.vy){
+      l.x+=l.vx*dt;l.y+=l.vy*dt;
+      l.vx*=Math.pow(0.92,dt*60);l.vy*=Math.pow(0.92,dt*60);
+      if(Math.abs(l.vx)<1&&Math.abs(l.vy)<1){l.vx=0;l.vy=0;}
+    }
     if(player&&!player.dead){
       if(dist(player.x,player.y,l.x,l.y)<CFG.COLLECT_RANGE){
         const mc=maxCargo(player);
@@ -3636,8 +3804,10 @@ function updateLoot(dt){
         if(l.items.length===0)loot.splice(i,1);
       }
     }
+    // NPCs collect loot if in 'collecting' state OR close enough (any non-pirate NPC)
     npcs.forEach(n=>{
-      if(n.dead||n.state!=='collecting')return;
+      if(n.dead)return;
+      if(n.state!=='collecting'&&n.state!=='collectLoot')return;
       if(dist(n.x,n.y,l.x,l.y)<CFG.COLLECT_RANGE){
         const mc=maxCargo(n);
         l.items.forEach(item=>{
@@ -3649,6 +3819,28 @@ function updateLoot(dt){
         if(l.items.length===0)loot.splice(i,1);
       }
     });
+    // Wingmen also collect loot for the player
+    if(player&&!player.dead){
+      wingmen.forEach(w=>{
+        if(w.dead)return;
+        if(dist(w.x,w.y,l.x,l.y)<CFG.COLLECT_RANGE){
+          const mc=maxCargo(player);
+          let picked=false;
+          l.items.forEach(item=>{
+            const space=mc-totalCargo(player.cargo);
+            const take=Math.min(item.amount,space);
+            if(take>0){
+              player.cargo[item.ore]=(player.cargo[item.ore]||0)+take;
+              item.amount-=take;picked=true;
+              addFloatingText(l.x,l.y,`+${take} ${ORES[item.ore].name}`,ORES[item.ore].glow);
+            }
+          });
+          if(picked)SFX.pickup();
+          l.items=l.items.filter(it=>it.amount>0);
+          if(l.items.length===0)loot.splice(i,1);
+        }
+      });
+    }
   }
 }
 
@@ -5414,7 +5606,7 @@ function gameLoop(timestamp){
     updateNPCs(dt);updateDenPirates(dt);updateWingmen(dt);updatePolice(dt);updateProjectiles(dt);updateLeviathan(dt);updateRemotePlayers(dt);updateRemoteProjectiles(dt);
     // Decay minimap events
     for(let i=minimapEvents.length-1;i>=0;i--){minimapEvents[i].t+=dt;if(minimapEvents[i].t>=minimapEvents[i].maxT)minimapEvents.splice(i,1);}updateLoot(dt);
-    updateAsteroidRespawn(dt);updateParticles(dt);updateCamera(dt);
+    updateAggressorDecay(dt);updateAsteroidRespawn(dt);updateParticles(dt);updateCamera(dt);
     
     hudTimer-=dt;if(hudTimer<=0){updateHUD();updateChatFade();if(isMobile||mobileFallbackActivated)updateMobileHUD();hudTimer=.15;}
     wsTimer-=dt;if(wsTimer<=0){sendState();wsTimer=.05;} // 20Hz net tick
