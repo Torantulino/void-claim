@@ -216,7 +216,19 @@ const CFG={
   DEN_RESPAWN_MAX:60,        // Max seconds (randomized per pirate)
   DEN_COUNT:4,               // Number of pirate dens in the red zone
   DEN_HUNT_RANGE:3000,       // How far den pirates roam from their den to hunt
-  DEN_LEASH_R:4000,          // Max distance from den before pirate returns
+  DEN_LEASH_R:4000,
+  // Trade Ship system
+  TRADE_SHIP_HP:8000,TRADE_SHIP_SHIELD:4000,TRADE_SHIP_SPEED:40,
+  TRADE_SHIP_ORBIT_R:6000,TRADE_SHIP_BODY_W:400,TRADE_SHIP_BODY_H:100,
+  TRADE_SHIP_MARKET_R:500,TRADE_SHIP_TURRET_RANGE:800,
+  TRADE_SHIP_TURRET_CD:0.6,TRADE_SHIP_TURRET_DMG:15,
+  TRADE_SHIP_SHIELD_REGEN:20,TRADE_SHIP_HULL_REGEN:5,
+  TRADE_SHIP_ORE_BONUS:1.5,TRADE_SHIP_RESPAWN:120,
+  // Missile system
+  MISSILE_COST:150,MISSILE_SPEED:350,MISSILE_TURN_RATE:3.5,
+  MISSILE_DMG:40,MISSILE_SPLASH_DMG:15,MISSILE_SPLASH_R:80,
+  MISSILE_TTL:4.0,MISSILE_LOCK_RANGE:600,MISSILE_LOCK_ANGLE:0.8,
+  MISSILE_CD:1.5,          // Max distance from den before pirate returns
   CAM_LERP:.08,SHAKE_DECAY:.9,MINIMAP_R:140,MINIMAP_SCALE:0.02,
   STAR_LAYERS:[{count:200,size:1,speed:.05,alpha:.3},{count:150,size:1.5,speed:.15,alpha:.5},{count:80,size:2,speed:.3,alpha:.8}],
   WS_URL:null, // legacy — kept for backwards compat
@@ -240,12 +252,12 @@ const ORES={
 const SHIP_COLORS=['#33ff77','#ff3355','#3388ff','#ffaa00','#cc44ff','#00eedd','#ff2277','#77ff33'];
 
 const SHIPS={
-  prospector:{name:'Prospector',speed:1,hull:100,cargo:20,dmg:1,mineRate:1,shield:30,cost:0,desc:'Balanced starter',ability:'EMP Pulse',abilityCd:12,abilityDesc:'Stuns nearby enemies 2s'},
-  hauler:{name:'Hauler',speed:.72,hull:140,cargo:45,dmg:.5,mineRate:1.3,shield:40,cost:500,desc:'Massive cargo',ability:'Tractor Beam',abilityCd:8,abilityDesc:'Pulls loot & ore toward you'},
-  corsair:{name:'Corsair',speed:1.4,hull:70,cargo:12,dmg:1.6,mineRate:.8,shield:20,cost:800,desc:'Fast & deadly',ability:'Afterburner',abilityCd:6,abilityDesc:'Huge speed burst forward'},
-  sentinel:{name:'Sentinel',speed:.88,hull:200,cargo:18,dmg:.9,mineRate:.9,shield:80,cost:1200,desc:'Tanky bodyguard',ability:'Shield Bash',abilityCd:10,abilityDesc:'Knockback + damage AoE'},
-  phantom:{name:'Phantom',speed:1.25,hull:90,cargo:15,dmg:1.3,mineRate:1,shield:50,cost:2000,desc:'Cloaking hunter',ability:'Phase Cloak',abilityCd:15,abilityDesc:'Invisible for 4 seconds'},
-  carrier:{name:'Carrier',speed:.55,hull:350,cargo:30,dmg:.7,mineRate:.6,shield:120,cost:5000,visualScale:2.0,desc:'Capital ship — hire wingmen',ability:'Rally Wingmen',abilityCd:10,abilityDesc:'Wingmen focus your target 5s'}
+  prospector:{name:'Prospector',speed:1,hull:100,cargo:20,dmg:1,mineRate:1,shield:30,cost:0,desc:'Balanced starter',ability:'EMP Pulse',abilityCd:12,abilityDesc:'Stuns nearby enemies 2s',missileCapacity:2},
+  hauler:{name:'Hauler',speed:.72,hull:140,cargo:45,dmg:.5,mineRate:1.3,shield:40,cost:500,desc:'Massive cargo',ability:'Tractor Beam',abilityCd:8,abilityDesc:'Pulls loot & ore toward you',missileCapacity:3},
+  corsair:{name:'Corsair',speed:1.4,hull:70,cargo:12,dmg:1.6,mineRate:.8,shield:20,cost:800,desc:'Fast & deadly',ability:'Afterburner',abilityCd:6,abilityDesc:'Huge speed burst forward',missileCapacity:5},
+  sentinel:{name:'Sentinel',speed:.88,hull:200,cargo:18,dmg:.9,mineRate:.9,shield:80,cost:1200,desc:'Tanky bodyguard',ability:'Shield Bash',abilityCd:10,abilityDesc:'Knockback + damage AoE',missileCapacity:4},
+  phantom:{name:'Phantom',speed:1.25,hull:90,cargo:15,dmg:1.3,mineRate:1,shield:50,cost:2000,desc:'Cloaking hunter',ability:'Phase Cloak',abilityCd:15,abilityDesc:'Invisible for 4 seconds',missileCapacity:4},
+  carrier:{name:'Carrier',speed:.55,hull:350,cargo:30,dmg:.7,mineRate:.6,shield:120,cost:5000,visualScale:2.0,desc:'Capital ship — hire wingmen',ability:'Rally Wingmen',abilityCd:10,abilityDesc:'Wingmen focus your target 5s',missileCapacity:8}
 };
 
 const UPGRADES={
@@ -820,7 +832,23 @@ let policeUnits=[]; // Array of police entities (carriers + fighters)
 const POLICE_COLOR='#4488ff'; // Distinctive blue
 const POLICE_CARRIER_COLOR='#3366dd';
 const POLICE_PATROL_R=CFG.EARTH_SHIELD_R*0.75; // Patrol orbit radius within safe zone
-const POLICE_CHASE_MAX=CFG.GREEN_R+500; // How far police will chase into green zone
+const POLICE_CHASE_MAX=CFG.GREEN_R+500;
+
+// ═══════════════════════════════════════════
+// Trade Ship System — orbiting market + turret defense
+// ═══════════════════════════════════════════
+let tradeShip=null;
+let tradeShipNearby=false;    // Is player within market range?
+let tradeShipMarketOpen=false; // Is market UI showing for trade ship?
+const TRADE_SHIP_NPC_ID=30;   // Singleton NPC ID
+const TRADE_SHIP_COLOR='#ffaa22';
+const TRADE_SHIP_TURRET_COLOR='#22ddcc';
+
+// Missile state
+let missiles=[];              // Active missile projectiles in flight
+let missileLockTarget=null;   // Currently locked target for missile fire
+let missileLockTimer=0;       // Lock-on indicator timer
+let missileCD=0;              // Player missile fire cooldown // How far police will chase into green zone
 const POLICE_RETURN_R=CFG.EARTH_SHIELD_R+200; // When to start returning
 
 // Aggressor tracking with warning system and time-based decay
@@ -873,6 +901,15 @@ function checkAggressionRules(attacker,victim){
   if(victim.isPolice){
     refreshAggressionTimer(attacker);
     if(!isAggressor(attacker))markAggressor(attacker);
+    return;
+  }
+  // Rule: attacking the Trade Ship anywhere = immediate aggression
+  if(victim.isTradeShip){
+    refreshAggressionTimer(attacker);
+    if(!isAggressor(attacker)){
+      markAggressor(attacker);
+      if(attacker.isPlayer)notify('⚠ The Trade Ship marks you as hostile!','#ff4444');
+    }
     return;
   }
   // Rule: attacking a non-aggressor who is inside the safe zone
@@ -1003,6 +1040,40 @@ function createPoliceFighter(carrierRef,fighterIndex){
   };
 }
 
+
+// ═══════════════════════════════════════════
+// Trade Ship — Creation & Spawn
+// ═══════════════════════════════════════════
+function createTradeShip(){
+  return{
+    id:'trade_ship',npcId:TRADE_SHIP_NPC_ID,
+    x:CFG.TRADE_SHIP_ORBIT_R,y:0,vx:0,vy:0,
+    angle:Math.PI/2,
+    orbitAngle:0,orbitSpeed:0.015,
+    hp:CFG.TRADE_SHIP_HP,maxHp:CFG.TRADE_SHIP_HP,
+    shield:CFG.TRADE_SHIP_SHIELD,maxShield:CFG.TRADE_SHIP_SHIELD,
+    turrets:[
+      {offsetX:-160,offsetY:-40,angle:0,targetId:null,cooldown:0},
+      {offsetX:-160,offsetY:40,angle:0,targetId:null,cooldown:0},
+      {offsetX:160,offsetY:-40,angle:0,targetId:null,cooldown:0},
+      {offsetX:160,offsetY:40,angle:0,targetId:null,cooldown:0}
+    ],
+    dead:false,deathTimer:0,respawnTimer:0,
+    isTradeShip:true,isNPC:true,isPolice:false,isWingman:false,isPlayer:false,
+    personality:'tradeShip',state:'orbit',
+    name:'Trade Ship',color:TRADE_SHIP_COLOR,
+    ship:'carrier',cargo:{},credits:0,
+    stunTimer:0,aggressor:false,cloaked:false,bounty:0,
+    totalKills:0,totalMined:0,totalEarned:0,
+    shootCD:0,upgrades:{engine:0,laser:0,shields:0,cargo:0,scanner:0}
+  };
+}
+
+function spawnTradeShip(){
+  tradeShip=createTradeShip();
+  npcs.push(tradeShip);
+}
+
 function spawnPolice(){
   policeUnits=[];
   for(let i=0;i<2;i++){
@@ -1013,6 +1084,92 @@ function spawnPolice(){
       const fighter=createPoliceFighter(carrier,j);
       policeUnits.push(fighter);
       npcs.push(fighter); // Also add to npcs[] for server sync
+    }
+  }
+}
+
+
+// ═══════════════════════════════════════════
+// Trade Ship — Movement, Turrets, Regen
+// ═══════════════════════════════════════════
+function updateTradeShip(dt){
+  if(!tradeShip)return;
+  // Respawn logic
+  if(tradeShip.dead){
+    tradeShip.respawnTimer-=dt;
+    if(tradeShip.respawnTimer<=0){
+      // Respawn at current orbit angle
+      tradeShip.dead=false;
+      tradeShip.hp=CFG.TRADE_SHIP_HP;tradeShip.shield=CFG.TRADE_SHIP_SHIELD;
+      tradeShip.turrets.forEach(t=>{t.cooldown=0;t.targetId=null;});
+      notify('📡 The Trade Ship has arrived!','#ffaa22');
+      SFX.warp();
+      // Warp-in burst
+      if(distToPlayer(tradeShip.x,tradeShip.y)<FX_RANGE*2){
+        emitBurst(tradeShip.x,tradeShip.y,40,300,'#ffaa22',4,1,12);
+      }
+    }else if(tradeShip.respawnTimer<30&&tradeShip.respawnTimer+dt>=30){
+      notify('📡 Trade Ship signal detected — arrival in 30s','#ffcc44');
+    }
+    // Keep orbiting even when dead (for orbit angle continuity)
+    tradeShip.orbitAngle+=tradeShip.orbitSpeed*dt;
+    if(tradeShip.orbitAngle>Math.PI*2)tradeShip.orbitAngle-=Math.PI*2;
+    tradeShip.x=Math.cos(tradeShip.orbitAngle)*CFG.TRADE_SHIP_ORBIT_R;
+    tradeShip.y=Math.sin(tradeShip.orbitAngle)*CFG.TRADE_SHIP_ORBIT_R;
+    return;
+  }
+  // Orbit movement
+  tradeShip.orbitAngle+=tradeShip.orbitSpeed*dt;
+  if(tradeShip.orbitAngle>Math.PI*2)tradeShip.orbitAngle-=Math.PI*2;
+  tradeShip.x=Math.cos(tradeShip.orbitAngle)*CFG.TRADE_SHIP_ORBIT_R;
+  tradeShip.y=Math.sin(tradeShip.orbitAngle)*CFG.TRADE_SHIP_ORBIT_R;
+  tradeShip.angle=tradeShip.orbitAngle+Math.PI/2;
+  tradeShip.vx=-Math.sin(tradeShip.orbitAngle)*CFG.TRADE_SHIP_ORBIT_R*tradeShip.orbitSpeed;
+  tradeShip.vy=Math.cos(tradeShip.orbitAngle)*CFG.TRADE_SHIP_ORBIT_R*tradeShip.orbitSpeed;
+  // Shield & hull regen
+  tradeShip.shield=Math.min(tradeShip.maxShield,tradeShip.shield+CFG.TRADE_SHIP_SHIELD_REGEN*dt);
+  tradeShip.hp=Math.min(tradeShip.maxHp,tradeShip.hp+CFG.TRADE_SHIP_HULL_REGEN*dt);
+  // Turret AI (NPC host only)
+  if(isNpcHost)updateTradeShipTurrets(dt);
+}
+
+function updateTradeShipTurrets(dt){
+  if(!tradeShip||tradeShip.dead)return;
+  const cos=Math.cos(tradeShip.angle),sin=Math.sin(tradeShip.angle);
+  for(const turret of tradeShip.turrets){
+    turret.cooldown=Math.max(0,turret.cooldown-dt);
+    // World position of turret
+    const wx=tradeShip.x+turret.offsetX*cos-turret.offsetY*sin;
+    const wy=tradeShip.y+turret.offsetX*sin+turret.offsetY*cos;
+    // Find nearest aggressor
+    let bestTarget=null,bestDist=CFG.TRADE_SHIP_TURRET_RANGE;
+    const candidates=[
+      ...npcs.filter(n=>!n.dead&&!n.isTradeShip&&isAggressor(n)),
+      ...(player&&!player.dead&&isAggressor(player)?[player]:[]),
+      ...remotePlayers.filter(rp=>!rp.dead&&rp.aggressor),
+      ...wingmen.filter(w=>!w.dead&&player&&isAggressor(player))
+    ];
+    for(const c of candidates){
+      if(c.isPolice)continue;
+      const d=dist(c.x,c.y,wx,wy);
+      if(d<bestDist){bestDist=d;bestTarget=c;}
+    }
+    if(bestTarget){
+      const targetAngle=Math.atan2(bestTarget.y-wy,bestTarget.x-wx);
+      turret.angle=lerpAngle(turret.angle,targetAngle,5*dt);
+      const angleDiff=Math.abs(normalizeAngle(turret.angle-targetAngle));
+      if(turret.cooldown<=0&&angleDiff<0.2){
+        // Fire turret projectile
+        const p=createProjectile({id:'trade_ship',name:'Trade Ship',color:TRADE_SHIP_TURRET_COLOR,
+          vx:0,vy:0,isPolice:false,isPlayer:false,isWingman:false,isTradeShip:true},
+          wx,wy,turret.angle,CFG.TRADE_SHIP_TURRET_DMG);
+        p.isTradeShipOwned=true;p.color=TRADE_SHIP_TURRET_COLOR;
+        projectiles.push(p);
+        turret.cooldown=CFG.TRADE_SHIP_TURRET_CD;
+        if(distToPlayer(wx,wy)<FX_RANGE)SFX.shoot();
+      }
+    }else{
+      turret.angle=lerpAngle(turret.angle,tradeShip.angle,1*dt);
     }
   }
 }
@@ -2341,8 +2498,8 @@ function updateNPCs(dt){
   
   // HOST path (or single-player): run full NPC AI locally
   npcs.forEach(n=>{
-    // Police are handled by updatePolice() — skip them here
-    if(n.isPolice)return;
+    // Police and trade ship are handled by their own update functions
+    if(n.isPolice||n.isTradeShip)return;
     if(n.dead){
       // Den pirates have their own respawn system (longer timers, spawn at dens)
       if(n.personality==='denPirate')return; // handled by updateDenPirates()
@@ -2400,7 +2557,14 @@ function npcThink(n){
   }
   
   if(hpPct<n.fleeHP){n.state='flee';n.target=null;return;}
-  if(tc>=mc*.8&&dToEarth>CFG.EARTH_SHIELD_R){n.state='return';n.target=null;return;}
+  if(tc>=mc*.8&&dToEarth>CFG.EARTH_SHIELD_R){
+    // NPCs can sell at trade ship if it's closer than Earth
+    if(tradeShip&&!tradeShip.dead){
+      const dToTS=dist(n.x,n.y,tradeShip.x,tradeShip.y);
+      if(dToTS<dToEarth&&dToTS<3000){n.state='returnToTradeShip';n.target=null;return;}
+    }
+    n.state='return';n.target=null;return;
+  }
   if(tc>0&&dToEarth<CFG.EARTH_SHIELD_R+100){n.state='sell';return;}
   
   // All NPCs flee from the Leviathan when it's nearby
@@ -2586,6 +2750,17 @@ function npcAct(n,dt){
     case 'sell':{
       const val=cargoValue(n.cargo);n.credits+=val;n.totalEarned+=val;n.cargo={};
       n.hp=Math.min(n.maxHp,n.hp+n.maxHp*.5);n.shield=n.maxShield;n.state='idle';
+      break;
+    }
+    case 'returnToTradeShip':{
+      if(!tradeShip||tradeShip.dead){n.state='return';break;}
+      moveToward(n,tradeShip.x,tradeShip.y,thrust,dt);
+      if(dist(n.x,n.y,tradeShip.x,tradeShip.y)<CFG.TRADE_SHIP_MARKET_R)n.state='sellAtTradeShip';
+      break;
+    }
+    case 'sellAtTradeShip':{
+      const val2=Math.floor(cargoValue(n.cargo)*CFG.TRADE_SHIP_ORE_BONUS);
+      n.credits+=val2;n.totalEarned+=val2;n.cargo={};n.state='idle';
       break;
     }
     // ── Den Pirate states ──
@@ -3482,7 +3657,7 @@ function drawMinimap(){
 
   // ── NPCs with threat pulsing ──
   npcs.forEach(n=>{
-    if(n.dead||n.isPolice)return; // Police have their own minimap rendering
+    if(n.dead||n.isPolice||n.isTradeShip)return; // Police/trade ship have their own minimap rendering
     const nx=mx+(n.x-player.x)*scale,ny=my+(n.y-player.y)*scale;
     if(dist(nx,ny,mx,my)<mr){
       const isDenPirate=n.personality==='denPirate';
@@ -3585,6 +3760,7 @@ function drawMinimap(){
 
   // ── Void Leviathan ──
   drawLeviathanMinimap(mx,my,scale);
+  drawTradeShipMinimap(mx,my,scale);
 
   // ── Radar Glitch Effect (Leviathan approaching) ──
   if(radarGlitchIntensity>0.02){
@@ -3854,8 +4030,9 @@ document.addEventListener('keydown',e=>{
   if(e.key===' '&&gameState==='playing'){input.spaceDown=true;e.preventDefault();}
   if(e.key.toLowerCase()==='m'&&gameState==='playing'){toggleMarket();e.preventDefault();}
   if(e.key.toLowerCase()==='r'&&gameState==='playing'){useAbility();e.preventDefault();}
+  if(e.key.toLowerCase()==='x'&&gameState==='playing'){fireMissile();e.preventDefault();}
   if(e.key.toLowerCase()==='e'&&gameState==='playing'&&portalPromptActive){portalConfirmKey=true;e.preventDefault();}
-  if(e.key==='Escape')document.getElementById('market').style.display='none';
+  if(e.key==='Escape'){document.getElementById('market').style.display='none';tradeShipMarketOpen=false;}
 });
 document.addEventListener('keyup',e=>{
   if(chatOpen)return;
@@ -3868,7 +4045,7 @@ canvas.addEventListener('mousemove',e=>{
 });
 canvas.addEventListener('mousedown',e=>{input.mouseDown=true;e.preventDefault();resumeAudio();});
 canvas.addEventListener('mouseup',e=>{input.mouseDown=false});
-canvas.addEventListener('contextmenu',e=>e.preventDefault());
+canvas.addEventListener('contextmenu',e=>{e.preventDefault();if(gameState==='playing')fireMissile();});
 
 let touchMove=null,touchShoot=null;
 // Enhanced mobile joystick config
@@ -3899,6 +4076,8 @@ function activateMobileFallback(){
     if(mbMarket)mbMarket.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();toggleMarket();haptic(12);},{passive:false});
     if(mbChat)mbChat.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();if(chatOpen)closeChat();else openChat();haptic(12);},{passive:false});
     if(mbPortal)mbPortal.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();portalConfirmKey=true;haptic(30);},{passive:false});
+    const mbMissile=document.getElementById('mb-missile');
+    if(mbMissile)mbMissile.addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();fireMissile();haptic(20);},{passive:false});
   }
 }
 
@@ -4139,9 +4318,11 @@ function updateProjectiles(dt){
     if(hitAsteroid){projectiles.splice(i,1);continue;}
     // Build target list: police are in npcs[] so no separate policeUnits needed
     const isPoliceProj=p.isPoliceOwned||policeUnits.some(pu=>pu.id===p.ownerId);
-    const targets=p.isPlayerOwned?[...npcs.filter(n=>n.id!==p.ownerId),...remotePlayers.filter(rp=>rp.id!==p.ownerId)]
-      :isPoliceProj?[player,...npcs.filter(n=>!n.isPolice),...wingmen,...remotePlayers].filter(t=>t&&t.id!==p.ownerId)
-      :[player,...npcs.filter(n=>n.id!==p.ownerId),...wingmen.filter(w=>w.id!==p.ownerId),...remotePlayers.filter(rp=>rp.id!==p.ownerId)];
+    const isTSProj=!!p.isTradeShipOwned;
+    const targets=p.isPlayerOwned?[...npcs.filter(n=>n.id!==p.ownerId&&!n.isTradeShip),...remotePlayers.filter(rp=>rp.id!==p.ownerId)]
+      :isTSProj?[player,...npcs.filter(n=>!n.isPolice&&!n.isTradeShip&&isAggressor(n)),...wingmen,...remotePlayers].filter(t=>t&&t.id!==p.ownerId&&(isAggressor(t)||t.aggressor))
+      :isPoliceProj?[player,...npcs.filter(n=>!n.isPolice&&!n.isTradeShip),...wingmen,...remotePlayers].filter(t=>t&&t.id!==p.ownerId)
+      :[player,...npcs.filter(n=>n.id!==p.ownerId&&!n.isTradeShip),...wingmen.filter(w=>w.id!==p.ownerId),...remotePlayers.filter(rp=>rp.id!==p.ownerId)];
     let hit=false;
     targets.forEach(t=>{
       if(!t||t.dead||t.cloaked||hit)return;
@@ -4255,6 +4436,8 @@ function killEntity(target,attackerId){
   if(target.dead)return;
   // Wingmen die permanently — use dedicated handler
   if(target.isWingman){killWingman(target,attackerId);return;}
+  // Trade ship — special death handler
+  if(target.isTradeShip){killTradeShip(attackerId);return;}
   // Clear aggressor status on death
   clearAggressor(target);
   // Police respawn slower
@@ -4284,7 +4467,7 @@ function killEntity(target,attackerId){
     SFX.explode();
   }
   minimapEvents.push({x:target.x,y:target.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
-  if(target.isPlayer)shake(8);
+  if(target.isPlayer){shake(8);target.missiles=0;updateMissileHUD();}
   else if(near)shake(Math.max(0,4-distToPlayer(target.x,target.y)/FX_RANGE*4));
   
   if(totalCargo(target.cargo||{})>0){
@@ -4462,6 +4645,326 @@ function createLeviathan(px,py){
     phase:0,ambientTimer:0,
     dead:false,deathTimer:0,retreatAngle:0,lastSeenDist:99999
   };
+}
+
+
+// ═══════════════════════════════════════════
+// Missile System
+// ═══════════════════════════════════════════
+function createMissile(owner,target){
+  return{
+    id:uid(),ownerId:owner.id,ownerName:owner.name||'Unknown',
+    x:owner.x,y:owner.y,
+    vx:Math.cos(owner.angle)*CFG.MISSILE_SPEED*0.5,
+    vy:Math.sin(owner.angle)*CFG.MISSILE_SPEED*0.5,
+    angle:owner.angle,
+    targetId:target.id,targetX:target.x,targetY:target.y,
+    dmg:CFG.MISSILE_DMG,ttl:CFG.MISSILE_TTL,
+    speed:CFG.MISSILE_SPEED,turnRate:CFG.MISSILE_TURN_RATE,
+    isPlayerOwned:!!owner.isPlayer||!!owner.isWingman,
+    isMissile:true,armed:false,armTimer:0.3,
+    trailParticles:[]
+  };
+}
+
+function updateMissiles(dt){
+  missileCD=Math.max(0,missileCD-dt);
+  for(let i=missiles.length-1;i>=0;i--){
+    const m=missiles[i];
+    m.ttl-=dt;m.armTimer=Math.max(0,m.armTimer-dt);
+    if(m.armTimer<=0)m.armed=true;
+    if(m.ttl<=0){missiles.splice(i,1);continue;}
+    // Track target
+    let tx,ty,targetAlive=false;
+    const target=findEntityById(m.targetId);
+    if(target&&!target.dead){tx=target.x;ty=target.y;m.targetX=tx;m.targetY=ty;targetAlive=true;}
+    else{tx=m.targetX;ty=m.targetY;}
+    // Proportional navigation
+    const desiredAngle=Math.atan2(ty-m.y,tx-m.x);
+    let angleDiff=normalizeAngle(desiredAngle-m.angle);
+    const maxTurn=m.turnRate*dt;
+    m.angle+=Math.max(-maxTurn,Math.min(maxTurn,angleDiff));
+    // Accelerate
+    const speedFactor=Math.min(1,(CFG.MISSILE_TTL-m.ttl)/0.5);
+    const currentSpeed=m.speed*(0.5+0.5*speedFactor);
+    m.vx=Math.cos(m.angle)*currentSpeed;m.vy=Math.sin(m.angle)*currentSpeed;
+    m.x+=m.vx*dt;m.y+=m.vy*dt;
+    // Trail
+    if(Math.random()<0.8)m.trailParticles.push({x:m.x,y:m.y,life:0.4,maxLife:0.4});
+    for(let j=m.trailParticles.length-1;j>=0;j--){
+      m.trailParticles[j].life-=dt;
+      if(m.trailParticles[j].life<=0)m.trailParticles.splice(j,1);
+    }
+    // If target dead and reached last pos, go straight
+    if(!targetAlive&&dist(tx,ty,m.x,m.y)<30){
+      m.targetX=m.x+Math.cos(m.angle)*1000;m.targetY=m.y+Math.sin(m.angle)*1000;
+    }
+    // Collision
+    if(!m.armed)continue;
+    let hitSomething=false;
+    // vs asteroids
+    for(const a of asteroids){
+      if(!a.alive)continue;
+      if(dist(m.x,m.y,a.x,a.y)<a.size+8){
+        a.hp-=m.dmg;if(a.hp<=0)destroyAsteroid(a,null);
+        missileExplode(m);hitSomething=true;break;
+      }
+    }
+    if(hitSomething){missiles.splice(i,1);continue;}
+    // vs entities
+    const targets2=m.isPlayerOwned?
+      [...npcs.filter(n=>!n.dead&&n.id!==m.ownerId),...remotePlayers.filter(rp=>!rp.dead)]:
+      [player,...npcs.filter(n=>!n.dead&&n.id!==m.ownerId),...wingmen.filter(w=>!w.dead)].filter(Boolean);
+    for(const t2 of targets2){
+      if(t2.dead||t2.id===m.ownerId)continue;
+      if(t2.isPlayer&&t2.invulnTimer>0)continue;
+      const sz2=15+(SHIPS[t2.ship]?SHIPS[t2.ship].hull/30:15);
+      if(dist(m.x,m.y,t2.x,t2.y)<sz2+10){
+        // Primary hit
+        checkAggressionRules({id:m.ownerId,isPolice:false,isPlayer:m.isPlayerOwned},t2);
+        applyDamage(t2,m.dmg,m.ownerId,true);
+        // Splash damage
+        const splashTargets=[player,...npcs.filter(n=>!n.dead),...wingmen.filter(w=>!w.dead),...remotePlayers.filter(rp=>!rp.dead)].filter(Boolean);
+        for(const st of splashTargets){
+          if(st.dead||st===t2)continue;
+          const sd=dist(m.x,m.y,st.x,st.y);
+          if(sd<CFG.MISSILE_SPLASH_R)applyDamage(st,CFG.MISSILE_SPLASH_DMG*(1-sd/CFG.MISSILE_SPLASH_R),m.ownerId,distToPlayer(st.x,st.y)<FX_RANGE);
+        }
+        missileExplode(m);hitSomething=true;break;
+      }
+    }
+    if(hitSomething){missiles.splice(i,1);continue;}
+    // vs trade ship (if attacker is aggressor)
+    if(tradeShip&&!tradeShip.dead&&m.ownerId!=='trade_ship'){
+      if(dist(m.x,m.y,tradeShip.x,tradeShip.y)<220){
+        applyDamage(tradeShip,m.dmg,m.ownerId,distToPlayer(tradeShip.x,tradeShip.y)<FX_RANGE);
+        missileExplode(m);missiles.splice(i,1);continue;
+      }
+    }
+  }
+}
+
+function missileExplode(m){
+  const near=distToPlayer(m.x,m.y)<FX_RANGE;
+  if(near){
+    emitBurst(m.x,m.y,20,120,'#ff6622',3,.6,10);
+    emitBurst(m.x,m.y,10,60,'#ffcc44',2,.3,8);
+    SFX.explode();shake(3);
+  }
+  minimapEvents.push({x:m.x,y:m.y,color:'#ff6622',t:0,maxT:1,type:'explosion'});
+}
+
+function findEntityById(id){
+  if(player&&player.id===id)return player;
+  let e=npcs.find(n=>n.id===id);if(e)return e;
+  e=remotePlayers.find(rp=>rp.id===id);if(e)return e;
+  e=wingmen.find(w=>w.id===id);if(e)return e;
+  return null;
+}
+
+function drawMissiles(){
+  for(const m of missiles){
+    const s=worldToScreen(m.x,m.y);
+    if(!inView(m.x,m.y,50))continue;
+    // Trail
+    for(const p of m.trailParticles){
+      const ps=worldToScreen(p.x,p.y);
+      const alpha=p.life/p.maxLife*0.5;
+      ctx.fillStyle=`rgba(255,${Math.floor(120+80*(p.life/p.maxLife))},30,${alpha})`;
+      ctx.beginPath();ctx.arc(ps.x,ps.y,2+(1-p.life/p.maxLife)*3,0,Math.PI*2);ctx.fill();
+    }
+    // Missile body
+    ctx.save();ctx.translate(s.x,s.y);ctx.rotate(m.angle);
+    // Exhaust
+    const fl=8+Math.random()*4;
+    const eg=ctx.createLinearGradient(-fl-6,0,-2,0);
+    eg.addColorStop(0,'transparent');eg.addColorStop(0.3,'rgba(255,100,20,.6)');eg.addColorStop(1,'rgba(255,200,50,.9)');
+    ctx.fillStyle=eg;ctx.fillRect(-fl-6,-3,fl+4,6);
+    // Body
+    ctx.fillStyle='#ddd';ctx.beginPath();
+    ctx.moveTo(8,0);ctx.lineTo(-4,-3);ctx.lineTo(-6,0);ctx.lineTo(-4,3);ctx.closePath();ctx.fill();
+    // Warhead
+    ctx.fillStyle='#f44';ctx.beginPath();ctx.arc(6,0,2,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  }
+}
+
+function updateMissileLock(dt){
+  if(!player||player.dead){missileLockTarget=null;return;}
+  if(!player.missiles||player.missiles<=0){missileLockTarget=null;return;}
+  missileLockTimer+=dt;
+  // Find best lockable target
+  let best=null,bestDist=CFG.MISSILE_LOCK_RANGE;
+  const candidates=[...npcs.filter(n=>!n.dead&&!n.isPolice&&!n.isTradeShip),...remotePlayers.filter(rp=>!rp.dead)];
+  for(const c of candidates){
+    const d=dist(player.x,player.y,c.x,c.y);
+    if(d>CFG.MISSILE_LOCK_RANGE)continue;
+    const angleToTarget=Math.atan2(c.y-player.y,c.x-player.x);
+    const angleDiff2=Math.abs(normalizeAngle(angleToTarget-player.angle));
+    if(angleDiff2>CFG.MISSILE_LOCK_ANGLE)continue;
+    if(d<bestDist){bestDist=d;best=c;}
+  }
+  missileLockTarget=best;
+}
+
+function drawMissileLock(){
+  if(!missileLockTarget||!player||player.dead)return;
+  if(!player.missiles||player.missiles<=0)return;
+  const t2=missileLockTarget;
+  const s=worldToScreen(t2.x,t2.y);
+  const t=performance.now()*.001;
+  const rot=t*3;
+  const pulse=.6+Math.sin(t*6)*.3;
+  ctx.save();ctx.translate(s.x,s.y);ctx.rotate(rot);
+  ctx.strokeStyle=`rgba(255,50,30,${pulse})`;ctx.lineWidth=2;
+  // Diamond reticle
+  const sz2=18;
+  ctx.beginPath();ctx.moveTo(0,-sz2);ctx.lineTo(sz2,0);ctx.lineTo(0,sz2);ctx.lineTo(-sz2,0);ctx.closePath();ctx.stroke();
+  ctx.restore();
+  // LOCKED text
+  ctx.fillStyle=`rgba(255,50,30,${pulse})`;ctx.font='bold 9px Courier New';ctx.textAlign='center';
+  ctx.fillText('LOCKED',s.x,s.y-25);
+}
+
+function fireMissile(){
+  if(!player||player.dead||!missileLockTarget)return;
+  if(!player.missiles||player.missiles<=0){notify('No missiles — buy at Trade Ship','#ff6644');return;}
+  if(missileCD>0)return;
+  const m=createMissile(player,missileLockTarget);
+  missiles.push(m);
+  player.missiles--;
+  missileCD=CFG.MISSILE_CD;
+  SFX.shoot();shake(2);
+  updateMissileHUD();
+}
+
+
+// ═══════════════════════════════════════════
+// Trade Ship — Market UI & Proximity
+// ═══════════════════════════════════════════
+function updateTradeShipProximity(){
+  if(!player||player.dead||!tradeShip||tradeShip.dead){
+    tradeShipNearby=false;
+    if(tradeShipMarketOpen)closeTradeShipMarket();
+    return;
+  }
+  const d=dist(player.x,player.y,tradeShip.x,tradeShip.y);
+  tradeShipNearby=d<CFG.TRADE_SHIP_MARKET_R;
+  // Auto-close if drifted too far
+  if(tradeShipMarketOpen&&d>CFG.TRADE_SHIP_MARKET_R+100)closeTradeShipMarket();
+  // Auto-close if took damage
+  if(tradeShipMarketOpen&&player.lastDamageTime&&performance.now()-player.lastDamageTime<500)closeTradeShipMarket();
+}
+
+function toggleTradeShipMarket(){
+  if(tradeShipMarketOpen){closeTradeShipMarket();return;}
+  if(!tradeShipNearby){notify('Get closer to the Trade Ship','#ff6644');return;}
+  openTradeShipMarket();
+}
+
+function openTradeShipMarket(){
+  tradeShipMarketOpen=true;
+  const m=document.getElementById('market');
+  document.getElementById('marketTitle').textContent='⬡ TRADE SHIP MARKET';
+  m.style.display='block';
+  renderMarketTabs(true);
+  renderMarket();
+  renderMissileTab();
+}
+
+function closeTradeShipMarket(){
+  tradeShipMarketOpen=false;
+  const m=document.getElementById('market');
+  m.style.display='none';
+}
+
+function renderMarketTabs(isTradeShip){
+  const tabsEl=document.getElementById('marketTabs');
+  if(!tabsEl)return;
+  const tabs=isTradeShip?
+    [{id:'tabUpgrades',label:'UPGRADES'},{id:'tabShips',label:'SHIPS'},{id:'tabMissiles',label:'🚀 MISSILES'}]:
+    [{id:'tabUpgrades',label:'UPGRADES'},{id:'tabShips',label:'SHIPS'}];
+  tabsEl.innerHTML='';
+  tabs.forEach((tab,i)=>{
+    const btn=document.createElement('button');
+    btn.className='market-tab'+(i===0?' active':'');
+    btn.textContent=tab.label;
+    btn.onclick=()=>{
+      tabsEl.querySelectorAll('.market-tab').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.market-tab-content').forEach(c=>c.classList.remove('active'));
+      const el=document.getElementById(tab.id);
+      if(el)el.classList.add('active');
+    };
+    tabsEl.appendChild(btn);
+  });
+  // Activate first tab
+  document.querySelectorAll('.market-tab-content').forEach(c=>c.classList.remove('active'));
+  const first=document.getElementById(tabs[0].id);
+  if(first)first.classList.add('active');
+}
+
+function renderMissileTab(){
+  const el=document.getElementById('missileInfo');
+  if(!el||!player)return;
+  const maxM=SHIPS[player.ship].missileCapacity||2;
+  const curM=player.missiles||0;
+  const canBuy=player.credits>=CFG.MISSILE_COST&&curM<maxM;
+  const maxBuy=Math.min(maxM-curM,Math.floor(player.credits/CFG.MISSILE_COST));
+  el.innerHTML=`
+    <div style="font-size:1.1rem;color:#ff6644;margin-bottom:8px">🚀 HEAT-SEEKING MISSILES</div>
+    <div class="missile-count">${curM} / ${maxM}</div>
+    <div style="font-size:.75rem;color:rgba(255,255,255,.5);margin:4px 0">Lock-on within 600px · ±45° cone · 40 damage + splash</div>
+    <div class="missile-cost">Cost: ⬡ ${CFG.MISSILE_COST} per missile</div>
+    <div style="margin-top:12px">
+      <button class="buy-missile-btn" ${canBuy?'':'disabled'} onclick="buyMissiles(1)">BUY 1</button>
+      <button class="buy-missile-btn" ${maxBuy>1?'':'disabled'} onclick="buyMissiles(${maxBuy})">BUY MAX (${maxBuy})</button>
+    </div>
+    <div style="font-size:.65rem;color:rgba(255,255,255,.35);margin-top:10px">Right-click or X to fire · Lost on death</div>
+  `;
+}
+
+function buyMissiles(count){
+  if(!player||count<=0)return;
+  const maxM=SHIPS[player.ship].missileCapacity||2;
+  const canBuy=Math.min(count,maxM-(player.missiles||0));
+  const cost=canBuy*CFG.MISSILE_COST;
+  if(cost>player.credits||canBuy<=0)return;
+  player.credits-=cost;
+  player.missiles=(player.missiles||0)+canBuy;
+  notify(`Loaded ${canBuy} missile${canBuy>1?'s':''} 🚀`,'#ff6644');
+  SFX.upgrade();updateHUD();renderMissileTab();updateMissileHUD();
+}
+window.buyMissiles=buyMissiles;
+
+
+function sellAllOreAtTradeShip(){
+  if(!player)return 0;
+  const bonus=CFG.TRADE_SHIP_ORE_BONUS;
+  let val=0;
+  for(let k in player.cargo){
+    if(player.cargo[k]>0&&ORES[k]){
+      val+=player.cargo[k]*ORES[k].value;
+    }
+  }
+  val=Math.floor(val*bonus);
+  if(val>0){
+    player.credits+=val;player.totalEarned+=val;
+    addFloatingText(player.x,player.y-30,`+${val} ⬡ (+50%)`,'#44ff88');
+    notify(`Sold ore for ${val} credits (+50% bonus)!`,'#44ff88');
+    player.cargo={};updateHUD();SFX.sell();saveGame();submitLeaderboard();
+  }
+  return val;
+}
+
+function updateMissileHUD(){
+  const el=document.getElementById('missileHUD');
+  if(!el)return;
+  if(!player||!player.missiles||player.missiles<=0){el.style.display='none';return;}
+  el.style.display='block';
+  const maxM=SHIPS[player.ship].missileCapacity||2;
+  el.textContent='🚀 '+player.missiles+'/'+maxM;
+  el.style.color=missileLockTarget?'#ff4422':'rgba(255,100,60,.9)';
 }
 
 function updateLeviathan(dt){
@@ -4688,6 +5191,48 @@ function moveLeviathan(lev,tx,ty,speed,dt){
   if(v>speed){lev.vx*=speed/v;lev.vy*=speed/v;}
 }
 
+
+// ═══════════════════════════════════════════
+// Trade Ship — Death & Loot
+// ═══════════════════════════════════════════
+function killTradeShip(attackerId){
+  if(!tradeShip||tradeShip.dead)return;
+  tradeShip.dead=true;
+  tradeShip.deathTimer=3;
+  tradeShip.respawnTimer=CFG.TRADE_SHIP_RESPAWN;
+  // Massive explosion
+  const near=distToPlayer(tradeShip.x,tradeShip.y)<FX_RANGE*2;
+  if(near){
+    emitBurst(tradeShip.x,tradeShip.y,60,400,'#ffaa22',5,1.2,15);
+    emitBurst(tradeShip.x,tradeShip.y,40,250,'#ff6622',4,.8,12);
+    emitBurst(tradeShip.x,tradeShip.y,20,150,'#fff',3,.5,10);
+    SFX.explode();shake(15);
+  }
+  notify('⚠ The Trade Ship has been destroyed!','#ff4444');
+  // Close market for everyone
+  if(tradeShipMarketOpen)closeTradeShipMarket();
+  // Drop tons of widely scattered voidstone
+  const voidTotal=randInt(20,30);
+  const voidDrops=Math.min(voidTotal,randInt(8,14));
+  let voidRemaining=voidTotal;
+  for(let d=0;d<voidDrops;d++){
+    const amt=d===voidDrops-1?voidRemaining:Math.max(1,randInt(1,Math.ceil(voidRemaining/(voidDrops-d))));
+    voidRemaining-=amt;if(amt<=0)continue;
+    const ang=rand(0,Math.PI*2);
+    const spd=rand(80,250); // Widely scattered
+    const vx2=Math.cos(ang)*spd;
+    const vy2=Math.sin(ang)*spd;
+    const vl=createLoot(tradeShip.x,tradeShip.y,{voidstone:amt},vx2,vy2);
+    if(vl)loot.push(vl);
+  }
+  minimapEvents.push({x:tradeShip.x,y:tradeShip.y,color:'#ffaa22',t:0,maxT:3,type:'explosion'});
+  // Kill credit
+  if(attackerId===player?.id){
+    notify('☠ TRADE SHIP DESTROYED — loot the wreckage!','#ffaa22');
+    player.totalKills++;
+  }
+}
+
 function killLeviathan(lev){
   lev.dead=true;lev.deathTimer=3;
   emitBurst(lev.x,lev.y,80,400,'#aa22ff',5,1.2,15);
@@ -4719,6 +5264,143 @@ function killLeviathan(lev){
 }
 
 // ── Pirate Den World Landmarks ──
+
+// ═══════════════════════════════════════════
+// Trade Ship — Rendering
+// ═══════════════════════════════════════════
+function drawTradeShip(){
+  if(!tradeShip)return;
+  const s=worldToScreen(tradeShip.x,tradeShip.y);
+  if(!inView(tradeShip.x,tradeShip.y,300))return;
+  const deathFade=tradeShip.dead?clamp(tradeShip.deathTimer/2,0,1):1;
+  if(tradeShip.dead&&deathFade<=0)return;
+  ctx.save();ctx.globalAlpha=deathFade;
+  ctx.translate(s.x,s.y);ctx.rotate(tradeShip.angle);
+  // Engine glow
+  for(let i=-1;i<=1;i+=2){
+    const eg=ctx.createRadialGradient(-180,i*30,2,-180,i*30,25);
+    eg.addColorStop(0,'rgba(255,150,50,.8)');eg.addColorStop(.5,'rgba(255,100,20,.3)');
+    eg.addColorStop(1,'transparent');
+    ctx.fillStyle=eg;ctx.beginPath();ctx.arc(-180,i*30,25,0,Math.PI*2);ctx.fill();
+  }
+  // Main hull (dark gray rectangle with tapered bow)
+  ctx.fillStyle='#2a2e3a';
+  ctx.beginPath();
+  ctx.moveTo(200,0);ctx.lineTo(160,-45);ctx.lineTo(-180,-50);
+  ctx.lineTo(-200,-40);ctx.lineTo(-200,40);ctx.lineTo(-180,50);
+  ctx.lineTo(160,45);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='rgba(255,200,100,.25)';ctx.lineWidth=1.5;ctx.stroke();
+  // Container stacks (colored cargo blocks)
+  const containerColors=['#994422','#886633','#556644','#445566','#664433','#553344'];
+  for(let row=-1;row<=1;row++){
+    for(let col=0;col<6;col++){
+      const cx2=-120+col*50,cy2=row*22;
+      const ci=(row+1)*6+col;
+      ctx.fillStyle=containerColors[ci%containerColors.length];
+      ctx.fillRect(cx2-18,cy2-8,36,16);
+      ctx.strokeStyle='rgba(0,0,0,.4)';ctx.lineWidth=.5;ctx.strokeRect(cx2-18,cy2-8,36,16);
+    }
+  }
+  // Bridge tower at stern
+  ctx.fillStyle='#3a3e4a';
+  ctx.fillRect(-190,-20,30,40);
+  ctx.strokeStyle='rgba(100,200,255,.3)';ctx.lineWidth=1;
+  ctx.strokeRect(-190,-20,30,40);
+  // Window lights on bridge
+  ctx.fillStyle='rgba(100,200,255,.6)';
+  ctx.fillRect(-185,-14,6,4);ctx.fillRect(-185,10,6,4);
+  // Running lights
+  ctx.fillStyle='rgba(0,255,100,.7)';ctx.beginPath();ctx.arc(160,-45,3,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='rgba(255,0,50,.7)';ctx.beginPath();ctx.arc(160,45,3,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.5)';ctx.beginPath();ctx.arc(200,0,3,0,Math.PI*2);ctx.fill();
+  // Hull text
+  ctx.fillStyle='rgba(255,200,100,.35)';ctx.font='bold 14px Courier New';ctx.textAlign='center';
+  ctx.fillText('TRADE',0,-35);
+  // Turrets
+  const tCos=1,tSin=0; // Already in ship-local space
+  for(const turret of tradeShip.turrets){
+    const tx=turret.offsetX,ty=turret.offsetY;
+    const localTurretAngle=turret.angle-tradeShip.angle;
+    // Base
+    ctx.fillStyle='rgba(80,90,110,.9)';
+    ctx.beginPath();ctx.arc(tx,ty,8,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(34,221,204,.4)';ctx.lineWidth=1;ctx.stroke();
+    // Barrel
+    const bLen=20;
+    ctx.save();ctx.translate(tx,ty);ctx.rotate(localTurretAngle);
+    ctx.fillStyle=TRADE_SHIP_TURRET_COLOR;
+    ctx.fillRect(0,-2,bLen,4);
+    // Muzzle glow when firing
+    if(turret.cooldown>CFG.TRADE_SHIP_TURRET_CD*.7){
+      ctx.fillStyle='rgba(34,221,204,.8)';
+      ctx.beginPath();ctx.arc(bLen,0,5,0,Math.PI*2);ctx.fill();
+    }
+    ctx.restore();
+  }
+  // Shield bubble
+  if(tradeShip.shield>0&&!tradeShip.dead){
+    const shieldAlpha=.06+.08*(tradeShip.shield/tradeShip.maxShield);
+    ctx.strokeStyle=`rgba(100,200,255,${shieldAlpha+.1})`;ctx.lineWidth=2;
+    ctx.beginPath();ctx.ellipse(0,0,220,70,0,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle=`rgba(100,200,255,${shieldAlpha})`;ctx.fill();
+  }
+  ctx.restore();
+  // Health bar above ship (when damaged)
+  if(!tradeShip.dead&&tradeShip.hp<tradeShip.maxHp){
+    const barW=80,barH=4;
+    const barX=s.x-barW/2,barY=s.y-70;
+    ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(barX,barY,barW,barH);
+    const hpPct=tradeShip.hp/tradeShip.maxHp;
+    ctx.fillStyle=hpPct>.5?'#44ff88':(hpPct>.25?'#ffaa00':'#ff4444');
+    ctx.fillRect(barX,barY,barW*hpPct,barH);
+    // Shield bar
+    if(tradeShip.shield>0){
+      const sPct=tradeShip.shield/tradeShip.maxShield;
+      ctx.fillStyle='rgba(100,180,255,.5)';
+      ctx.fillRect(barX,barY-3,barW*sPct,2);
+    }
+  }
+  // Proximity label
+  if(!tradeShip.dead&&player&&!player.dead){
+    const d=dist(player.x,player.y,tradeShip.x,tradeShip.y);
+    if(d<CFG.TRADE_SHIP_MARKET_R+200){
+      ctx.fillStyle='rgba(255,200,100,.7)';ctx.font='bold 11px Courier New';ctx.textAlign='center';
+      ctx.fillText('⬡ TRADE SHIP',s.x,s.y+80);
+      if(d<CFG.TRADE_SHIP_MARKET_R){
+        ctx.fillStyle='rgba(68,255,136,.6)';ctx.font='10px Courier New';
+        ctx.fillText('[M] OPEN MARKET',s.x,s.y+94);
+      }
+    }
+  }
+}
+
+function drawTradeShipMinimap(mx,my,scale){
+  if(!tradeShip)return;
+  const tx=mx+(tradeShip.x-player.x)*scale;
+  const ty=my+(tradeShip.y-player.y)*scale;
+  if(dist(tx,ty,mx,my)>CFG.MINIMAP_R)return;
+  const t=performance.now()*.001;
+  if(!tradeShip.dead){
+    // Gold pulsing glow
+    const pulse=.4+Math.sin(t*2)*.2;
+    ctx.fillStyle=TRADE_SHIP_COLOR;ctx.globalAlpha=pulse;
+    ctx.beginPath();ctx.arc(tx,ty,7,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;
+    // Ship shape (small rectangle)
+    ctx.save();ctx.translate(tx,ty);ctx.rotate(tradeShip.angle);
+    ctx.fillStyle=TRADE_SHIP_COLOR;ctx.fillRect(-5,-2,10,4);
+    ctx.restore();
+    // Label
+    ctx.fillStyle='rgba(255,200,100,.8)';ctx.font='bold 7px Courier New';ctx.textAlign='center';
+    ctx.fillText('TRADE',tx,ty+12);
+    // Market range ring when nearby
+    if(player&&dist(player.x,player.y,tradeShip.x,tradeShip.y)<CFG.TRADE_SHIP_MARKET_R*3){
+      ctx.strokeStyle='rgba(255,200,100,.15)';ctx.lineWidth=.5;
+      ctx.beginPath();ctx.arc(tx,ty,CFG.TRADE_SHIP_MARKET_R*scale,0,Math.PI*2);ctx.stroke();
+    }
+  }
+}
+
 function drawPirateDens(){
   const t=performance.now()*.001;
   pirateDens.forEach(den=>{
@@ -4937,10 +5619,18 @@ function sellAllOre(){
 
 function toggleMarket(){
   if(!player)return;
+  // Trade ship market takes priority if nearby
+  if(tradeShipNearby){toggleTradeShipMarket();return;}
+  if(tradeShipMarketOpen){closeTradeShipMarket();return;}
   if(getZone(player.x,player.y)!=='safe'){notify('Return to Earth to access market','#ff6644');return;}
   const m=document.getElementById('market');
-  m.style.display=m.style.display==='none'||!m.style.display?'block':'none';
-  if(m.style.display==='block')renderMarket();
+  const isOpen=m.style.display==='none'||!m.style.display;
+  m.style.display=isOpen?'block':'none';
+  if(isOpen){
+    document.getElementById('marketTitle').textContent='⬡ EARTH MARKET';
+    renderMarketTabs(false);
+    renderMarket();
+  }
 }
 
 function upgradeDescription(key,lvl){
@@ -5064,10 +5754,18 @@ function renderMarket(){
   
   const sv=document.getElementById('sellValue');
   const val=cargoValue(player.cargo);
-  sv.textContent=val>0?`Value: ⬡ ${val}`:'Cargo empty';
+  if(tradeShipMarketOpen&&val>0){
+    const bonusVal=Math.floor(val*CFG.TRADE_SHIP_ORE_BONUS);
+    sv.innerHTML=`Value: ⬡ ${bonusVal} <span class="ore-bonus">(+50% bonus!)</span>`;
+  }else{
+    sv.textContent=val>0?`Value: ⬡ ${val}`:'Cargo empty';
+  }
 }
 
-document.getElementById('sellAllBtn').onclick=()=>{sellAllOre();renderMarket()};
+document.getElementById('sellAllBtn').onclick=()=>{
+  if(tradeShipMarketOpen){sellAllOreAtTradeShip();}else{sellAllOre();}
+  renderMarket();
+};
 document.getElementById('closeMarket').onclick=()=>{document.getElementById('market').style.display='none'};
 document.getElementById('marketBtn').onclick=toggleMarket;
 document.getElementById('soundToggle').onclick=()=>{
@@ -6090,6 +6788,7 @@ function drawRemotePlayers(){
 function updateHUD(){
   if(!player)return;
   document.getElementById('credits').textContent='⬡ '+player.credits;
+  updateMissileHUD();
   const zone=getZone(player.x,player.y);
   // Zone transition notifications
   if(zone!==lastPlayerZone){
@@ -6130,6 +6829,12 @@ function updateHUD(){
 
 function updateMobileHUD(){
   if((!isMobile&&!mobileFallbackActivated)||!player)return;
+  // Missile button visibility
+  const mbM=document.getElementById('mb-missile');
+  if(mbM){
+    mbM.style.display=(player.missiles&&player.missiles>0)?'flex':'none';
+    if(missileLockTarget)mbM.classList.add('has-lock');else mbM.classList.remove('has-lock');
+  }
   // Ability cooldown ring
   const abBtn=document.getElementById('mb-ability');
   const ring=document.getElementById('abilityCdRing');
@@ -6204,7 +6909,7 @@ function updateParticles(dt){
 function updateEarthProximity(){
   if(!player||player.dead)return;
   const d=dist(player.x,player.y,0,0);const inShield=d<CFG.EARTH_SHIELD_R;
-  document.getElementById('marketBtn').style.display=inShield?'block':'none';
+  document.getElementById('marketBtn').style.display=(inShield||tradeShipNearby)?'block':'none';
   if(inShield&&totalCargo(player.cargo)>0)sellAllOre();
   if(inShield){
     // Server-authoritative healing: tell server to heal us
@@ -6298,11 +7003,11 @@ function gameLoop(timestamp){
   if(gameState==='playing'||gameState==='dead'){
     if(gameState==='playing'){
       updatePlayer(dt);updateMining(dt);updateAbilities(dt);
-      updateEarthProximity();checkPortalCollision();
+      updateEarthProximity();updateTradeShipProximity();checkPortalCollision();
     }
     if(gameState==='dead'&&player)player.respawnTimer-=dt;
     
-    updateNPCs(dt);updateDenPirates(dt);updateWingmen(dt);updatePolice(dt);updateProjectiles(dt);updateLeviathan(dt);updateRemotePlayers(dt);updateRemoteProjectiles(dt);
+    updateNPCs(dt);updateDenPirates(dt);updateWingmen(dt);updatePolice(dt);updateTradeShip(dt);updateProjectiles(dt);updateMissiles(dt);updateMissileLock(dt);updateLeviathan(dt);updateRemotePlayers(dt);updateRemoteProjectiles(dt);
     // Decay minimap events
     for(let i=minimapEvents.length-1;i>=0;i--){minimapEvents[i].t+=dt;if(minimapEvents[i].t>=minimapEvents[i].maxT)minimapEvents.splice(i,1);}updateLoot(dt);
     updateAggressorDecay(dt);updateAsteroidRespawn(dt);updateParticles(dt);updateCamera(dt);
@@ -6324,8 +7029,8 @@ function gameLoop(timestamp){
     asteroids.forEach(a=>drawAsteroidEntity(a));
     loot.forEach(l=>drawLootEntity(l));
     drawAllMiningBeams();
-    drawPirateDens();
-    npcs.forEach(n=>{if(!n.isPolice)drawShipEntity(n);});
+    drawTradeShip();drawPirateDens();
+    npcs.forEach(n=>{if(!n.isPolice&&!n.isTradeShip)drawShipEntity(n);});
     policeUnits.forEach(p=>{if(!p.dead)drawShipEntity(p);});
     wingmen.forEach(w=>{if(!w.dead)drawShipEntity(w);});
     // Draw remote players' wingmen too
@@ -6351,7 +7056,7 @@ function gameLoop(timestamp){
         ctx.fillText('◆ WING',ws.x,ws.y-(SHIPS[w.ship].hull/30+12)-18);
       });
     }
-    drawLeviathan();
+    drawLeviathan();drawMissiles();drawMissileLock();
     drawRemotePlayers();
     if(player&&!player.dead)drawShipEntity(player);
     projectiles.forEach(p=>drawProjectileEntity(p));
@@ -6471,6 +7176,7 @@ function startGame(name,color,saved){
       });
     }
   }
+  player.missiles=0;player.maxMissiles=SHIPS[player.ship].missileCapacity||2;
   player.maxShield=maxShield(player);player.maxHp=maxHull(player);
   player.shield=player.maxShield;player.hp=player.maxHp;
   if(portalParams){
@@ -6481,7 +7187,7 @@ function startGame(name,color,saved){
     // Spawn return portal near Earth so the traveler can go back
     if(portalParams.ref)returnPortal={x:200,y:-(CFG.EARTH_SHIELD_R-300),size:50,pulse:0};
   }
-  spawnAsteroids();spawnNPCs();spawnPolice();
+  spawnAsteroids();spawnNPCs();spawnPolice();spawnTradeShip();
   gameState='playing';
   document.getElementById('startScreen').style.display='none';
   document.getElementById('hud').style.display='block';
