@@ -4650,6 +4650,8 @@ function updateProjectiles(dt){
               attackerName:p.ownerName||'SSPD'
             });}catch(e){console.warn('[STDB] deal_damage (NPC→Player) failed:',e);}
           }
+          // Track damage time for safe zone heal cooldown
+          if(player)player.lastDamageTime=performance.now();
           // Local FX immediately (HP will come from server via syncSelfFromServer)
           emitBurst(p.x,p.y,8,80,p.color,2,.3,8);SFX.hit();
           minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
@@ -5386,6 +5388,7 @@ function updateLeviathan(dt){
             const myHex=stdbConn.identity?stdbConn.identity.toHexString():'';
             if(myHex){try{stdbConn.reducers.dealDamage({victimIdentityHex:myHex,damage:lev.dmg,attackerName:'Void Leviathan'});}catch(e){console.warn('[STDB] deal_damage (Leviathan) failed:',e);}}
           }else{applyDamage(player,lev.dmg,lev.id);}
+          player.lastDamageTime=performance.now(); // Track for safe zone heal cooldown
           lev.biteCooldown=1.5;
           SFX.leviathanBite();shake(15);
           emitBurst(player.x,player.y,20,120,'#aa22cc',4,.5,12);
@@ -5414,6 +5417,7 @@ function updateLeviathan(dt){
             const myHex=stdbConn.identity?stdbConn.identity.toHexString():'';
             if(myHex){try{stdbConn.reducers.dealDamage({victimIdentityHex:myHex,damage:lev.dmg,attackerName:'Void Leviathan'});}catch(e){console.warn('[STDB] deal_damage (Leviathan) failed:',e);}}
           }else{applyDamage(player,lev.dmg,lev.id);}
+          player.lastDamageTime=performance.now(); // Track for safe zone heal cooldown
           lev.biteCooldown=1.5;
           shake(12);emitBurst(player.x,player.y,15,100,'#aa22cc',3,.4,10);
           addFloatingText(player.x,player.y-20,'CHOMP!','#ff33aa');
@@ -6784,6 +6788,7 @@ function updateRemoteProjectiles(dt){
       if(dist(rp.x,rp.y,player.x,player.y)<sz+8){
         // Hit local player — server already handled damage via deal_damage,
         // but we show FX locally for responsiveness
+        player.lastDamageTime=performance.now(); // Track for safe zone heal cooldown
         emitBurst(rp.x,rp.y,8,80,rp.color,2,.3,8);
         SFX.hit();shake(4);
         minimapEvents.push({x:rp.x,y:rp.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
@@ -7241,16 +7246,21 @@ function updateEarthProximity(){
   document.getElementById('marketBtn').style.display=(inShield||tradeShipNearby)?'block':'none';
   if(inShield&&totalCargo(player.cargo)>0)sellAllOre();
   if(inShield){
-    // Server-authoritative healing: tell server to heal us
-    if(stdbConn&&stdbConnected&&(player.hp<player.maxHp||player.shield<player.maxShield)){
-      try{stdbConn.reducers.healPlayer({
-        healHp:30*lastDt,
-        healShield:20*lastDt
-      });}catch(e){}
+    // Only heal if player hasn't taken damage in the last 5 seconds
+    const healCooldown=5000; // ms
+    const timeSinceDamage=performance.now()-(player.lastDamageTime||0);
+    if(timeSinceDamage>=healCooldown){
+      // Server-authoritative healing: tell server to heal us
+      if(stdbConn&&stdbConnected&&(player.hp<player.maxHp||player.shield<player.maxShield)){
+        try{stdbConn.reducers.healPlayer({
+          healHp:30*lastDt,
+          healShield:20*lastDt
+        });}catch(e){}
+      }
+      // Local prediction for responsive feel (server is authoritative)
+      player.hp=Math.min(player.maxHp,player.hp+30*lastDt);
+      player.shield=Math.min(player.maxShield,player.shield+20*lastDt);
     }
-    // Local prediction for responsive feel (server is authoritative)
-    player.hp=Math.min(player.maxHp,player.hp+30*lastDt);
-    player.shield=Math.min(player.maxShield,player.shield+20*lastDt);
   }
 }
 

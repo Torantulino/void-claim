@@ -40,6 +40,7 @@ const spacetimedb = schema({
       mining_x:    t.f32(),  // mining beam target position (0,0 = not mining)
       mining_y:    t.f32(),
       mining_ore:  t.string(), // ore type being mined ('' = not mining)
+      last_damage_time: t.u64(), // ms timestamp of last damage taken (for heal cooldown)
     }
   ),
 
@@ -292,6 +293,7 @@ export const join_game = spacetimedb.reducer(
       mining_x:    0,
       mining_y:    0,
       mining_ore:  '',
+      last_damage_time: BigInt(0),
     });
 
     console.log(`${args.name} joined in a ${args.ship}`);
@@ -405,6 +407,7 @@ export const deal_damage = spacetimedb.reducer(
         shield: 0,
         dead: true,
         last_update: BigInt(Date.now()),
+        last_damage_time: BigInt(Date.now()),
       });
 
       // Record kill event
@@ -436,12 +439,16 @@ export const deal_damage = spacetimedb.reducer(
         hp: newHp,
         shield: Math.max(0, newShield),
         last_update: BigInt(Date.now()),
+        last_damage_time: BigInt(Date.now()),
       });
     }
   }
 );
 
 // heal_player — for Earth shield zone healing
+// Only heals if the player hasn't taken damage in the last 5 seconds
+const HEAL_COOLDOWN_MS = 5000;
+
 export const heal_player = spacetimedb.reducer(
   {
     heal_hp: t.f32(),
@@ -451,11 +458,15 @@ export const heal_player = spacetimedb.reducer(
     const p = ctx.db.player.identity.find(ctx.sender);
     if (!p || p.dead) return;
 
+    // Don't heal if player was attacked within the last 5 seconds
+    const now = BigInt(Date.now());
+    if (p.last_damage_time && now - p.last_damage_time < BigInt(HEAL_COOLDOWN_MS)) return;
+
     ctx.db.player.identity.update({
       ...p,
       hp: Math.min(p.max_hp, p.hp + args.heal_hp),
       shield: Math.min(p.max_shield, p.shield + args.heal_shield),
-      last_update: BigInt(Date.now()),
+      last_update: now,
     });
   }
 );
