@@ -7116,12 +7116,18 @@ function syncSelfFromServer(p){
     return;
   }
   // ── Juice FX on server HP/shield changes ──
-  const prevHp=player.hp,prevShield=player.shield;
+  // Compare against the LAST SERVER-SYNCED values, not the local values
+  // (local shield regen inflates player.shield between server ticks,
+  //  causing false-positive "damage" detection every frame).
+  const prevServerHp=player._serverHp!==undefined?player._serverHp:player.hp;
+  const prevServerShield=player._serverShield!==undefined?player._serverShield:player.shield;
   player.hp=p.hp;
   player.shield=p.shield;
-  // Detect damage from server-authoritative updates
-  if(p.hp<prevHp||p.shield<prevShield){
-    const hpLost=prevHp-p.hp,shieldLost=prevShield-p.shield,totalDmg=hpLost+shieldLost;
+  player._serverHp=p.hp;
+  player._serverShield=p.shield;
+  // Detect real damage from server (threshold 0.5 to ignore float noise)
+  if(p.hp<prevServerHp-0.5||p.shield<prevServerShield-0.5){
+    const hpLost=Math.max(0,prevServerHp-p.hp),shieldLost=Math.max(0,prevServerShield-p.shield),totalDmg=hpLost+shieldLost;
     // Shield hit FX
     if(shieldLost>0&&p.shield>0){flashScreen(80,150,255,0.15,6);SFX.shieldHit();haptic(15);}
     // Shield break event
