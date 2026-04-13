@@ -852,9 +852,10 @@ let missileCD=0;              // Player missile fire cooldown // How far police 
 const POLICE_RETURN_R=CFG.EARTH_SHIELD_R+200; // When to start returning
 
 // Aggressor tracking with warning system and time-based decay
-// aggressorMap: id → {warned:bool, aggressorTime:number, lastAggressionTime:number}
+// aggressorMap: id → {warnings:number, aggressorTime:number, lastAggressionTime:number}
 const aggressorMap=new Map();
-const AGGRESSOR_WARNING_EXPIRY=60; // Warning forgotten after 60 seconds
+const AGGRESSOR_MAX_WARNINGS=3;    // Number of warnings before aggressor status
+const AGGRESSOR_WARNING_EXPIRY=60; // Warnings forgotten after 60 seconds
 const AGGRESSOR_DECAY_TIME=45; // Aggressor status decays after 45s outside safe zone without aggression
 const AGGRESSOR_DECAY_CHECK_INTERVAL=1; // Check decay every 1s
 
@@ -870,7 +871,7 @@ function markAggressor(entity){
   const data=aggressorMap.get(entity.id)||{};
   data.aggressorTime=performance.now()/1000;
   data.lastAggressionTime=performance.now()/1000;
-  data.warned=false; // Clear warning since they're now full aggressor
+  data.warnings=0; // Clear warnings since they're now full aggressor
   aggressorMap.set(entity.id,data);
   if(entity.isPlayer){
     notify('⚠ AGGRESSOR — You attacked a civilian in the Safe Zone!','#ff4444');
@@ -917,30 +918,25 @@ function checkAggressionRules(attacker,victim){
   if(victimZone==='safe'&&!isAggressor(victim)){
     // If already aggressor, just refresh timer
     if(isAggressor(attacker)){refreshAggressionTimer(attacker);return;}
-    // Warning system: first offense gets a warning instead of instant aggressor
-    const data=aggressorMap.get(attacker.id);
+    // Warning system: 3 warnings before aggressor status
+    const data=aggressorMap.get(attacker.id)||{warnings:0};
     const now=performance.now()/1000;
-    if(data&&data.warned){
-      // Already warned — check if warning expired
-      if(now-data.warnedTime>AGGRESSOR_WARNING_EXPIRY){
-        // Warning expired, give a fresh warning instead
-        data.warnedTime=now;
-        aggressorMap.set(attacker.id,data);
-        if(attacker.isPlayer){
-          notify('⚠ WARNING — Watch your fire in the Safe Zone!','#ffaa00');
-          notify('Next offense will flag you as AGGRESSOR','#ff8844');
-          SFX.shieldHit();haptic(20);
-        }
-        return;
-      }
-      // Warning still active and they attacked again — mark as aggressor
+    // If warnings have expired, reset the count
+    if(data.warnedTime&&(now-data.warnedTime>AGGRESSOR_WARNING_EXPIRY)){
+      data.warnings=0;
+    }
+    data.warnings=(data.warnings||0)+1;
+    data.warnedTime=now;
+    aggressorMap.set(attacker.id,data);
+    if(data.warnings>=AGGRESSOR_MAX_WARNINGS){
+      // Out of warnings — mark as aggressor
       markAggressor(attacker);
     }else{
-      // No warning yet — issue first warning
-      aggressorMap.set(attacker.id,{warned:true,warnedTime:now});
+      // Still have warnings left
+      const remaining=AGGRESSOR_MAX_WARNINGS-data.warnings;
       if(attacker.isPlayer){
-        notify('⚠ WARNING — Watch your fire in the Safe Zone!','#ffaa00');
-        notify('Next offense will flag you as AGGRESSOR','#ff8844');
+        notify('⚠ WARNING ('+data.warnings+'/'+AGGRESSOR_MAX_WARNINGS+') — Watch your fire in the Safe Zone!','#ffaa00');
+        notify(remaining+' warning'+(remaining!==1?'s':'')+' remaining before AGGRESSOR status','#ff8844');
         SFX.shieldHit();haptic(20);
       }
     }
