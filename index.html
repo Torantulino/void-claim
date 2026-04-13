@@ -316,6 +316,24 @@ const SFX={
     g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.12);
     o.connect(g);g.connect(out);o.start();o.stop(ac.currentTime+.12);
   }),
+  shoot:()=>snd((ac,out)=>{
+    const dur=.25;
+    const o=ac.createOscillator(),o2=ac.createOscillator(),g=ac.createGain();
+    o.type='sawtooth';o.frequency.setValueAtTime(150,ac.currentTime);
+    o.frequency.exponentialRampToValueAtTime(60,ac.currentTime+dur);
+    o2.type='square';o2.frequency.setValueAtTime(200,ac.currentTime);
+    o2.frequency.exponentialRampToValueAtTime(80,ac.currentTime+dur);
+    g.gain.setValueAtTime(.18,ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);
+    o.connect(g);o2.connect(g);g.connect(out);o.start();o2.start();
+    o.stop(ac.currentTime+dur);o2.stop(ac.currentTime+dur);
+    const nBuf=ac.createBuffer(1,ac.sampleRate*.08,ac.sampleRate);
+    const nd=nBuf.getChannelData(0);
+    for(let i=0;i<nd.length;i++){nd[i]=(Math.random()*2-1)*Math.pow(1-i/nd.length,2);}
+    const ns=ac.createBufferSource(),ng=ac.createGain();
+    ng.gain.setValueAtTime(.12,ac.currentTime);ng.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.08);
+    ns.buffer=nBuf;ns.connect(ng);ng.connect(out);ns.start();
+  }),
   mine:()=>snd((ac,out)=>{
     const o=ac.createOscillator(),g=ac.createGain();
     o.type='sine';o.frequency.setValueAtTime(300+Math.random()*200,ac.currentTime);
@@ -1167,7 +1185,7 @@ function updateTradeShipTurrets(dt){
         p.isTradeShipOwned=true;p.color=TRADE_SHIP_TURRET_COLOR;
         projectiles.push(p);
         turret.cooldown=CFG.TRADE_SHIP_TURRET_CD;
-        if(distToPlayer(wx,wy)<FX_RANGE)SFX.shoot();
+        if(distToPlayer(wx,wy)<FX_RANGE)SFX.laser();
       }
     }else{
       turret.angle=lerpAngle(turret.angle,tradeShip.angle,1*dt);
