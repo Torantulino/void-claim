@@ -34,4 +34,5 @@ export default __t.row({
   miningX: __t.f32().name("mining_x"),
   miningY: __t.f32().name("mining_y"),
   miningOre: __t.string().name("mining_ore"),
+  lastDamageTime: __t.u64().name("last_damage_time"),
 });

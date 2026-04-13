@@ -95,6 +95,7 @@ export const Player = __t.object("Player", {
   miningX: __t.f32(),
   miningY: __t.f32(),
   miningOre: __t.string(),
+  lastDamageTime: __t.u64(),
 });
 export type Player = __Infer<typeof Player>;
 

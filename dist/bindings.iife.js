@@ -8176,7 +8176,8 @@ ${ty.variants.map(
     vy: t.f32(),
     miningX: t.f32().name("mining_x"),
     miningY: t.f32().name("mining_y"),
-    miningOre: t.string().name("mining_ore")
+    miningOre: t.string().name("mining_ore"),
+    lastDamageTime: t.u64().name("last_damage_time")
   });
 
   // src/projectile_table.ts
