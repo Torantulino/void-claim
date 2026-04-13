@@ -3225,10 +3225,25 @@ function moveToward(n,tx,ty,thrust,dt){
 function fireProjectile(entity){
   const p=createProjectile(entity,entity.x+Math.cos(entity.angle)*15,entity.y+Math.sin(entity.angle)*15,entity.angle,shipDmg(entity));
   projectiles.push(p);
-  emitBurst(p.x,p.y,3,60,p.color,2,.2,8);
   if(minimapEvents.length<100)minimapEvents.push({x:p.x,y:p.y,color:p.color,t:0,maxT:.6,type:'shot'});
   if(entity.isPlayer){
     SFX.laser();
+    // ── Muzzle flash: bright white + colored glow at barrel ──
+    const mx=entity.x+Math.cos(entity.angle)*20,my=entity.y+Math.sin(entity.angle)*20;
+    spawnParticle(mx,my,0,0,'#ffffff',8,.06,20);
+    spawnParticle(mx,my,0,0,p.color,12,.08,15);
+    // Directional muzzle sparks
+    for(let i=0;i<4;i++){
+      const spread=rand(-.3,.3),spd=rand(200,400);
+      spawnParticle(mx,my,Math.cos(entity.angle+spread)*spd,Math.sin(entity.angle+spread)*spd,
+        i<2?'#ffffff':p.color,rand(1,2.5),rand(.05,.12),6);
+    }
+    // Camera recoil kick
+    camera.shakeX-=Math.cos(entity.angle)*1.5;
+    camera.shakeY-=Math.sin(entity.angle)*1.5;
+    // Micro velocity recoil
+    entity.vx-=Math.cos(entity.angle)*8;
+    entity.vy-=Math.sin(entity.angle)*8;
     // Broadcast projectile to other players via SpacetimeDB
     if(stdbConn&&stdbConnected){
       stdbConn.reducers.fireProjectile({
@@ -3237,6 +3252,8 @@ function fireProjectile(entity){
         ttlMs:Math.round(CFG.PROJ_TTL*1000)
       }).catch(()=>{});
     }
+  }else{
+    emitBurst(p.x,p.y,3,60,p.color,2,.2,8);
   }
 }
 
