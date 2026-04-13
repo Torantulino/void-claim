@@ -806,7 +806,7 @@ let particles=[];
 let floatingTexts=[];
 let chatBubbles=[];  // {senderName, text, time, duration} – rendered above ships
 let stars=[];
-let camera={x:0,y:0,shakeX:0,shakeY:0,shakeAmt:0};
+let camera={x:0,y:0,shakeX:0,shakeY:0,shakeAmt:0,trauma:0,traumaTime:0};
 
 // ── Hitstop system: brief time-freeze on impactful hits ──
 let hitStopTimer=0;
@@ -1544,7 +1544,7 @@ function addFloatingText(x,y,text,color,initialScale){
   const sc=initialScale||1;
   floatingTexts.push({x,y,text,color,life:1.5,maxLife:1.5,scale:sc,scaleV:(sc-1)*-6});
 }
-function shake(amt){camera.shakeAmt=Math.max(camera.shakeAmt,amt)}
+function shake(amt){camera.trauma=Math.min(1,camera.trauma+amt/15);}
 
 // ═══════════════════════════════════════════
 // Tron-Style Ship Trails
@@ -7678,10 +7678,18 @@ function updateAsteroidRespawn(dt){
 function updateCamera(dt){
   if(!player)return;
   camera.x=lerp(camera.x,player.x,CFG.CAM_LERP);camera.y=lerp(camera.y,player.y,CFG.CAM_LERP);
-  if(camera.shakeAmt>.1){
-    camera.shakeX=rand(-camera.shakeAmt,camera.shakeAmt);camera.shakeY=rand(-camera.shakeAmt,camera.shakeAmt);
-    camera.shakeAmt*=CFG.SHAKE_DECAY;
-  }else{camera.shakeX=0;camera.shakeY=0;camera.shakeAmt=0;}
+  // ── Trauma-based camera shake: smooth oscillation instead of random noise ──
+  camera.traumaTime+=dt;
+  if(camera.trauma>.01){
+    const t2=camera.trauma*camera.trauma; // square for exponential feel
+    const maxOff=t2*18; // max pixel offset at full trauma
+    const maxRot=t2*0.04; // subtle rotation
+    const seed=camera.traumaTime*25; // oscillation speed
+    // Multi-frequency Perlin-like oscillation for organic motion
+    camera.shakeX=maxOff*(Math.sin(seed*1.1)+.5*Math.sin(seed*2.3+1.7));
+    camera.shakeY=maxOff*(Math.cos(seed*1.3)+.5*Math.cos(seed*1.9+2.1));
+    camera.trauma=Math.max(0,camera.trauma-dt*1.8); // linear decay (~0.55s full→zero)
+  }else{camera.shakeX=0;camera.shakeY=0;camera.trauma=0;}
 }
 
 function updateParticles(dt){
