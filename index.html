@@ -329,11 +329,14 @@ function snd(fn){
   try{fn(audioCtx,masterGain);}catch(e){}
 }
 
+// ── Pitch variation helper: randomize oscillator/buffer for variety ──
+function rPitch(base,variance){return base*(1+((Math.random()*2-1)*variance));}
+
 const SFX={
   laser:()=>snd((ac,out)=>{
-    const o=ac.createOscillator(),g=ac.createGain();
-    o.type='sawtooth';o.frequency.setValueAtTime(800,ac.currentTime);
-    o.frequency.exponentialRampToValueAtTime(200,ac.currentTime+.12);
+    const p=rPitch(1,.15),o=ac.createOscillator(),g=ac.createGain();
+    o.type='sawtooth';o.frequency.setValueAtTime(800*p,ac.currentTime);
+    o.frequency.exponentialRampToValueAtTime(200*p,ac.currentTime+.12);
     g.gain.setValueAtTime(.15,ac.currentTime);
     g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.12);
     o.connect(g);g.connect(out);o.start();o.stop(ac.currentTime+.12);
@@ -341,10 +344,11 @@ const SFX={
   shoot:()=>snd((ac,out)=>{
     const dur=.25;
     const o=ac.createOscillator(),o2=ac.createOscillator(),g=ac.createGain();
-    o.type='sawtooth';o.frequency.setValueAtTime(150,ac.currentTime);
-    o.frequency.exponentialRampToValueAtTime(60,ac.currentTime+dur);
-    o2.type='square';o2.frequency.setValueAtTime(200,ac.currentTime);
-    o2.frequency.exponentialRampToValueAtTime(80,ac.currentTime+dur);
+    const p=rPitch(1,.15);
+    o.type='sawtooth';o.frequency.setValueAtTime(150*p,ac.currentTime);
+    o.frequency.exponentialRampToValueAtTime(60*p,ac.currentTime+dur);
+    o2.type='square';o2.frequency.setValueAtTime(200*p,ac.currentTime);
+    o2.frequency.exponentialRampToValueAtTime(80*p,ac.currentTime+dur);
     g.gain.setValueAtTime(.18,ac.currentTime);
     g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);
     o.connect(g);o2.connect(g);g.connect(out);o.start();o2.start();
@@ -373,6 +377,7 @@ const SFX={
     f.frequency.exponentialRampToValueAtTime(200,ac.currentTime+dur);
     g.gain.setValueAtTime(.25,ac.currentTime);
     g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);
+    src.playbackRate.value=rPitch(1,.2);
     src.buffer=buf;src.connect(f);f.connect(g);g.connect(out);src.start();
   });},
   pickup:()=>snd((ac,out)=>{
@@ -398,13 +403,14 @@ const SFX={
     const d=buf.getChannelData(0);
     for(let i=0;i<d.length;i++){d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2);}
     const src=ac.createBufferSource(),g=ac.createGain();
+    src.playbackRate.value=rPitch(1,.2);
     g.gain.setValueAtTime(.12,ac.currentTime);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);
     src.buffer=buf;src.connect(g);g.connect(out);src.start();
   }),
   shieldHit:()=>snd((ac,out)=>{
-    const o=ac.createOscillator(),g=ac.createGain();
-    o.type='triangle';o.frequency.setValueAtTime(1200,ac.currentTime);
-    o.frequency.exponentialRampToValueAtTime(400,ac.currentTime+.15);
+    const p=rPitch(1,.15),o=ac.createOscillator(),g=ac.createGain();
+    o.type='triangle';o.frequency.setValueAtTime(1200*p,ac.currentTime);
+    o.frequency.exponentialRampToValueAtTime(400*p,ac.currentTime+.15);
     g.gain.setValueAtTime(.1,ac.currentTime);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.15);
     o.connect(g);g.connect(out);o.start();o.stop(ac.currentTime+.15);
   }),
