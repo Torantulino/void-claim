@@ -7988,6 +7988,11 @@ ${ty.variants.map(
   // src/seed_world_reducer.ts
   var seed_world_reducer_default = {};
 
+  // src/sell_ore_reducer.ts
+  var sell_ore_reducer_default = {
+    amount: t.u64()
+  };
+
   // src/send_chat_reducer.ts
   var send_chat_reducer_default = {
     senderName: t.string(),
@@ -8029,8 +8034,6 @@ ${ty.variants.map(
   // src/submit_score_reducer.ts
   var submit_score_reducer_default = {
     name: t.string(),
-    credits: t.u64(),
-    kills: t.u32(),
     mined: t.u64(),
     ship: t.string(),
     color: t.string()
@@ -8066,8 +8069,6 @@ ${ty.variants.map(
     dead: t.bool(),
     cloaked: t.bool(),
     bounty: t.bool(),
-    kills: t.u32(),
-    earned: t.u64(),
     ship: t.string(),
     color: t.string(),
     maxHp: t.f32(),
@@ -8341,6 +8342,7 @@ ${ty.variants.map(
     reducerSchema("respawn_npc", respawn_npc_reducer_default),
     reducerSchema("respawn_player", respawn_player_reducer_default),
     reducerSchema("seed_world", seed_world_reducer_default),
+    reducerSchema("sell_ore", sell_ore_reducer_default),
     reducerSchema("send_chat", send_chat_reducer_default),
     reducerSchema("spawn_npc", spawn_npc_reducer_default),
     reducerSchema("spawn_wingman", spawn_wingman_reducer_default),
