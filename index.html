@@ -4971,11 +4971,23 @@ function applyDamage(target,dmg,attackerId,playFX){
   // Guard: don't damage already-dead entities (prevents kill spam)
   if(target.dead)return;
   if(playFX===undefined)playFX=target.isPlayer||distToPlayer(target.x,target.y)<FX_RANGE;
+  const hadShield=target.shield>0;
   if(target.shield>0){
     const sa=Math.min(target.shield,dmg*.7);
     target.shield-=sa;dmg-=sa;
     if(playFX)emitBurst(target.x,target.y,4,50,'rgba(100,180,255,.8)',2,.2,6);
     if(target.isPlayer){SFX.shieldHit();haptic(15);flashScreen(80,150,255,0.15,6);}
+    // ── Shield break event: dramatic shatter when shields hit zero ──
+    if(hadShield&&target.shield<=0){
+      for(let i=0;i<20;i++){
+        const a=(i/20)*Math.PI*2,spd=150+rand(0,100);
+        spawnParticle(target.x,target.y,Math.cos(a)*spd,Math.sin(a)*spd,'rgba(100,180,255,.9)',rand(2,4),rand(.3,.6),12);
+      }
+      spawnParticle(target.x,target.y,0,0,'rgba(150,200,255,.8)',30,.15,20);
+      if(playFX)SFX.hit();
+      if(target.isPlayer){flashScreen(80,150,255,0.3,6);shake(6);triggerHitstop(2);haptic(60);}
+      else if(playFX)shake(3);
+    }
   }
   target.hp-=dmg;
   target.lastDamageTime=performance.now();
