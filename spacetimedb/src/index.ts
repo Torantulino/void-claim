@@ -172,6 +172,25 @@ const spacetimedb = schema({
       last_update:       t.u64(),
     }
   ),
+
+  // ── Space Stations — destroyable structures at pirate dens ──
+  // Each pirate den has one space station. Players can destroy it for ore drops.
+  // Stations respawn after a cooldown period.
+  space_station: table(
+    { public: true },
+    {
+      id:          t.u32().primaryKey(),   // station index (matches den index 0..DEN_COUNT-1)
+      x:           t.f32(),
+      y:           t.f32(),
+      hp:          t.f32(),
+      max_hp:      t.f32(),
+      shield:      t.f32(),
+      max_shield:  t.f32(),
+      dead:        t.bool(),
+      respawn_at:  t.u64(),               // ms timestamp when station respawns (0 if alive)
+      last_update: t.u64(),
+    }
+  ),
 });
 
 export default spacetimedb;
@@ -1078,5 +1097,133 @@ export const delete_wingman = spacetimedb.reducer(
     if (wm.owner_identity_hex !== ctx.sender.toHexString()) return;
     ctx.db.wingman.id.delete(args.wingman_id);
     console.log(`Wingman deleted: ${wm.name}`);
+  }
+);
+
+// ═══════════════════════════════════════════
+// Reducers — Space Stations (Destroyable Pirate Den Structures)
+// ═══════════════════════════════════════════
+// Each pirate den has a space station. Any player can damage it.
+// When destroyed, the client spawns ore loot drops locally.
+// The station respawns after STATION_RESPAWN_MS.
+
+const STATION_RESPAWN_MS = 120_000; // 2 minutes
+
+// spawn_station — NPC host seeds station rows (called once during world init)
+export const spawn_station = spacetimedb.reducer(
+  {
+    station_id: t.u32(),
+    x:          t.f32(),
+    y:          t.f32(),
+    hp:         t.f32(),
+    max_hp:     t.f32(),
+    shield:     t.f32(),
+    max_shield: t.f32(),
+  },
+  (ctx, args) => {
+    // Only the NPC host can spawn stations
+    const host = ctx.db.npc_host.id.find(0);
+    if (!host || host.host_identity !== ctx.sender.toHexString()) return;
+
+    // Delete existing station with this ID if present
+    const existing = ctx.db.space_station.id.find(args.station_id);
+    if (existing) {
+      ctx.db.space_station.id.delete(args.station_id);
+    }
+
+    ctx.db.space_station.insert({
+      id:          args.station_id,
+      x:           args.x,
+      y:           args.y,
+      hp:          args.hp,
+      max_hp:      args.max_hp,
+      shield:      args.shield,
+      max_shield:  args.max_shield,
+      dead:        false,
+      respawn_at:  BigInt(0),
+      last_update: BigInt(Date.now()),
+    });
+    console.log(`Space station ${args.station_id} spawned at (${args.x.toFixed(0)}, ${args.y.toFixed(0)})`);
+  }
+);
+
+// damage_station — any player can deal damage to a station (server-authoritative)
+export const damage_station = spacetimedb.reducer(
+  {
+    station_id:    t.u32(),
+    damage:        t.f32(),
+    attacker_name: t.string(),
+  },
+  (ctx, args) => {
+    const station = ctx.db.space_station.id.find(args.station_id);
+    if (!station || station.dead) return;
+
+    // Shield absorption (70% — same as other combat)
+    let dmg = args.damage;
+    let newShield = station.shield;
+    let newHp = station.hp;
+
+    if (newShield > 0) {
+      const shieldAbsorb = Math.min(newShield, dmg * 0.7);
+      newShield -= shieldAbsorb;
+      dmg -= shieldAbsorb;
+    }
+    newHp -= dmg;
+
+    if (newHp <= 0) {
+      // Station destroyed
+      ctx.db.space_station.id.update({
+        ...station,
+        hp: 0,
+        shield: 0,
+        dead: true,
+        respawn_at: BigInt(Date.now() + STATION_RESPAWN_MS),
+        last_update: BigInt(Date.now()),
+      });
+      // Record kill event
+      ctx.db.kill_event.insert({
+        id: BigInt(0),
+        killer: args.attacker_name,
+        victim: `Pirate Station ${args.station_id}`,
+        timestamp: BigInt(Date.now()),
+      });
+      console.log(`${args.attacker_name} destroyed Pirate Station ${args.station_id}`);
+    } else {
+      // Apply damage
+      ctx.db.space_station.id.update({
+        ...station,
+        hp: newHp,
+        shield: Math.max(0, newShield),
+        last_update: BigInt(Date.now()),
+      });
+    }
+  }
+);
+
+// respawn_station — NPC host respawns a dead station after its timer expires
+export const respawn_station = spacetimedb.reducer(
+  {
+    station_id: t.u32(),
+  },
+  (ctx, args) => {
+    // Only the NPC host can respawn stations
+    const host = ctx.db.npc_host.id.find(0);
+    if (!host || host.host_identity !== ctx.sender.toHexString()) return;
+
+    const station = ctx.db.space_station.id.find(args.station_id);
+    if (!station || !station.dead) return;
+
+    // Only respawn if enough time has passed
+    if (station.respawn_at > BigInt(Date.now())) return;
+
+    ctx.db.space_station.id.update({
+      ...station,
+      hp:          station.max_hp,
+      shield:      station.max_shield,
+      dead:        false,
+      respawn_at:  BigInt(0),
+      last_update: BigInt(Date.now()),
+    });
+    console.log(`Pirate Station ${args.station_id} respawned`);
   }
 );

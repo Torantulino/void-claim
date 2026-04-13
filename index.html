@@ -236,6 +236,11 @@ const CFG={
   DEN_COUNT:4,               // Number of pirate dens in the red zone
   DEN_HUNT_RANGE:3000,       // How far den pirates roam from their den to hunt
   DEN_LEASH_R:4000,
+  // Pirate Station system — destroyable structures at each den
+  STATION_HP:3000,STATION_SHIELD:1500,
+  STATION_RESPAWN:120,        // seconds before station respawns
+  STATION_HIT_R:80,           // collision radius for projectiles
+  STATION_VISUAL_R:60,        // visual size
   // Trade Ship system
   TRADE_SHIP_HP:8000,TRADE_SHIP_SHIELD:4000,TRADE_SHIP_SPEED:50,
   TRADE_SHIP_ORBIT_R:6000,TRADE_SHIP_BODY_W:400,TRADE_SHIP_BODY_H:100,
@@ -298,6 +303,7 @@ const DEN_NAME_SUFFIXES=['','_XIII','☠','_X','_666','','_RED','_V'];
 // Each den is at a specific angle in the red zone ring
 let pirateDens=[]; // [{x,y,angle,id}] — populated by initPirateDens()
 let denPirates=[]; // Separate array for den pirates (but also mirrored in npcs[] for combat compat)
+let spaceStations=[]; // [{id,x,y,hp,maxHp,shield,maxShield,dead,respawnAt}] — one per pirate den
 
 // ═══════════════════════════════════════════
 // Sound Engine (Web Audio API – procedural)
@@ -2281,6 +2287,37 @@ function initPirateDens(){
     npcs.push(dp); // Also add to npcs array for combat/rendering compat
   }
   console.log('[DEN] Spawned',denPirates.length,'den pirates across',pirateDens.length,'dens. Total npcs:',npcs.length);
+
+  // Spawn a space station at each den
+  initSpaceStations();
+}
+
+function initSpaceStations(){
+  spaceStations=[];
+  pirateDens.forEach((den,i)=>{
+    spaceStations.push({
+      id:i,x:den.x,y:den.y,
+      hp:CFG.STATION_HP,maxHp:CFG.STATION_HP,
+      shield:CFG.STATION_SHIELD,maxShield:CFG.STATION_SHIELD,
+      dead:false,respawnAt:0,lootDropped:false,
+      rotation:den.angle, // slow spin seed
+    });
+  });
+  console.log('[STATION] Initialized',spaceStations.length,'space stations at pirate dens');
+}
+
+function pushStationsToServer(){
+  if(!stdbConn||!stdbConnected||!isNpcHost)return;
+  spaceStations.forEach(st=>{
+    try{
+      stdbConn.reducers.spawnStation({
+        stationId:st.id,x:st.x,y:st.y,
+        hp:st.hp,maxHp:st.maxHp,
+        shield:st.shield,maxShield:st.maxShield
+      });
+    }catch(e){console.warn('[STDB] spawnStation failed:',e);}
+  });
+  console.log('[STATION] Pushed',spaceStations.length,'stations to server');
 }
 
 function createDenPirate(slotIndex,denIndex){
@@ -2584,6 +2621,106 @@ function initPirateDenLandmarks(){
     const r=denRadii[i]||(CFG.YELLOW_R+CFG.RED_R)/2;
     pirateDens.push({x:Math.cos(a)*r,y:Math.sin(a)*r,angle:a,id:'den_'+i,activeCount:0});
   }
+  // Also init space stations at den positions (if not already populated by server)
+  if(spaceStations.length===0)initSpaceStations();
+}
+
+// ── Space Station event handlers (SpacetimeDB table callbacks) ──
+
+function handleStationInsert(row){
+  const st=spaceStations.find(s=>s.id===row.id);
+  if(st){
+    st.hp=row.hp;st.maxHp=row.maxHp;st.shield=row.shield;st.maxShield=row.maxShield;
+    st.dead=row.dead;st.respawnAt=Number(row.respawnAt);
+    st.x=row.x;st.y=row.y;
+  }else{
+    spaceStations.push({
+      id:row.id,x:row.x,y:row.y,
+      hp:row.hp,maxHp:row.maxHp,shield:row.shield,maxShield:row.maxShield,
+      dead:row.dead,respawnAt:Number(row.respawnAt),lootDropped:false,
+      rotation:Math.atan2(row.y,row.x),
+    });
+  }
+}
+
+function handleStationUpdate(oldRow,newRow){
+  const st=spaceStations.find(s=>s.id===newRow.id);
+  if(!st)return;
+  st.hp=newRow.hp;st.shield=Math.max(0,newRow.shield);
+  // Detect station death (transition from alive to dead)
+  if(newRow.dead&&!oldRow.dead){
+    st.dead=true;st.hp=0;st.shield=0;
+    st.respawnAt=Number(newRow.respawnAt);
+    onStationDestroyed(st);
+  }
+  // Detect station respawn (transition from dead to alive)
+  if(!newRow.dead&&oldRow.dead){
+    st.dead=false;st.hp=newRow.hp;st.shield=newRow.shield;
+    st.respawnAt=0;st.lootDropped=false;
+    onStationRespawned(st);
+  }
+}
+
+function handleStationDelete(row){
+  const idx=spaceStations.findIndex(s=>s.id===row.id);
+  if(idx>=0)spaceStations.splice(idx,1);
+}
+
+function onStationDestroyed(st){
+  // Visual FX
+  const near=distToPlayer(st.x,st.y)<FX_RANGE;
+  if(near){
+    emitBurst(st.x,st.y,50,200,'#ff4422',4,1,15);
+    emitBurst(st.x,st.y,30,120,'#ffaa44',3,.7,12);
+    emitBurst(st.x,st.y,20,80,'#fff',2,.5,10);
+    SFX.explode();shake(8);
+  }
+  minimapEvents.push({x:st.x,y:st.y,color:'#ff4422',t:0,maxT:2,type:'explosion'});
+  notify('💥 Pirate Station destroyed — loot the wreckage!','#ff6644');
+
+  // Drop ores (client-side loot, mix of valuable ores found in the red zone)
+  if(!st.lootDropped){
+    st.lootDropped=true;
+    const dropTable=[
+      {ore:'platinum',min:3,max:8},
+      {ore:'titanium',min:2,max:5},
+      {ore:'gold',min:4,max:10},
+      {ore:'voidstone',min:1,max:3},
+    ];
+    dropTable.forEach(dt=>{
+      const total=randInt(dt.min,dt.max);
+      const drops=Math.min(total,randInt(2,4));
+      let remaining=total;
+      for(let d=0;d<drops;d++){
+        const amt=d===drops-1?remaining:Math.max(1,randInt(1,Math.ceil(remaining/(drops-d))));
+        remaining-=amt;if(amt<=0)continue;
+        const ang=rand(0,Math.PI*2);const spd=rand(60,180);
+        const cargo={};cargo[dt.ore]=amt;
+        const l=createLoot(st.x,st.y,cargo,Math.cos(ang)*spd,Math.sin(ang)*spd);
+        if(l)loot.push(l);
+      }
+    });
+  }
+}
+
+function onStationRespawned(st){
+  const near=distToPlayer(st.x,st.y)<FX_RANGE;
+  if(near){
+    emitBurst(st.x,st.y,30,150,'#ff4422',3,.6,10);
+    SFX.warp();
+  }
+  notify('⚠ A Pirate Station has been rebuilt!','#ff4422');
+}
+
+// Host: check for station respawns each frame
+function updateStationRespawns(){
+  if(!isNpcHost||!stdbConn||!stdbConnected)return;
+  const now=Date.now();
+  spaceStations.forEach(st=>{
+    if(st.dead&&st.respawnAt>0&&now>=st.respawnAt){
+      try{stdbConn.reducers.respawnStation({stationId:st.id});}catch(e){console.warn('[STDB] respawnStation failed:',e);}
+    }
+  });
 }
 
 // Non-host: interpolate NPC positions each frame
@@ -4024,6 +4161,7 @@ function drawMinimap(){
   // ── Void Leviathan ──
   drawLeviathanMinimap(mx,my,scale);
   drawTradeShipMinimap(mx,my,scale);
+  drawStationsMinimap(mx,my,scale);
 
   // ── Radar Glitch Effect (Leviathan approaching) ──
   if(radarGlitchIntensity>0.02){
@@ -4702,6 +4840,30 @@ function updateProjectiles(dt){
         hit=true;
       }
     }
+    // vs pirate space stations (server-authoritative HP via damageStation)
+    if(!hit&&p.isPlayerOwned){
+      for(let si=0;si<spaceStations.length;si++){
+        const st=spaceStations[si];
+        if(st.dead)continue;
+        if(dist(p.x,p.y,st.x,st.y)<CFG.STATION_HIT_R){
+          const nearPlayer=distToPlayer(p.x,p.y)<FX_RANGE;
+          if(stdbConn&&stdbConnected){
+            try{stdbConn.reducers.damageStation({
+              stationId:st.id,damage:p.dmg,
+              attackerName:player?player.name:'Unknown'
+            });}catch(e){console.warn('[STDB] damageStation failed:',e);}
+          }else{
+            // Offline: apply locally
+            if(st.shield>0){const sa=Math.min(st.shield,p.dmg*.7);st.shield-=sa;p.dmg-=sa;}
+            st.hp-=p.dmg;
+            if(st.hp<=0){st.dead=true;st.hp=0;st.shield=0;st.respawnAt=Date.now()+CFG.STATION_RESPAWN*1000;onStationDestroyed(st);}
+          }
+          if(nearPlayer){emitBurst(p.x,p.y,8,80,'#ff4422',2,.3,8);SFX.hit();shake(2);}
+          minimapEvents.push({x:p.x,y:p.y,color:'#ff4422',t:0,maxT:.5,type:'hit'});
+          hit=true;break;
+        }
+      }
+    }
     if(hit)projectiles.splice(i,1);
   }
 }
@@ -5068,6 +5230,28 @@ function updateMissiles(dt){
         }
         missileExplode(m);missiles.splice(i,1);continue;
       }
+    }
+    // vs pirate space stations (missiles)
+    if(m.isPlayerOwned){
+      let stHit=false;
+      for(let si=0;si<spaceStations.length;si++){
+        const sst=spaceStations[si];
+        if(sst.dead)continue;
+        if(dist(m.x,m.y,sst.x,sst.y)<CFG.STATION_HIT_R+10){
+          if(stdbConn&&stdbConnected){
+            try{stdbConn.reducers.damageStation({
+              stationId:sst.id,damage:m.dmg,
+              attackerName:player?player.name:'Unknown'
+            });}catch(e){}
+          }else{
+            if(sst.shield>0){const sa=Math.min(sst.shield,m.dmg*.7);sst.shield-=sa;m.dmg-=sa;}
+            sst.hp-=m.dmg;
+            if(sst.hp<=0){sst.dead=true;sst.hp=0;sst.shield=0;sst.respawnAt=Date.now()+CFG.STATION_RESPAWN*1000;onStationDestroyed(sst);}
+          }
+          missileExplode(m);stHit=true;break;
+        }
+      }
+      if(stHit){missiles.splice(i,1);continue;}
     }
   }
 }
@@ -5787,6 +5971,132 @@ function drawPirateDens(){
   });
 }
 
+// ── Pirate Space Station Rendering ──
+
+function drawSpaceStations(){
+  const t=performance.now()*.001;
+  spaceStations.forEach(st=>{
+    if(st.dead)return; // Don't render destroyed stations
+    const s=worldToScreen(st.x,st.y);
+    if(!inView(st.x,st.y,CFG.STATION_VISUAL_R*2))return;
+    const R=CFG.STATION_VISUAL_R;
+    const rot=t*0.15+st.rotation; // Slow spin
+
+    ctx.save();ctx.translate(s.x,s.y);ctx.rotate(rot);
+
+    // Shield bubble (visible when shield > 0)
+    if(st.shield>0){
+      const shieldAlpha=0.06+Math.sin(t*2+st.id)*0.03;
+      const shieldR=R*1.4;
+      const sg=ctx.createRadialGradient(0,0,R*0.6,0,0,shieldR);
+      sg.addColorStop(0,'rgba(255,60,40,0)');
+      sg.addColorStop(0.7,`rgba(255,80,50,${shieldAlpha})`);
+      sg.addColorStop(1,'rgba(255,40,30,0)');
+      ctx.fillStyle=sg;ctx.beginPath();ctx.arc(0,0,shieldR,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle=`rgba(255,80,50,${shieldAlpha*3})`;ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(0,0,shieldR,0,Math.PI*2);ctx.stroke();
+    }
+
+    // Central body (octagonal core)
+    ctx.fillStyle='#442222';ctx.strokeStyle='#aa3322';ctx.lineWidth=2;
+    ctx.beginPath();
+    for(let i=0;i<8;i++){
+      const a=i*Math.PI/4;
+      const px=Math.cos(a)*R*0.45,py=Math.sin(a)*R*0.45;
+      i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+    }
+    ctx.closePath();ctx.fill();ctx.stroke();
+
+    // Outer ring structure
+    ctx.strokeStyle='#883322';ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(0,0,R*0.75,0,Math.PI*2);ctx.stroke();
+    ctx.strokeStyle='#aa4433';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(0,0,R*0.78,0,Math.PI*2);ctx.stroke();
+
+    // Spokes connecting core to ring
+    for(let i=0;i<4;i++){
+      const a=i*Math.PI/2;
+      ctx.strokeStyle='#773322';ctx.lineWidth=4;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a)*R*0.45,Math.sin(a)*R*0.45);
+      ctx.lineTo(Math.cos(a)*R*0.75,Math.sin(a)*R*0.75);
+      ctx.stroke();
+    }
+
+    // Corner turrets/pods
+    for(let i=0;i<4;i++){
+      const a=i*Math.PI/2+Math.PI/4;
+      const px=Math.cos(a)*R*0.75,py=Math.sin(a)*R*0.75;
+      ctx.fillStyle='#993322';
+      ctx.beginPath();ctx.arc(px,py,6,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle='#ff4433';ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(px,py,6,0,Math.PI*2);ctx.stroke();
+      // Blinking warning light
+      const blink=Math.sin(t*3+i*1.5)>.3;
+      if(blink){
+        ctx.fillStyle='rgba(255,60,30,.8)';
+        ctx.beginPath();ctx.arc(px,py,2.5,0,Math.PI*2);ctx.fill();
+      }
+    }
+
+    // Central red glow
+    const coreGlow=ctx.createRadialGradient(0,0,2,0,0,R*0.3);
+    coreGlow.addColorStop(0,'rgba(255,50,30,.5)');
+    coreGlow.addColorStop(1,'rgba(255,30,20,0)');
+    ctx.fillStyle=coreGlow;ctx.beginPath();ctx.arc(0,0,R*0.3,0,Math.PI*2);ctx.fill();
+
+    // Skull emblem
+    ctx.rotate(-rot); // un-rotate for text
+    ctx.fillStyle='rgba(255,80,60,.6)';ctx.font='bold 14px Courier New';ctx.textAlign='center';
+    ctx.fillText('☠',0,5);
+
+    ctx.restore();
+
+    // HP bar (only when damaged)
+    if(st.hp<st.maxHp){
+      const barW=70,barH=5;
+      const bx=s.x-barW/2,by=s.y-R-14;
+      // Shield bar
+      if(st.maxShield>0){
+        ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(bx,by-7,barW,barH);
+        ctx.fillStyle='rgba(80,150,255,.7)';ctx.fillRect(bx,by-7,barW*(st.shield/st.maxShield),barH);
+      }
+      // HP bar
+      const hpPct=st.hp/st.maxHp;
+      ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(bx,by,barW,barH);
+      ctx.fillStyle=hpPct>.5?'rgba(68,255,100,.8)':hpPct>.25?'rgba(255,200,50,.8)':'rgba(255,60,40,.8)';
+      ctx.fillRect(bx,by,barW*hpPct,barH);
+    }
+
+    // Label
+    ctx.fillStyle='rgba(255,80,60,.5)';ctx.font='bold 8px Courier New';ctx.textAlign='center';
+    ctx.strokeStyle='rgba(0,0,0,.8)';ctx.lineWidth=2;
+    ctx.strokeText('PIRATE STATION',s.x,s.y+R+14);
+    ctx.fillText('PIRATE STATION',s.x,s.y+R+14);
+  });
+}
+
+// Draw stations on minimap
+function drawStationsMinimap(mx,my,scale){
+  spaceStations.forEach(st=>{
+    const sx=mx+(st.x-player.x)*scale,sy=my+(st.y-player.y)*scale;
+    const mr=Math.min(canvas.width,canvas.height)*0.12;
+    if(dist(sx,sy,mx,my)>=mr)return;
+    if(st.dead){
+      // Wreckage marker
+      ctx.fillStyle='rgba(255,60,40,.3)';ctx.font='5px Courier New';ctx.textAlign='center';
+      ctx.fillText('×',sx,sy+2);
+    }else{
+      // Station marker (small square)
+      const pulse=.5+Math.sin(performance.now()*.003+st.id)*.2;
+      ctx.fillStyle=`rgba(255,60,40,${pulse})`;
+      ctx.fillRect(sx-3,sy-3,6,6);
+      ctx.strokeStyle='rgba(255,80,60,.6)';ctx.lineWidth=.5;
+      ctx.strokeRect(sx-3,sy-3,6,6);
+    }
+  });
+}
+
 // ── Void Leviathan Rendering ──
 
 function drawLeviathan(){
@@ -6380,6 +6690,7 @@ function connectSTDB(){
             npcHostHeartbeatTimer=0; // send first heartbeat immediately
             if(npcs.length>0)pushNPCsToServer();
             else{spawnNPCs();pushNPCsToServer();}
+            pushStationsToServer();
             npcServerMap.clear(); // host doesn't use server map
           }else if(!isNpcHost&&wasHost){
             startNpcStaleCheck(); // Monitor new host's liveness
@@ -6406,6 +6717,7 @@ function connectSTDB(){
             npcHostHeartbeatTimer=0; // send first heartbeat immediately
             if(npcs.length>0)pushNPCsToServer();
             else{spawnNPCs();pushNPCsToServer();}
+            pushStationsToServer();
             npcServerMap.clear();
           }else if(!isNpcHost&&wasHost){
             startNpcStaleCheck(); // Monitor new host's liveness
@@ -6452,6 +6764,17 @@ function connectSTDB(){
         });
         // Expose remoteWingmanMap for rendering
         window._remoteWingmanMap=remoteWingmanMap;
+
+        // Listen for Space Station table changes (server-authoritative HP)
+        conn.db.spaceStation.onInsert((ctx,row)=>{
+          handleStationInsert(row);
+        });
+        conn.db.spaceStation.onUpdate((ctx,oldRow,newRow)=>{
+          handleStationUpdate(oldRow,newRow);
+        });
+        conn.db.spaceStation.onDelete((ctx,row)=>{
+          handleStationDelete(row);
+        });
         
         // NOW subscribe to all tables — listeners are ready
         conn.subscriptionBuilder()
@@ -6503,6 +6826,7 @@ function connectSTDB(){
                     console.log('[STDB-NPC] ✅ We are the NPC host!');
                     if(npcs.length>0)pushNPCsToServer();
                     else{spawnNPCs();pushNPCsToServer();}
+                    pushStationsToServer();
                   }else{
                     console.log('[STDB-NPC] Another client is NPC host — synced',npcServerMap.size,'NPCs from server');
                     initialSyncNPCs();
@@ -7412,7 +7736,7 @@ function gameLoop(timestamp){
     }
     if(gameState==='dead'&&player)player.respawnTimer-=dt;
     
-    updateNPCs(dt);updateDenPirates(dt);updateWingmen(dt);updatePolice(dt);updateTradeShip(dt);updateProjectiles(dt);updateMissiles(dt);updateMissileLock(dt);updateLeviathan(dt);updateRemotePlayers(dt);updateRemoteProjectiles(dt);
+    updateNPCs(dt);updateDenPirates(dt);updateWingmen(dt);updatePolice(dt);updateTradeShip(dt);updateStationRespawns();updateProjectiles(dt);updateMissiles(dt);updateMissileLock(dt);updateLeviathan(dt);updateRemotePlayers(dt);updateRemoteProjectiles(dt);
     // Decay minimap events
     for(let i=minimapEvents.length-1;i>=0;i--){minimapEvents[i].t+=dt;if(minimapEvents[i].t>=minimapEvents[i].maxT)minimapEvents.splice(i,1);}updateLoot(dt);
     updateAggressorDecay(dt);updateAsteroidRespawn(dt);updateParticles(dt);updateTrails(dt);updateCamera(dt);
@@ -7434,7 +7758,7 @@ function gameLoop(timestamp){
     asteroids.forEach(a=>drawAsteroidEntity(a));
     loot.forEach(l=>drawLootEntity(l));
     drawAllMiningBeams();
-    drawTradeShip();drawPirateDens();
+    drawTradeShip();drawPirateDens();drawSpaceStations();
     drawAllTrails(); // Tron-style light trails behind all ships
     npcs.forEach(n=>{if(!n.isPolice&&!n.isTradeShip)drawShipEntity(n);});
     policeUnits.forEach(p=>{if(!p.dead)drawShipEntity(p);});
