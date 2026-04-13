@@ -6764,13 +6764,13 @@ function connectSTDB(){
         window._remoteWingmanMap=remoteWingmanMap;
 
         // Listen for Space Station table changes (server-authoritative HP)
-        conn.db.spaceStation.onInsert((ctx,row)=>{
+        conn.db.space_station.onInsert((ctx,row)=>{
           handleStationInsert(row);
         });
-        conn.db.spaceStation.onUpdate((ctx,oldRow,newRow)=>{
+        conn.db.space_station.onUpdate((ctx,oldRow,newRow)=>{
           handleStationUpdate(oldRow,newRow);
         });
-        conn.db.spaceStation.onDelete((ctx,row)=>{
+        conn.db.space_station.onDelete((ctx,row)=>{
           handleStationDelete(row);
         });
         
