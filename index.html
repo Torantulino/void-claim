@@ -856,6 +856,7 @@ const POLICE_RETURN_R=CFG.EARTH_SHIELD_R+200; // When to start returning
 const aggressorMap=new Map();
 const AGGRESSOR_MAX_WARNINGS=3;    // Number of warnings before aggressor status
 const AGGRESSOR_WARNING_EXPIRY=60; // Warnings forgotten after 60 seconds
+const AGGRESSOR_WARNING_COOLDOWN=2; // Seconds between warning increments (rapid fire won't burn through all 3)
 const AGGRESSOR_DECAY_TIME=45; // Aggressor status decays after 45s outside safe zone without aggression
 const AGGRESSOR_DECAY_CHECK_INTERVAL=1; // Check decay every 1s
 
@@ -883,7 +884,7 @@ function markAggressor(entity){
 function clearAggressor(entity){
   if(!entity)return;
   entity.aggressor=false;
-  aggressorMap.delete(entity.id);
+  aggressorMap.delete(entity.id); // Clears both aggressor data AND warning history
 }
 
 // Record that an aggressor is still actively fighting (resets decay timer)
@@ -925,6 +926,10 @@ function checkAggressionRules(attacker,victim){
     if(data.warnedTime&&(now-data.warnedTime>AGGRESSOR_WARNING_EXPIRY)){
       data.warnings=0;
     }
+    // Cooldown: don't increment warnings if we just warned recently (prevents rapid-fire burn-through)
+    if(data.warnedTime&&(now-data.warnedTime<AGGRESSOR_WARNING_COOLDOWN)){
+      return; // Same warning still active, ignore repeated hits
+    }
     data.warnings=(data.warnings||0)+1;
     data.warnedTime=now;
     aggressorMap.set(attacker.id,data);
@@ -952,10 +957,8 @@ function checkAggressionRules(attacker,victim){
 function updateAggressorDecay(dt){
   const now=performance.now()/1000;
   aggressorMap.forEach((data,entityId)=>{
-    // Skip warning-only entries (not full aggressors)
-    if(data.warned&&!data.aggressorTime)return;
-    // Clean up expired warnings
-    if(data.warned&&!data.aggressorTime){
+    // Skip warning-only entries (not full aggressors) & clean up expired ones
+    if(data.warnings>0&&!data.aggressorTime){
       if(now-data.warnedTime>AGGRESSOR_WARNING_EXPIRY)aggressorMap.delete(entityId);
       return;
     }
