@@ -7123,7 +7123,7 @@ function connectSTDB(){
         
         // Drone table callbacks — render other players' drones
         const remoteDroneMap=new Map(); // droneId → drone object (for OTHER players' drones)
-        conn.db.drone.onInsert((ctx,wm)=>{
+        conn.db.wingman.onInsert((ctx,wm)=>{
           const myHex=stdbConn&&stdbConn.identity?stdbConn.identity.toHexString():'';
           if(wm.ownerIdentityHex===myHex)return; // skip our own drones (we run them locally)
           remoteDroneMap.set(wm.id,{
@@ -7134,7 +7134,7 @@ function connectSTDB(){
             personality:'drone',cargo:{},credits:0
           });
         });
-        conn.db.drone.onUpdate((ctx,oldWm,newWm)=>{
+        conn.db.wingman.onUpdate((ctx,oldWm,newWm)=>{
           const myHex=stdbConn&&stdbConn.identity?stdbConn.identity.toHexString():'';
           if(newWm.ownerIdentityHex===myHex)return;
           const existing=remoteDroneMap.get(newWm.id);
@@ -7146,7 +7146,7 @@ function connectSTDB(){
             existing.state=newWm.state;
           }
         });
-        conn.db.drone.onDelete((ctx,wm)=>{
+        conn.db.wingman.onDelete((ctx,wm)=>{
           remoteDroneMap.delete(wm.id);
         });
         // Expose remoteDroneMap for rendering
