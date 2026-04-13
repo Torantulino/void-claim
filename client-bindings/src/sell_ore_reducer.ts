@@ -11,20 +11,5 @@ import {
 } from "spacetimedb";
 
 export default {
-  x: __t.f32(),
-  y: __t.f32(),
-  vx: __t.f32(),
-  vy: __t.f32(),
-  angle: __t.f32(),
-  cargoUsed: __t.u32(),
-  dead: __t.bool(),
-  cloaked: __t.bool(),
-  bounty: __t.bool(),
-  ship: __t.string(),
-  color: __t.string(),
-  maxHp: __t.f32(),
-  maxShield: __t.f32(),
-  miningX: __t.f32(),
-  miningY: __t.f32(),
-  miningOre: __t.string(),
+  amount: __t.u64(),
 };

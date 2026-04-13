@@ -298,8 +298,8 @@ export const join_game = spacetimedb.reducer(
   }
 );
 
-// update_player — now clients only send position/movement/cosmetic state.
-// HP and shield are SERVER-OWNED and cannot be overwritten by the client.
+// update_player — clients only send position/movement/cosmetic state.
+// HP, shield, kills, and earned are SERVER-OWNED and cannot be overwritten by the client.
 export const update_player = spacetimedb.reducer(
   {
     x: t.f32(),
@@ -311,8 +311,6 @@ export const update_player = spacetimedb.reducer(
     dead: t.bool(),
     cloaked: t.bool(),
     bounty: t.bool(),
-    kills: t.u32(),
-    earned: t.u64(),
     ship: t.string(),
     color: t.string(),
     max_hp: t.f32(),
@@ -332,7 +330,7 @@ export const update_player = spacetimedb.reducer(
       vx:          args.vx,
       vy:          args.vy,
       angle:       args.angle,
-      // HP & shield are NOT taken from client — server keeps its own values
+      // HP, shield, kills, earned are NOT taken from client — server keeps its own values
       // But we DO allow max_hp/max_shield updates (from upgrades)
       max_hp:      args.max_hp,
       max_shield:  args.max_shield,
@@ -340,8 +338,7 @@ export const update_player = spacetimedb.reducer(
       dead:        args.dead,
       cloaked:     args.cloaked,
       bounty:      args.bounty,
-      kills:       args.kills,
-      earned:      args.earned,
+      // kills and earned are preserved from server state (not client-settable)
       ship:        args.ship,
       color:       args.color,
       mining_x:    args.mining_x,
@@ -417,6 +414,19 @@ export const deal_damage = spacetimedb.reducer(
         victim: victim.name,
         timestamp: BigInt(Date.now()),
       });
+
+      // Server-authoritative kill tracking: increment attacker's kills.
+      // ctx.sender is the attacker when a player's bullet hits a remote player.
+      // When an NPC bullet hits a player, ctx.sender is the victim — in that case
+      // the sender IS the victim so we correctly skip incrementing.
+      const attacker = ctx.db.player.identity.find(ctx.sender);
+      if (attacker && attacker.identity.toHexString() !== victim.identity.toHexString()) {
+        ctx.db.player.identity.update({
+          ...attacker,
+          kills: attacker.kills + 1,
+          last_update: BigInt(Date.now()),
+        });
+      }
 
       console.log(`${args.attacker_name} destroyed ${victim.name}`);
     } else {
@@ -560,24 +570,30 @@ export const send_chat = spacetimedb.reducer(
 // Reducers — Leaderboard
 // ═══════════════════════════════════════════
 
+// submit_score — leaderboard submission now uses server-authoritative kills & earned.
+// The client still sends mined (not yet server-tracked) and cosmetic fields.
+// kills and credits are read from the server's player table — NOT from client args.
 export const submit_score = spacetimedb.reducer(
   {
     name: t.string(),
-    credits: t.u64(),
-    kills: t.u32(),
     mined: t.u64(),
     ship: t.string(),
     color: t.string(),
   },
   (ctx, args) => {
+    // Read server-authoritative kills and earned from the player table
+    const p = ctx.db.player.identity.find(ctx.sender);
+    const serverKills = p ? p.kills : 0;
+    const serverEarned = p ? p.earned : BigInt(0);
+
     let found = false;
     for (const entry of ctx.db.leaderboard_entry.iter()) {
       if (entry.name === args.name) {
-        if (args.credits > entry.credits) {
+        if (serverEarned > entry.credits) {
           ctx.db.leaderboard_entry.id.update({
             ...entry,
-            credits:   args.credits,
-            kills:     args.kills,
+            credits:   serverEarned,
+            kills:     serverKills,
             mined:     args.mined,
             ship:      args.ship,
             color:     args.color,
@@ -593,14 +609,42 @@ export const submit_score = spacetimedb.reducer(
       ctx.db.leaderboard_entry.insert({
         id:        BigInt(0),
         name:      args.name,
-        credits:   args.credits,
-        kills:     args.kills,
+        credits:   serverEarned,
+        kills:     serverKills,
         mined:     args.mined,
         ship:      args.ship,
         color:     args.color,
         timestamp: BigInt(Date.now()),
       });
     }
+  }
+);
+
+// sell_ore — server-authoritative earnings tracking.
+// The client reports how much ore value was sold; the server increments `earned`.
+// Since the server doesn't track individual cargo contents (only cargo_used count),
+// we apply a reasonable per-transaction cap to limit abuse.
+// Max single sale: most valuable ore (voidstone=200) × max cargo (hauler=45 base + upgrades)
+// ≈ 200 × 60 = 12000 credits, with generous headroom for trade ship bonus (1.5x).
+const MAX_SALE_VALUE = BigInt(20000);
+
+export const sell_ore = spacetimedb.reducer(
+  {
+    amount: t.u64(),  // total credit value of the sale
+  },
+  (ctx, args) => {
+    const p = ctx.db.player.identity.find(ctx.sender);
+    if (!p || p.dead) return;
+
+    // Clamp to reasonable maximum to prevent absurd values
+    const saleValue = args.amount > MAX_SALE_VALUE ? MAX_SALE_VALUE : args.amount;
+    if (saleValue <= BigInt(0)) return;
+
+    ctx.db.player.identity.update({
+      ...p,
+      earned: p.earned + saleValue,
+      last_update: BigInt(Date.now()),
+    });
   }
 );
 
