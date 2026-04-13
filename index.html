@@ -206,7 +206,7 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 
 const CFG={
   WORLD_R:25000,EARTH_R:180,EARTH_SHIELD_R:1800,GREEN_R:2500,YELLOW_R:6000,RED_R:12000,
-  TICK:1000/60,BASE_SPEED:220,DRAG:.985,THRUST:600,
+  TICK:1000/60,BASE_SPEED:275,DRAG:.985,THRUST:750,
   PROJ_SPEED:700,PROJ_TTL:2.4,PROJ_DMG:8,
   MINE_RANGE:120,MINE_RATE:25,COLLECT_RANGE:60,SHOOT_CD:.35,
   RESPAWN_TIME:3,NPC_COUNT:14,AST_COUNT:350,LOOT_TTL:50,BOUNTY_TIME:90,
@@ -218,7 +218,7 @@ const CFG={
   DEN_HUNT_RANGE:3000,       // How far den pirates roam from their den to hunt
   DEN_LEASH_R:4000,
   // Trade Ship system
-  TRADE_SHIP_HP:8000,TRADE_SHIP_SHIELD:4000,TRADE_SHIP_SPEED:40,
+  TRADE_SHIP_HP:8000,TRADE_SHIP_SHIELD:4000,TRADE_SHIP_SPEED:50,
   TRADE_SHIP_ORBIT_R:6000,TRADE_SHIP_BODY_W:400,TRADE_SHIP_BODY_H:100,
   TRADE_SHIP_MARKET_R:500,TRADE_SHIP_TURRET_RANGE:800,
   TRADE_SHIP_TURRET_CD:0.6,TRADE_SHIP_TURRET_DMG:15,
@@ -4894,7 +4894,7 @@ function createLeviathan(px,py){
     hp:800,maxHp:800,bodyRadius:60,
     state:'lurk',stateTimer:8+Math.random()*5,
     tentacles,jawOpen:0,jawTimer:0,eyeGlow:0,eyePulse:0,
-    speed:140,chargeSpeed:450,dmg:60,biteCooldown:0,
+    speed:175,chargeSpeed:562,dmg:60,biteCooldown:0,
     phase:0,ambientTimer:0,
     dead:false,deathTimer:0,retreatAngle:0,lastSeenDist:99999
   };
