@@ -4808,7 +4808,7 @@ function updateProjectiles(dt){
         }
         hit=true;
       }
-    }).catch((e)=>{console.warn('[STDB] damageNpc failed:',e)});
+    });
     // vs trade ship (separate larger hitbox, routed through damageNpc)
     if(!hit&&tradeShip&&!tradeShip.dead&&p.ownerId!=='trade_ship'&&!isTSProj){
       if(dist(p.x,p.y,tradeShip.x,tradeShip.y)<220){
@@ -5011,7 +5011,7 @@ function killEntity(target,attackerId){
         emitBurst(w.x,w.y,20,100,'#ff6644',2,.5,8);
         if(stdbConn&&stdbConnected){stdbConn.reducers.deleteWingman({wingmanId:w.id}).catch(()=>{});}
       }
-    }).catch((e)=>{console.warn('[STDB] damageNpc failed:',e)});
+    });
     wingmen=[];
     const killedByPolice=policeUnits.some(pu=>pu.id===attackerId);
     if(killedByLeviathan){
