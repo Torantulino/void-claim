@@ -856,7 +856,7 @@ const POLICE_RETURN_R=CFG.EARTH_SHIELD_R+200; // When to start returning
 const aggressorMap=new Map();
 const AGGRESSOR_MAX_WARNINGS=3;    // Number of warnings before aggressor status
 const AGGRESSOR_WARNING_EXPIRY=60; // Warnings forgotten after 60 seconds
-const AGGRESSOR_WARNING_COOLDOWN=2; // Seconds between warning increments (rapid fire won't burn through all 3)
+const AGGRESSOR_WARNING_COOLDOWN=1; // Seconds between warning increments (rapid fire won't burn through all 3)
 const AGGRESSOR_DECAY_TIME=45; // Aggressor status decays after 45s outside safe zone without aggression
 const AGGRESSOR_DECAY_CHECK_INTERVAL=1; // Check decay every 1s
 
@@ -899,12 +899,6 @@ function refreshAggressionTimer(entity){
 function checkAggressionRules(attacker,victim){
   if(!attacker||!victim)return;
   if(attacker.isPolice)return; // Police enforcing law is never aggression
-  // Rule: attacking police anywhere = immediate aggression (no warning)
-  if(victim.isPolice){
-    refreshAggressionTimer(attacker);
-    if(!isAggressor(attacker))markAggressor(attacker);
-    return;
-  }
   // Rule: attacking the Trade Ship anywhere = immediate aggression
   if(victim.isTradeShip){
     refreshAggressionTimer(attacker);
