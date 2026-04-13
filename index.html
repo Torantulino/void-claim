@@ -1203,11 +1203,11 @@ function updateTradeShipTurrets(dt){
         if(distToPlayer(wx,wy)<FX_RANGE)SFX.laser();
         // Broadcast turret projectile to server so all clients see it and it can deal server-authoritative damage
         if(stdbConn&&stdbConnected&&isNpcHost){
-          try{stdbConn.reducers.fireProjectile({
+          stdbConn.reducers.fireProjectile({
             x:p.x,y:p.y,vx:p.vx,vy:p.vy,
             dmg:p.dmg,color:TRADE_SHIP_TURRET_COLOR,
             ttlMs:Math.round(CFG.PROJ_TTL*1000)
-          });}catch(e){}
+          }).catch(()=>{});
         }
       }
     }else{
@@ -2042,10 +2042,10 @@ function hireWingman(type){
   notify('Hired '+wt.name+'!','#44ff88');
   // Sync wingman to server
   if(stdbConn&&stdbConnected){
-    try{stdbConn.reducers.spawnWingman({
+    stdbConn.reducers.spawnWingman({
       wingmanId:w.id,name:w.name,ship:w.ship,color:w.color,
       wmType:type,hp:w.hp,maxHp:w.maxHp,shield:w.shield,maxShield:w.maxShield
-    });}catch(e){console.warn('[STDB] spawnWingman failed:',e);}
+    }).catch((e)=>{console.warn('[STDB] spawnWingman failed:',e);});
   }
   updateHUD();saveGame();
 }
@@ -2210,7 +2210,7 @@ function killWingman(w,attackerName){
   notify('💀 '+w.name+' was destroyed! (permanent)','#ff4444');
   // Broadcast wingman death to server
   if(stdbConn&&stdbConnected){
-    try{stdbConn.reducers.deleteWingman({wingmanId:w.id});}catch(e){}
+    stdbConn.reducers.deleteWingman({wingmanId:w.id}).catch(()=>{});
   }
   // Remove from array after a frame so death FX plays
   setTimeout(()=>{
@@ -2309,13 +2309,11 @@ function initSpaceStations(){
 function pushStationsToServer(){
   if(!stdbConn||!stdbConnected||!isNpcHost)return;
   spaceStations.forEach(st=>{
-    try{
-      stdbConn.reducers.spawnStation({
+    stdbConn.reducers.spawnStation({
         stationId:st.id,x:st.x,y:st.y,
         hp:st.hp,maxHp:st.maxHp,
         shield:st.shield,maxShield:st.maxShield
-      });
-    }catch(e){console.warn('[STDB] spawnStation failed:',e);}
+      }).catch((e)=>{console.warn('[STDB] spawnStation failed:',e)});
   });
   console.log('[STATION] Pushed',spaceStations.length,'stations to server');
 }
@@ -2386,15 +2384,13 @@ function pushNPCsToServer(){
   if(!stdbConn||!stdbConnected||!isNpcHost)return;
   console.log('[STDB-NPC] Host pushing',npcs.length,'NPCs to server');
   npcs.forEach(n=>{
-    try{
       stdbConn.reducers.spawnNpc({
         npcId:n.npcId,name:n.name,
         x:n.x,y:n.y,angle:n.angle,
         ship:n.ship,color:n.color,personality:n.personality,
         hp:n.hp,maxHp:n.maxHp,shield:n.shield,maxShield:n.maxShield,
         totalKills:n.totalKills,totalMined:n.totalMined,totalEarned:n.totalEarned
-      });
-    }catch(e){console.warn('[STDB-NPC] spawnNpc failed:',e);}
+      }).catch((e)=>{console.warn('[STDB] spawnNpc failed:',e)});
   });
 }
 
@@ -2725,7 +2721,7 @@ function updateStationRespawns(){
   const now=Date.now();
   spaceStations.forEach(st=>{
     if(st.dead&&st.respawnAt>0&&now>=st.respawnAt){
-      try{stdbConn.reducers.respawnStation({stationId:st.id});}catch(e){console.warn('[STDB] respawnStation failed:',e);}
+      stdbConn.reducers.respawnStation({stationId:st.id}).catch((e)=>{console.warn('[STDB] respawnStation failed:',e);});
     }
   });
 }
@@ -2759,7 +2755,6 @@ function interpolateRemoteNPCs(dt){
 function syncNPCsToServer(){
   if(!stdbConn||!stdbConnected||!isNpcHost)return;
   npcs.forEach(n=>{
-    try{
       stdbConn.reducers.updateNpc({
         npcId:n.npcId,
         x:Math.round(n.x),y:Math.round(n.y),
@@ -2773,8 +2768,7 @@ function syncNPCsToServer(){
         totalKills:n.totalKills||0,
         totalMined:n.totalMined||0,
         totalEarned:n.totalEarned||0
-      });
-    }catch(e){}
+      }).catch((e)=>{console.warn('[STDB] updateNpc failed:',e)});
   });
 }
 
@@ -2783,7 +2777,6 @@ function syncWingmenToServer(){
   if(!stdbConn||!stdbConnected||wingmen.length===0)return;
   wingmen.forEach(w=>{
     if(w.dead)return;
-    try{
       stdbConn.reducers.updateWingman({
         wingmanId:w.id,
         x:Math.round(w.x),y:Math.round(w.y),
@@ -2791,29 +2784,24 @@ function syncWingmenToServer(){
         angle:+(w.angle.toFixed(2)),
         state:w.state||'follow',
         hp:+(w.hp.toFixed(1)),shield:+(w.shield.toFixed(1))
-      });
-    }catch(e){}
+      }).catch((e)=>{console.warn('[STDB] updateWingman failed:',e)});
   });
 }
 
 // Host: notify server when an NPC respawns
 function serverRespawnNPC(n){
   if(!stdbConn||!stdbConnected||!isNpcHost)return;
-  try{
     stdbConn.reducers.respawnNpc({
       npcId:n.npcId,x:n.x,y:n.y,
       hp:n.hp,shield:n.shield
-    });
-  }catch(e){}
+    }).catch((e)=>{console.warn('[STDB] respawnNpc failed:',e)});
 }
 
 // Try to claim NPC host role
 function tryClaimNpcHost(){
   if(!stdbConn||!stdbConnected)return;
-  try{
-    stdbConn.reducers.claimNpcHost({});
+    stdbConn.reducers.claimNpcHost({}).catch((e)=>{console.warn('[STDB-NPC] claimNpcHost failed:',e)});
     console.log('[STDB-NPC] Attempting to claim NPC host...');
-  }catch(e){console.warn('[STDB-NPC] claimNpcHost failed:',e);}
 }
 
 // Backup staleness detector using setInterval (survives rAF throttling on mobile/background tabs)
@@ -2881,9 +2869,7 @@ function updateNPCs(dt){
       npcHostHeartbeatTimer-=dt;
       if(npcHostHeartbeatTimer<=0){
         npcHostHeartbeatTimer=NPC_HOST_HEARTBEAT_RATE;
-        try{
-          stdbConn.reducers.heartbeatNpcHost({});
-        }catch(e){console.warn('[STDB-NPC] heartbeat failed:',e);}
+          stdbConn.reducers.heartbeatNpcHost({}).catch((e)=>{console.warn('[STDB-NPC] heartbeat failed:',e)});
       }
     }
     
@@ -3240,11 +3226,11 @@ function fireProjectile(entity){
     SFX.laser();
     // Broadcast projectile to other players via SpacetimeDB
     if(stdbConn&&stdbConnected){
-      try{stdbConn.reducers.fireProjectile({
+      stdbConn.reducers.fireProjectile({
         x:p.x,y:p.y,vx:p.vx,vy:p.vy,
         dmg:p.dmg,color:p.color,
         ttlMs:Math.round(CFG.PROJ_TTL*1000)
-      });}catch(e){}
+      }).catch(()=>{});
     }
   }
 }
@@ -4751,11 +4737,11 @@ function updateProjectiles(dt){
         if(t.isPolice){
           // Police are now synced via NPC system — route player damage through server
           if(stdbConn&&stdbConnected&&p.isPlayerOwned){
-            try{stdbConn.reducers.damageNpc({
+            stdbConn.reducers.damageNpc({
               npcId:t.npcId,
               damage:p.dmg,
               attackerName:player?player.name:'Unknown'
-            });}catch(e){console.warn('[STDB] damageNpc (police) failed:',e);}
+            }).catch((e)=>{console.warn('[STDB] damageNpc (police) failed:',e);});
             t.lastDamageTime=performance.now(); // Track for safe zone heal cooldown
             // Local FX only (HP comes from server via host sync)
             if(nearPlayer)emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
@@ -4771,11 +4757,11 @@ function updateProjectiles(dt){
         }else if(t.isRemotePlayer){
           // Server-authoritative: tell server to apply damage to remote player
           if(stdbConn&&stdbConnected&&p.isPlayerOwned){
-            try{stdbConn.reducers.dealDamage({
+            stdbConn.reducers.dealDamage({
               victimIdentityHex:t.id,
               damage:p.dmg,
               attackerName:player?player.name:'Unknown'
-            });}catch(e){console.warn('[STDB] deal_damage failed:',e);}
+            }).catch((e)=>{console.warn('[STDB] deal_damage failed:',e);});
           }
           // Local FX only (HP comes from server)
           emitBurst(p.x,p.y,8,80,p.color,2,.3,8);SFX.hit();
@@ -4784,11 +4770,11 @@ function updateProjectiles(dt){
         }else if(t.isNPC&&stdbConn&&stdbConnected&&(p.isPlayerOwned||isTSProj)){
           // Server-authoritative NPC damage: route through damageNpc reducer
           // Trade ship turret bullets also route through server so NPC HP is authoritative
-          try{stdbConn.reducers.damageNpc({
+          stdbConn.reducers.damageNpc({
             npcId:t.npcId,
             damage:p.dmg,
             attackerName:isTSProj?'Trade Ship':(player?player.name:'Unknown')
-          });}catch(e){console.warn('[STDB] damage_npc failed:',e);}
+          }).catch((e)=>{console.warn('[STDB] damage_npc failed:',e);});
           t.lastDamageTime=performance.now(); // Track for safe zone heal cooldown
           // Local FX only (HP comes from server via host sync)
           if(nearPlayer)emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
@@ -4800,11 +4786,11 @@ function updateProjectiles(dt){
           if(player&&player.invulnTimer>0){hit=true;return;}
           const myHex=stdbConn.identity?stdbConn.identity.toHexString():'';
           if(myHex){
-            try{stdbConn.reducers.dealDamage({
+            stdbConn.reducers.dealDamage({
               victimIdentityHex:myHex,
               damage:p.dmg,
               attackerName:p.ownerName||'SSPD'
-            });}catch(e){console.warn('[STDB] deal_damage (NPC→Player) failed:',e);}
+            }).catch((e)=>{console.warn('[STDB] deal_damage (NPC→Player) failed:',e);});
           }
           // Track damage time for safe zone heal cooldown
           if(player)player.lastDamageTime=performance.now();
@@ -4822,7 +4808,7 @@ function updateProjectiles(dt){
         }
         hit=true;
       }
-    });
+    }).catch((e)=>{console.warn('[STDB] damageNpc failed:',e)});
     // vs trade ship (separate larger hitbox, routed through damageNpc)
     if(!hit&&tradeShip&&!tradeShip.dead&&p.ownerId!=='trade_ship'&&!isTSProj){
       if(dist(p.x,p.y,tradeShip.x,tradeShip.y)<220){
@@ -4836,10 +4822,10 @@ function updateProjectiles(dt){
         if(stdbConn&&stdbConnected&&(p.isPlayerOwned||isNpcHost)){
           // Route through server for both player bullets AND NPC bullets (when we're host)
           const attackerName=attacker?attacker.name:(p.ownerName||'Unknown');
-          try{stdbConn.reducers.damageNpc({
+          stdbConn.reducers.damageNpc({
             npcId:tradeShip.npcId,damage:p.dmg,
             attackerName:attackerName
-          });}catch(e){}
+          }).catch(()=>{});
           if(nearPlayer){emitBurst(p.x,p.y,8,80,p.color,2,.3,8);SFX.hit();shake(2);}
         }else{
           applyDamage(tradeShip,p.dmg,p.ownerId,nearPlayer);
@@ -4855,10 +4841,10 @@ function updateProjectiles(dt){
         if(dist(p.x,p.y,st.x,st.y)<CFG.STATION_HIT_R){
           const nearPlayer=distToPlayer(p.x,p.y)<FX_RANGE;
           if(stdbConn&&stdbConnected){
-            try{stdbConn.reducers.damageStation({
+            stdbConn.reducers.damageStation({
               stationId:st.id,damage:p.dmg,
               attackerName:player?player.name:'Unknown'
-            });}catch(e){console.warn('[STDB] damageStation failed:',e);}
+            }).catch((e)=>{console.warn('[STDB] damageStation failed:',e);});
           }else{
             // Offline: apply locally
             if(st.shield>0){const sa=Math.min(st.shield,p.dmg*.7);st.shield-=sa;p.dmg-=sa;}
@@ -5023,9 +5009,9 @@ function killEntity(target,attackerId){
     wingmen.forEach(w=>{
       if(!w.dead){
         emitBurst(w.x,w.y,20,100,'#ff6644',2,.5,8);
-        if(stdbConn&&stdbConnected){try{stdbConn.reducers.deleteWingman({wingmanId:w.id});}catch(e){}}
+        if(stdbConn&&stdbConnected){stdbConn.reducers.deleteWingman({wingmanId:w.id}).catch(()=>{});}
       }
-    });
+    }).catch((e)=>{console.warn('[STDB] damageNpc failed:',e)});
     wingmen=[];
     const killedByPolice=policeUnits.some(pu=>pu.id===attackerId);
     if(killedByLeviathan){
@@ -5236,10 +5222,10 @@ function updateMissiles(dt){
     if(tradeShip&&!tradeShip.dead&&m.ownerId!=='trade_ship'){
       if(dist(m.x,m.y,tradeShip.x,tradeShip.y)<220){
         if(stdbConn&&stdbConnected){
-          try{stdbConn.reducers.damageNpc({
+          stdbConn.reducers.damageNpc({
             npcId:tradeShip.npcId,damage:m.dmg,
             attackerName:player?player.name:'Unknown'
-          });}catch(e){}
+          }).catch(()=>{});
         }else{
           applyDamage(tradeShip,m.dmg,m.ownerId,distToPlayer(tradeShip.x,tradeShip.y)<FX_RANGE);
         }
@@ -5254,10 +5240,10 @@ function updateMissiles(dt){
         if(sst.dead)continue;
         if(dist(m.x,m.y,sst.x,sst.y)<CFG.STATION_HIT_R+10){
           if(stdbConn&&stdbConnected){
-            try{stdbConn.reducers.damageStation({
+            stdbConn.reducers.damageStation({
               stationId:sst.id,damage:m.dmg,
               attackerName:player?player.name:'Unknown'
-            });}catch(e){}
+            }).catch(()=>{});
           }else{
             if(sst.shield>0){const sa=Math.min(sst.shield,m.dmg*.7);sst.shield-=sa;m.dmg-=sa;}
             sst.hp-=m.dmg;
@@ -5478,7 +5464,7 @@ function sellAllOreAtTradeShip(){
   if(val>0){
     player.credits+=val;player.totalEarned+=val;
     // Server-authoritative earnings: notify server of the sale amount
-    if(stdbConn&&stdbConnected){try{stdbConn.reducers.sellOre({amount:BigInt(val)});}catch(e){console.warn('[STDB] sell_ore failed:',e);}}
+    if(stdbConn&&stdbConnected){stdbConn.reducers.sellOre({amount:BigInt(val)}).catch((e)=>{console.warn('[STDB] sell_ore failed:',e)});}
     addFloatingText(player.x,player.y-30,`+${val} ⬡ (+50%)`,'#44ff88');
     notify(`Sold ore for ${val} credits (+50% bonus)!`,'#44ff88');
     player.cargo={};updateHUD();SFX.sell();saveGame();submitLeaderboard();
@@ -5630,7 +5616,7 @@ function updateLeviathan(dt){
           // Route through server dealDamage for server-authoritative HP
           if(stdbConn&&stdbConnected){
             const myHex=stdbConn.identity?stdbConn.identity.toHexString():'';
-            if(myHex){try{stdbConn.reducers.dealDamage({victimIdentityHex:myHex,damage:lev.dmg,attackerName:'Void Leviathan'});}catch(e){console.warn('[STDB] deal_damage (Leviathan) failed:',e);}}
+            if(myHex){stdbConn.reducers.dealDamage({victimIdentityHex:myHex,damage:lev.dmg,attackerName:'Void Leviathan'}).catch((e)=>{console.warn('[STDB] deal_damage (Leviathan) failed:',e);});}
           }else{applyDamage(player,lev.dmg,lev.id);}
           player.lastDamageTime=performance.now(); // Track for safe zone heal cooldown
           lev.biteCooldown=1.5;
@@ -5659,7 +5645,7 @@ function updateLeviathan(dt){
           // Route through server dealDamage for server-authoritative HP
           if(stdbConn&&stdbConnected){
             const myHex=stdbConn.identity?stdbConn.identity.toHexString():'';
-            if(myHex){try{stdbConn.reducers.dealDamage({victimIdentityHex:myHex,damage:lev.dmg,attackerName:'Void Leviathan'});}catch(e){console.warn('[STDB] deal_damage (Leviathan) failed:',e);}}
+            if(myHex){stdbConn.reducers.dealDamage({victimIdentityHex:myHex,damage:lev.dmg,attackerName:'Void Leviathan'}).catch((e)=>{console.warn('[STDB] deal_damage (Leviathan) failed:',e);});}
           }else{applyDamage(player,lev.dmg,lev.id);}
           player.lastDamageTime=performance.now(); // Track for safe zone heal cooldown
           lev.biteCooldown=1.5;
@@ -5792,7 +5778,7 @@ function killLeviathan(lev){
   addFloatingText(lev.x,lev.y,'+500 CREDITS','#ff44ff');
   if(player){player.credits+=500;player.totalEarned+=500;
     // Server-authoritative earnings: notify server of leviathan kill reward
-    if(stdbConn&&stdbConnected){try{stdbConn.reducers.sellOre({amount:BigInt(500)});}catch(e){}}}
+    if(stdbConn&&stdbConnected){stdbConn.reducers.sellOre({amount:BigInt(500)}).catch(()=>{});}}
   // Scatter voidstone as individual loot drops with outward velocity
   const voidTotal=randInt(5,12);
   const voidDrops=Math.min(voidTotal,randInt(4,7));
@@ -6283,7 +6269,7 @@ function sellAllOre(){
   if(val>0){
     player.credits+=val;player.totalEarned+=val;
     // Server-authoritative earnings: notify server of the sale amount
-    if(stdbConn&&stdbConnected){try{stdbConn.reducers.sellOre({amount:BigInt(val)});}catch(e){console.warn('[STDB] sell_ore failed:',e);}}
+    if(stdbConn&&stdbConnected){stdbConn.reducers.sellOre({amount:BigInt(val)}).catch((e)=>{console.warn('[STDB] sell_ore failed:',e)});}
     addFloatingText(player.x,player.y-30,`+${val} ⬡`,'#ffcc44');
     notify(`Sold ore for ${val} credits!`,'#ffcc44');
     player.cargo={};updateHUD();SFX.sell();
@@ -6813,7 +6799,7 @@ function connectSTDB(){
             }catch(e){console.warn('[STDB] world_state sync error:',e);}
             if(!seedFound){
               console.log('[STDB] No world seed found — calling seedWorld reducer');
-              try{conn.reducers.seedWorld();}catch(e){console.warn('[STDB] seedWorld failed:',e);}
+              conn.reducers.seedWorld().catch((e)=>{console.warn('[STDB] seedWorld failed:',e);});
             }
             // Join game AFTER subscriptions are ready (critical!)
             if(player){
@@ -6895,12 +6881,10 @@ function syncExistingWingmenToServer(){
   console.log('[STDB] Syncing',wingmen.length,'existing wingmen to server...');
   wingmen.forEach(w=>{
     if(w.dead)return;
-    try{
-      stdbConn.reducers.spawnWingman({
+    stdbConn.reducers.spawnWingman({
         wingmanId:w.id,name:w.name,ship:w.ship,color:w.color,
         wmType:w.wmType,hp:w.hp,maxHp:w.maxHp,shield:w.shield,maxShield:w.maxShield
-      });
-    }catch(e){console.warn('[STDB] syncExistingWingmen spawnWingman failed:',e);}
+      }).catch((e)=>{console.warn('[STDB] spawnWingman failed:',e)});
   });
 }
 
@@ -6909,7 +6893,6 @@ function stdbJoinGame(){
     console.warn('[STDB] stdbJoinGame skipped: conn=',!!stdbConn,'connected=',stdbConnected,'player=',!!player);
     return;
   }
-  try{
     console.log('[STDB] Calling joinGame for',player.name,'ship=',player.ship);
     stdbConn.reducers.joinGame({
       name:player.name,
@@ -6917,9 +6900,8 @@ function stdbJoinGame(){
       color:player.color,
       maxHp:player.maxHp,
       maxShield:player.maxShield
-    });
+    }).catch((e)=>{console.error('[STDB] ❌ join_game failed:',e)});
     console.log('[STDB] joinGame reducer called successfully');
-  }catch(e){console.error('[STDB] ❌ join_game failed:',e);}
 }
 
 // ── Event-driven remote player sync (SpacetimeDB recommended pattern) ──
@@ -7217,7 +7199,6 @@ function syncLeaderboard(){
 function sendState(){
   // SpacetimeDB path — server-authoritative: we send position+velocity, NOT hp/shield
   if(stdbConn&&stdbConnected&&player){
-    try{
       stdbConn.reducers.updatePlayer({
         x:Math.round(player.x),
         y:Math.round(player.y),
@@ -7235,8 +7216,7 @@ function sendState(){
         miningX:miningTarget?Math.round(miningTarget.x):0,
         miningY:miningTarget?Math.round(miningTarget.y):0,
         miningOre:miningTarget?miningTarget.oreType:''
-      });
-    }catch(e){console.error('[STDB] ❌ update_player failed:',e);}
+      }).catch((e)=>{console.error('[STDB] ❌ update_player failed:',e)});
     return;
   }
   
@@ -7263,25 +7243,23 @@ function sendState(){
 
 function reportKill(killerName,victimName){
   if(stdbConn&&stdbConnected){
-    try{stdbConn.reducers.reportKill({killerName:killerName,victimName:victimName});}catch(e){}
+    stdbConn.reducers.reportKill({killerName:killerName,victimName:victimName}).catch(()=>{});
   }
 }
 
 function submitScore(){
   if(!stdbConn||!stdbConnected||!player)return;
-  try{
     stdbConn.reducers.submitScore({
       name:player.name,
       mined:BigInt(player.totalMined||0),
       ship:player.ship,
       color:player.color
-    });
-  }catch(e){}
+    }).catch((e)=>{console.warn('[STDB] submitScore failed:',e)});
 }
 
 function sendChat(text){
   if(stdbConn&&stdbConnected&&player){
-    try{stdbConn.reducers.sendChat({senderName:player.name,text:text});}catch(e){}
+    stdbConn.reducers.sendChat({senderName:player.name,text:text}).catch(()=>{});
   }
 }
 
@@ -7636,10 +7614,10 @@ function updateEarthProximity(){
     if(timeSinceDamage>=healCooldown){
       // Server-authoritative healing: tell server to heal us
       if(stdbConn&&stdbConnected&&(player.hp<player.maxHp||player.shield<player.maxShield)){
-        try{stdbConn.reducers.healPlayer({
+        stdbConn.reducers.healPlayer({
           healHp:30*lastDt,
           healShield:20*lastDt
-        });}catch(e){}
+        }).catch(()=>{});
       }
       // Local prediction for responsive feel (server is authoritative)
       player.hp=Math.min(player.maxHp,player.hp+30*lastDt);
@@ -7759,8 +7737,8 @@ function gameLoop(timestamp){
     
     hudTimer-=dt;if(hudTimer<=0){updateHUD();updateChatFade();if(isMobile||mobileFallbackActivated)updateMobileHUD();hudTimer=.15;}
     wsTimer-=dt;if(wsTimer<=0){sendState();wsTimer=.05;} // 20Hz net tick
-    projPruneTimer-=dt;if(projPruneTimer<=0&&stdbConn&&stdbConnected){try{stdbConn.reducers.pruneProjectiles();}catch(e){}projPruneTimer=2;}
-    pruneTimer-=dt;if(pruneTimer<=0&&stdbConn&&stdbConnected){try{stdbConn.reducers.pruneEvents();}catch(e){}pruneTimer=60;}
+    projPruneTimer-=dt;if(projPruneTimer<=0&&stdbConn&&stdbConnected){stdbConn.reducers.pruneProjectiles().catch(()=>{});projPruneTimer=2;}
+    pruneTimer-=dt;if(pruneTimer<=0&&stdbConn&&stdbConnected){stdbConn.reducers.pruneEvents().catch(()=>{});pruneTimer=60;}
     autoSaveTimer-=dt;if(autoSaveTimer<=0){saveGame();autoSaveTimer=30;}
     
     if(hintTimer>0){hintTimer-=dt;const hint=document.getElementById('controls-hint');
@@ -7959,7 +7937,7 @@ function respawn(){
   if(!player)return;
   // Tell server to respawn (resets HP/shield authoritatively)
   if(stdbConn&&stdbConnected){
-    try{stdbConn.reducers.respawnPlayer();}catch(e){}
+    stdbConn.reducers.respawnPlayer().catch(()=>{});
   }
   player.dead=false;player.x=0;player.y=-CFG.EARTH_R-100;
   player.vx=0;player.vy=0;player.hp=player.maxHp;player.shield=player.maxShield;
