@@ -7910,6 +7910,13 @@ ${ty.variants.map(
     attackerName: t.string()
   };
 
+  // src/damage_station_reducer.ts
+  var damage_station_reducer_default = {
+    stationId: t.u32(),
+    damage: t.f32(),
+    attackerName: t.string()
+  };
+
   // src/damage_wingman_reducer.ts
   var damage_wingman_reducer_default = {
     wingmanId: t.string(),
@@ -7985,6 +7992,11 @@ ${ty.variants.map(
   // src/respawn_player_reducer.ts
   var respawn_player_reducer_default = {};
 
+  // src/respawn_station_reducer.ts
+  var respawn_station_reducer_default = {
+    stationId: t.u32()
+  };
+
   // src/seed_world_reducer.ts
   var seed_world_reducer_default = {};
 
@@ -8016,6 +8028,17 @@ ${ty.variants.map(
     totalKills: t.u32(),
     totalMined: t.u32(),
     totalEarned: t.u32()
+  };
+
+  // src/spawn_station_reducer.ts
+  var spawn_station_reducer_default = {
+    stationId: t.u32(),
+    x: t.f32(),
+    y: t.f32(),
+    hp: t.f32(),
+    maxHp: t.f32(),
+    shield: t.f32(),
+    maxShield: t.f32()
   };
 
   // src/spawn_wingman_reducer.ts
@@ -8196,6 +8219,20 @@ ${ty.variants.map(
     ttlMs: t.u32().name("ttl_ms")
   });
 
+  // src/space_station_table.ts
+  var space_station_table_default = t.row({
+    id: t.u32().primaryKey(),
+    x: t.f32(),
+    y: t.f32(),
+    hp: t.f32(),
+    maxHp: t.f32().name("max_hp"),
+    shield: t.f32(),
+    maxShield: t.f32().name("max_shield"),
+    dead: t.bool(),
+    respawnAt: t.u64().name("respawn_at"),
+    lastUpdate: t.u64().name("last_update")
+  });
+
   // src/wingman_table.ts
   var wingman_table_default = t.row({
     id: t.string().primaryKey(),
@@ -8303,6 +8340,17 @@ ${ty.variants.map(
         { name: "projectile_id_key", constraint: "unique", columns: ["id"] }
       ]
     }, projectile_table_default),
+    space_station: table({
+      name: "space_station",
+      indexes: [
+        { accessor: "id", name: "space_station_id_idx_btree", algorithm: "btree", columns: [
+          "id"
+        ] }
+      ],
+      constraints: [
+        { name: "space_station_id_key", constraint: "unique", columns: ["id"] }
+      ]
+    }, space_station_table_default),
     wingman: table({
       name: "wingman",
       indexes: [
@@ -8329,6 +8377,7 @@ ${ty.variants.map(
   var reducersSchema = reducers(
     reducerSchema("claim_npc_host", claim_npc_host_reducer_default),
     reducerSchema("damage_npc", damage_npc_reducer_default),
+    reducerSchema("damage_station", damage_station_reducer_default),
     reducerSchema("damage_wingman", damage_wingman_reducer_default),
     reducerSchema("deal_damage", deal_damage_reducer_default),
     reducerSchema("delete_wingman", delete_wingman_reducer_default),
@@ -8342,10 +8391,12 @@ ${ty.variants.map(
     reducerSchema("report_kill", report_kill_reducer_default),
     reducerSchema("respawn_npc", respawn_npc_reducer_default),
     reducerSchema("respawn_player", respawn_player_reducer_default),
+    reducerSchema("respawn_station", respawn_station_reducer_default),
     reducerSchema("seed_world", seed_world_reducer_default),
     reducerSchema("sell_ore", sell_ore_reducer_default),
     reducerSchema("send_chat", send_chat_reducer_default),
     reducerSchema("spawn_npc", spawn_npc_reducer_default),
+    reducerSchema("spawn_station", spawn_station_reducer_default),
     reducerSchema("spawn_wingman", spawn_wingman_reducer_default),
     reducerSchema("submit_score", submit_score_reducer_default),
     reducerSchema("update_npc", update_npc_reducer_default),

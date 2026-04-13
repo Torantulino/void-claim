@@ -115,6 +115,20 @@ export const Projectile = __t.object("Projectile", {
 });
 export type Projectile = __Infer<typeof Projectile>;
 
+export const SpaceStation = __t.object("SpaceStation", {
+  id: __t.u32(),
+  x: __t.f32(),
+  y: __t.f32(),
+  hp: __t.f32(),
+  maxHp: __t.f32(),
+  shield: __t.f32(),
+  maxShield: __t.f32(),
+  dead: __t.bool(),
+  respawnAt: __t.u64(),
+  lastUpdate: __t.u64(),
+});
+export type SpaceStation = __Infer<typeof SpaceStation>;
+
 export const Wingman = __t.object("Wingman", {
   id: __t.string(),
   ownerIdentityHex: __t.string(),

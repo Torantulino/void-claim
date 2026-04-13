@@ -146,17 +146,6 @@ const tablesSchema = __schema({
       { name: 'player_identity_key', constraint: 'unique', columns: ['identity'] },
     ],
   }, PlayerRow),
-  space_station: __table({
-    name: 'space_station',
-    indexes: [
-      { accessor: 'id', name: 'space_station_id_idx_btree', algorithm: 'btree', columns: [
-        'id',
-      ] },
-    ],
-    constraints: [
-      { name: 'space_station_id_key', constraint: 'unique', columns: ['id'] },
-    ],
-  }, SpaceStationRow),
   projectile: __table({
     name: 'projectile',
     indexes: [
@@ -168,6 +157,17 @@ const tablesSchema = __schema({
       { name: 'projectile_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, ProjectileRow),
+  space_station: __table({
+    name: 'space_station',
+    indexes: [
+      { accessor: 'id', name: 'space_station_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'space_station_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, SpaceStationRow),
   wingman: __table({
     name: 'wingman',
     indexes: [
