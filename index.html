@@ -805,6 +805,10 @@ let camera={x:0,y:0,shakeX:0,shakeY:0,shakeAmt:0};
 // ── Hitstop system: brief time-freeze on impactful hits ──
 let hitStopTimer=0;
 function triggerHitstop(frames){hitStopTimer=Math.max(hitStopTimer,frames/60);}
+
+// ── Screen flash system: full-screen color overlay on hits ──
+let screenFlash={r:0,g:0,b:0,alpha:0,decay:8};
+function flashScreen(r,g,b,alpha,decay){screenFlash={r,g,b,alpha,decay:decay||8};}
 let input={keys:{},mx:0,my:0,mouseDown:false,mouseWorld:{x:0,y:0},lastMouseMoveTime:0};
 // Mobile detection — true on any device with touch capability
 const isMobile=(function(){
@@ -4930,12 +4934,12 @@ function applyDamage(target,dmg,attackerId,playFX){
     const sa=Math.min(target.shield,dmg*.7);
     target.shield-=sa;dmg-=sa;
     if(playFX)emitBurst(target.x,target.y,4,50,'rgba(100,180,255,.8)',2,.2,6);
-    if(target.isPlayer){SFX.shieldHit();haptic(15);}
+    if(target.isPlayer){SFX.shieldHit();haptic(15);flashScreen(80,150,255,0.15,6);}
   }
   target.hp-=dmg;
   target.lastDamageTime=performance.now();
   if(playFX&&!target.isPlayer)SFX.hit();
-  if(target.isPlayer&&target.hp>0)haptic(25);
+  if(target.isPlayer&&target.hp>0){haptic(25);flashScreen(255,40,40,0.2+(target.hp/target.maxHp<0.3?0.15:0),5);}
   if(target.hp<=0)killEntity(target,attackerId);
 }
 
@@ -7790,6 +7794,11 @@ function gameLoop(timestamp){
     drawRemoteProjectiles();
     drawParticles();drawFloatingTexts();drawChatBubbles();drawMinimap();
     drawLeviathanScreenFX();
+    // ── Screen flash overlay (damage feedback) ──
+    if(screenFlash.alpha>0.01){
+      ctx.fillStyle=\`rgba(\${screenFlash.r},\${screenFlash.g},\${screenFlash.b},\${screenFlash.alpha})\`;
+      ctx.fillRect(0,0,W,H);screenFlash.alpha=Math.max(0,screenFlash.alpha-screenFlash.decay*lastDt);
+    }
     
     // HUD overlays
     if(player&&!player.dead){
