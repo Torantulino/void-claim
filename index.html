@@ -1151,6 +1151,7 @@ function updateTradeShip(dt){
       tradeShip.hp=CFG.TRADE_SHIP_HP;tradeShip.shield=CFG.TRADE_SHIP_SHIELD;
       tradeShip.turrets.forEach(t=>{t.cooldown=0;t.targetId=null;});
       tradeShip.lootDropped=false;
+      tradeShip._respawnedAt=performance.now(); // Timestamp to reject stale server echoes
       onTradeShipRespawnFX(tradeShip.x,tradeShip.y);
       if(isNpcHost)serverRespawnNPC(tradeShip);
     }else if(tradeShip.respawnTimer<30&&tradeShip.respawnTimer+dt>=30){
@@ -1386,6 +1387,7 @@ function updatePolice(dt){
         p.vx=0;p.vy=0;
         p.hp=p.maxHp;p.shield=p.maxShield;
         p.dead=false;p.state=p.ship==='carrier'?'patrol':'escort';
+        p._respawnedAt=performance.now(); // Timestamp to reject stale server echoes
         p.target=null;p.stunTimer=0;
         // Re-link fighters to carrier
         if(p.ship!=='carrier'&&p.carrierRef&&!p.carrierRef.dead){
@@ -2432,6 +2434,7 @@ function updateDenPirates(dt){
       dp.vx=0;dp.vy=0;
       dp.hp=dp.maxHp;dp.shield=dp.maxShield;
       dp.dead=false;dp.cargo={};dp.state='patrol';dp.bounty=0;dp.stunTimer=0;
+      dp._respawnedAt=performance.now(); // Timestamp to reject stale server echoes
       dp.denIndex=denIndex;
       clearAggressor(dp);
       serverRespawnNPC(dp);
@@ -2467,11 +2470,15 @@ function handleNpcInsert(sn){
     if(localNpc){
       localNpc.hp=sn.hp;localNpc.shield=sn.shield;
       if(sn.dead&&!localNpc.dead){
-        localNpc.dead=true;localNpc.hp=0;localNpc.respawnTimer=CFG.RESPAWN_TIME;
-        dropCargoAndSalvage(localNpc);
-        const near=distToPlayer(localNpc.x,localNpc.y)<FX_RANGE;
-        if(near){emitBurst(localNpc.x,localNpc.y,30,150,localNpc.color||'#ff5555',3,.7,12);emitBurst(localNpc.x,localNpc.y,15,80,'#fff',2,.4,8);SFX.explode();}
-        minimapEvents.push({x:localNpc.x,y:localNpc.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
+        // Guard: ignore stale server echoes after a recent local respawn
+        const timeSinceRespawn=performance.now()-(localNpc._respawnedAt||0);
+        if(timeSinceRespawn>=500){
+          localNpc.dead=true;localNpc.hp=0;localNpc.respawnTimer=CFG.RESPAWN_TIME;
+          dropCargoAndSalvage(localNpc);
+          const near=distToPlayer(localNpc.x,localNpc.y)<FX_RANGE;
+          if(near){emitBurst(localNpc.x,localNpc.y,30,150,localNpc.color||'#ff5555',3,.7,12);emitBurst(localNpc.x,localNpc.y,15,80,'#fff',2,.4,8);SFX.explode();}
+          minimapEvents.push({x:localNpc.x,y:localNpc.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
+        }
       }
     }
     return;
@@ -2519,6 +2526,17 @@ function handleNpcUpdate(oldNpc,newNpc){
         localNpc.hp=newNpc.hp;localNpc.shield=Math.max(0,newNpc.shield);
       }
       if(newNpc.dead&&!localNpc.dead){
+        // Guard: ignore stale server echoes of dead=true that arrive after
+        // the host has already respawned the NPC locally. The host's own
+        // updateNpc(dead=true) from the sync cycle BEFORE the respawn can
+        // echo back after respawnNpc has already set the NPC alive locally,
+        // causing an infinite spawn→instant-death loop every RESPAWN_TIME.
+        const timeSinceRespawn=performance.now()-(localNpc._respawnedAt||0);
+        if(timeSinceRespawn<500){
+          // NPC was respawned locally very recently — this dead=true is a
+          // stale echo from a previous sync cycle, not a new kill. Ignore it.
+          return;
+        }
         if(localNpc.isTradeShip){
           // Trade ship uses its own long respawn timer (120s, not generic 3s)
           localNpc.dead=true;localNpc.hp=0;localNpc.shield=0;
@@ -2962,6 +2980,7 @@ function updateNPCs(dt){
         n.x=Math.cos(a)*d;n.y=Math.sin(a)*d;n.vx=0;n.vy=0;
         n.hp=SHIPS[n.ship].hull;n.shield=SHIPS[n.ship].shield;
         n.dead=false;n.cargo={};n.state='idle';n.bounty=0;n.stunTimer=0;
+        n._respawnedAt=performance.now(); // Timestamp to reject stale server echoes
         clearAggressor(n);
         serverRespawnNPC(n);
       }
@@ -6822,14 +6841,20 @@ function connectSTDB(){
         conn.db.npc.onUpdate((ctx,oldNpc,newNpc)=>{
           handleNpcUpdate(oldNpc,newNpc);
           // Check for NPC death (any client can see the explosion FX)
+          // Skip stale echoes: if the host just respawned this NPC, the
+          // dead=true update is from a previous sync cycle, not a real kill.
           if(newNpc.dead&&!oldNpc.dead&&player){
-            const dx=newNpc.x-player.x,dy=newNpc.y-player.y;
-            if(Math.sqrt(dx*dx+dy*dy)<FX_RANGE){
-              emitBurst(newNpc.x,newNpc.y,30,150,newNpc.color||'#ff5555',3,.7,12);
-              emitBurst(newNpc.x,newNpc.y,15,80,'#fff',2,.4,8);
-              SFX.explode();shake(Math.max(0,4-Math.sqrt(dx*dx+dy*dy)/FX_RANGE*4));
+            const localNpc=npcs.find(n=>n.npcId===newNpc.id);
+            const timeSinceRespawn=localNpc?performance.now()-(localNpc._respawnedAt||0):Infinity;
+            if(timeSinceRespawn>=500){
+              const dx=newNpc.x-player.x,dy=newNpc.y-player.y;
+              if(Math.sqrt(dx*dx+dy*dy)<FX_RANGE){
+                emitBurst(newNpc.x,newNpc.y,30,150,newNpc.color||'#ff5555',3,.7,12);
+                emitBurst(newNpc.x,newNpc.y,15,80,'#fff',2,.4,8);
+                SFX.explode();shake(Math.max(0,4-Math.sqrt(dx*dx+dy*dy)/FX_RANGE*4));
+              }
+              minimapEvents.push({x:newNpc.x,y:newNpc.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
             }
-            minimapEvents.push({x:newNpc.x,y:newNpc.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
           }
         });
         conn.db.npc.onDelete((ctx,npcRow)=>{
