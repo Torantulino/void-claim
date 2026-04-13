@@ -4822,9 +4822,15 @@ function updateProjectiles(dt){
             }).catch((e)=>{console.warn('[STDB] damageNpc (police) failed:',e);});
             t.lastDamageTime=performance.now(); // Track for safe zone heal cooldown
             // Local FX only (HP comes from server via host sync)
-            if(nearPlayer)emitDirectionalSparks(p.x,p.y,p.angle,10,p.color);
+            if(nearPlayer){
+              emitDirectionalSparks(p.x,p.y,p.angle,10,p.color);
+              SFX.hit();shake(Math.max(0,0.8-distToPlayer(p.x,p.y)/FX_RANGE*0.8));
+              const hadShieldPol=t.shield>0;
+              const punchPol=1.2+Math.min(p.dmg/30,1.5);
+              addFloatingText(p.x+rand(-8,8),p.y+rand(-12,-4),'-'+Math.round(p.dmg),hadShieldPol?'#66bbff':'#ff4444',punchPol);
+              if(hadShieldPol)emitBurst(t.x,t.y,4,50,'rgba(100,180,255,.8)',2,.2,6);
+            }
             minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
-            if(nearPlayer){SFX.hit();shake(Math.max(0,0.8-distToPlayer(p.x,p.y)/FX_RANGE*0.8));}
           }else{
             // Offline / single-player: apply locally
             applyDamage(t,p.dmg,p.ownerId,nearPlayer);
@@ -4844,7 +4850,13 @@ function updateProjectiles(dt){
           // Local FX only (HP comes from server)
           emitDirectionalSparks(p.x,p.y,p.angle,10,p.color);SFX.hit();
           minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
-          shake(2);
+          shake(Math.max(0,0.8-distToPlayer(p.x,p.y)/FX_RANGE*0.8));
+          // Damage number at impact point
+          const hadShieldPvP=t.shield>0;
+          const punchPvP=1.2+Math.min(p.dmg/30,1.5);
+          const oxPvP=rand(-8,8),oyPvP=rand(-12,-4);
+          addFloatingText(p.x+oxPvP,p.y+oyPvP,'-'+Math.round(p.dmg),hadShieldPvP?'#66bbff':'#ff4444',punchPvP);
+          if(hadShieldPvP)emitBurst(t.x,t.y,4,50,'rgba(100,180,255,.8)',2,.2,6);
         }else if(t.isNPC&&stdbConn&&stdbConnected&&(p.isPlayerOwned||isTSProj)){
           // Server-authoritative NPC damage: route through damageNpc reducer
           // Trade ship turret bullets also route through server so NPC HP is authoritative
@@ -4854,10 +4866,20 @@ function updateProjectiles(dt){
             attackerName:isTSProj?'Trade Ship':(player?player.name:'Unknown')
           }).catch((e)=>{console.warn('[STDB] damage_npc failed:',e);});
           t.lastDamageTime=performance.now(); // Track for safe zone heal cooldown
-          // Local FX only (HP comes from server via host sync)
-          if(nearPlayer)emitDirectionalSparks(p.x,p.y,p.angle,10,p.color);
+          // Local FX (HP comes from server via host sync, but we show
+          // immediate visual feedback so combat feels responsive)
+          if(nearPlayer){
+            emitDirectionalSparks(p.x,p.y,p.angle,10,p.color);
+            SFX.hit();shake(Math.max(0,0.8-distToPlayer(p.x,p.y)/FX_RANGE*0.8));
+            // Damage number at impact point (matches applyDamage style)
+            const hadShield=t.shield>0;
+            const punchScale=1.2+Math.min(p.dmg/30,1.5);
+            const ox=rand(-8,8),oy=rand(-12,-4);
+            addFloatingText(p.x+ox,p.y+oy,'-'+Math.round(p.dmg),hadShield?'#66bbff':'#ff4444',punchScale);
+            // Shield hit particles
+            if(hadShield)emitBurst(t.x,t.y,4,50,'rgba(100,180,255,.8)',2,.2,6);
+          }
           minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
-          if(nearPlayer){SFX.hit();shake(Math.max(0,0.8-distToPlayer(p.x,p.y)/FX_RANGE*0.8));}
         }else if(t.isPlayer&&stdbConn&&stdbConnected){
           // NPC/Police bullet hitting local player — route through server dealDamage reducer
           // Skip if player has post-respawn invulnerability
@@ -4907,7 +4929,14 @@ function updateProjectiles(dt){
             npcId:tradeShip.npcId,damage:p.dmg,
             attackerName:attackerName
           }).catch(()=>{});
-          if(nearPlayer){emitDirectionalSparks(p.x,p.y,p.angle,10,p.color);SFX.hit();shake(2);}
+          if(nearPlayer){
+            emitDirectionalSparks(p.x,p.y,p.angle,10,p.color);SFX.hit();
+            shake(Math.max(0,0.8-distToPlayer(p.x,p.y)/FX_RANGE*0.8));
+            const hadShieldTS=tradeShip.shield>0;
+            const punchTS=1.2+Math.min(p.dmg/30,1.5);
+            addFloatingText(p.x+rand(-8,8),p.y+rand(-12,-4),'-'+Math.round(p.dmg),hadShieldTS?'#66bbff':'#ff4444',punchTS);
+            if(hadShieldTS)emitBurst(tradeShip.x,tradeShip.y,4,50,'rgba(100,180,255,.8)',2,.2,6);
+          }
         }else{
           applyDamage(tradeShip,p.dmg,p.ownerId,nearPlayer);
         }
@@ -4932,7 +4961,12 @@ function updateProjectiles(dt){
             st.hp-=p.dmg;
             if(st.hp<=0){st.dead=true;st.hp=0;st.shield=0;st.respawnAt=Date.now()+CFG.STATION_RESPAWN*1000;onStationDestroyed(st);}
           }
-          if(nearPlayer){emitDirectionalSparks(p.x,p.y,p.angle,8,'#ff4422');SFX.hit();shake(2);}
+          if(nearPlayer){
+            emitDirectionalSparks(p.x,p.y,p.angle,8,'#ff4422');SFX.hit();
+            shake(Math.max(0,0.8-distToPlayer(p.x,p.y)/FX_RANGE*0.8));
+            const punchSt=1.2+Math.min(p.dmg/30,1.5);
+            addFloatingText(p.x+rand(-8,8),p.y+rand(-12,-4),'-'+Math.round(p.dmg),'#ff4422',punchSt);
+          }
           minimapEvents.push({x:p.x,y:p.y,color:'#ff4422',t:0,maxT:.5,type:'hit'});
           hit=true;break;
         }
