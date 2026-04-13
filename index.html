@@ -563,8 +563,6 @@ const MUSIC_TRACKS={
   title:{id:'title',file:'snd/title',loop:true},
   safe:{id:'safe',file:'snd/safe',loop:true},
   green:{id:'green',file:'snd/title',loop:true},
-
-  red:{id:'red',file:'snd/red',loop:true},
   void:{id:'void',file:'snd/void',loop:true},
   police:{id:'police',file:'snd/police',loop:true},
   combat:{id:'combat',file:'snd/combat',loop:true},
@@ -609,7 +607,7 @@ async function loadMusicTrack(id){
   finally{musicLoadingSet.delete(id);}
 }
 
-const ZONE_NEIGHBORS={safe:['green','death','combat'],green:['safe','combat'],yellow:['green','red','combat'],red:['green','void','police','combat'],void:['red','combat','death']};
+const ZONE_NEIGHBORS={safe:['green','death','combat'],green:['safe','combat'],yellow:['green','combat'],red:['green','void','police','combat'],void:['green','combat','death']};
 function preloadMusicNeighbors(zone){(ZONE_NEIGHBORS[zone]||[]).forEach(id=>{if(!musicBuffers[id])loadMusicTrack(id);});}
 
 function startMusicTrack(id,initGain){
@@ -634,7 +632,7 @@ function stopMusicTrack(id,fadeTime){
 }
 
 function stateToTrackId(s){
-  const m={[MS.TITLE]:'title',[MS.SAFE]:'safe',[MS.GREEN]:'green',[MS.YELLOW]:'green',[MS.RED]:'red',[MS.VOID]:'void',[MS.COMBAT]:'combat',[MS.POLICE]:'police',[MS.DEATH]:'death'};
+  const m={[MS.TITLE]:'title',[MS.SAFE]:'safe',[MS.GREEN]:'green',[MS.YELLOW]:'green',[MS.RED]:'green',[MS.VOID]:'void',[MS.COMBAT]:'combat',[MS.POLICE]:'police',[MS.DEATH]:'death'};
   return m[s]||null;
 }
 
@@ -744,8 +742,8 @@ async function startGameMusic(){
   if(!audioCtx)return;
   await Promise.all([loadMusicTrack('safe'),loadMusicTrack('death')]);
   crossfadeTo(MS.SAFE,3.0);preloadMusicNeighbors('safe');
-  if(window.requestIdleCallback)requestIdleCallback(()=>{['green','red','police','combat'].forEach(loadMusicTrack);});
-  else setTimeout(()=>{['green','red','police','combat'].forEach(loadMusicTrack);},5000);
+  if(window.requestIdleCallback)requestIdleCallback(()=>{['green','police','combat'].forEach(loadMusicTrack);});
+  else setTimeout(()=>{['green','police','combat'].forEach(loadMusicTrack);},5000);
 }
 
 // Tab visibility — suspend/resume audio context
