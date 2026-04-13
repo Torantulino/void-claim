@@ -1019,6 +1019,8 @@ export const delete_wingman = spacetimedb.reducer(
   (ctx, args) => {
     const wm = ctx.db.wingman.id.find(args.wingman_id);
     if (!wm) return;
+    // Only the owner can delete their wingmen
+    if (wm.owner_identity_hex !== ctx.sender.toHexString()) return;
     ctx.db.wingman.id.delete(args.wingman_id);
     console.log(`Wingman deleted: ${wm.name}`);
   }
