@@ -4545,9 +4545,10 @@ function killEntity(target,attackerId){
   if(target.isPlayer){shake(8);target.missiles=0;updateMissileHUD();}
   else if(near)shake(Math.max(0,4-distToPlayer(target.x,target.y)/FX_RANGE*4));
   
-  if(totalCargo(target.cargo||{})>0){
+  const savedCargo = {...(target.cargo || {})};
+  if(totalCargo(savedCargo)>0){
     // Scatter cargo as individual loot drops with outward velocity (like asteroid destruction)
-    const cargoEntries=Object.entries(target.cargo).filter(([,v])=>v>0);
+    const cargoEntries=Object.entries(savedCargo).filter(([,v])=>v>0);
     if(cargoEntries.length>0){
       let allItems=[];
       cargoEntries.forEach(([ore,amt])=>{for(let i=0;i<amt;i++)allItems.push(ore);});
@@ -4572,7 +4573,7 @@ function killEntity(target,attackerId){
   target.cargo={};
   
   if(attackerId===player?.id&&!target.isPlayer){
-    if(totalCargo(target.cargo)===0&&target.personality!=='pirate'&&target.personality!=='denPirate'){
+    if(totalCargo(savedCargo)===0&&target.personality!=='pirate'&&target.personality!=='denPirate'){
       player.bounty+=CFG.BOUNTY_TIME;
       notify('⚠ BOUNTY — you attacked a peaceful miner','#ff4444');
     }
@@ -4593,7 +4594,7 @@ function killEntity(target,attackerId){
   if(target.isPlayer){
     gameState='dead';
     document.getElementById('deathScreen').style.display='flex';
-    const val=cargoValue(target.cargo);
+    const val=cargoValue(savedCargo);
     const killedByLeviathan=leviathan&&attackerId===leviathan.id;
     // All wingmen are destroyed when carrier pilot dies
     const wmCount=wingmen.filter(w=>!w.dead).length;
