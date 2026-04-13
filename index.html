@@ -2173,6 +2173,8 @@ function handleNpcInsert(sn){
     // Already have this NPC — treat as update
     handleNpcUpdateInner(existing,sn,now);
   }else{
+    // Trade ship is managed locally (deterministic orbit) — skip server duplicates
+    if(sn.personality==='tradeShip')return;
     // Brand new NPC from server
     const isPoliceNpc=sn.personality==='policeCarrier'||sn.personality==='policeFighter';
     const obj={
@@ -2255,6 +2257,8 @@ function handleNpcDelete(sn){
 function rebuildNpcsFromServerMap(){
   if(isNpcHost)return;
   npcs=Array.from(npcServerMap.values());
+  // Re-add local trade ship (it's deterministic and not in server map)
+  if(tradeShip&&!npcs.includes(tradeShip))npcs.push(tradeShip);
   // Rebuild denPirates array and assign denIndex from nearest den
   rebuildDenPirateRefs();
 }
@@ -2352,6 +2356,7 @@ function interpolateRemoteNPCs(dt){
 function syncNPCsToServer(){
   if(!stdbConn||!stdbConnected||!isNpcHost)return;
   npcs.forEach(n=>{
+    if(n.isTradeShip)return; // Trade ship orbit is deterministic — no server sync needed
     try{
       stdbConn.reducers.updateNpc({
         npcId:n.npcId,
