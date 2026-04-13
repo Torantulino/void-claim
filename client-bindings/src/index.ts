@@ -36,6 +36,7 @@ import {
 // Import all reducer arg schemas
 import ClaimNpcHostReducer from "./claim_npc_host_reducer";
 import DamageNpcReducer from "./damage_npc_reducer";
+import DamageStationReducer from "./damage_station_reducer";
 import DamageWingmanReducer from "./damage_wingman_reducer";
 import DealDamageReducer from "./deal_damage_reducer";
 import DeleteWingmanReducer from "./delete_wingman_reducer";
@@ -49,10 +50,12 @@ import PruneProjectilesReducer from "./prune_projectiles_reducer";
 import ReportKillReducer from "./report_kill_reducer";
 import RespawnNpcReducer from "./respawn_npc_reducer";
 import RespawnPlayerReducer from "./respawn_player_reducer";
+import RespawnStationReducer from "./respawn_station_reducer";
 import SeedWorldReducer from "./seed_world_reducer";
 import SellOreReducer from "./sell_ore_reducer";
 import SendChatReducer from "./send_chat_reducer";
 import SpawnNpcReducer from "./spawn_npc_reducer";
+import SpawnStationReducer from "./spawn_station_reducer";
 import SpawnWingmanReducer from "./spawn_wingman_reducer";
 import SubmitScoreReducer from "./submit_score_reducer";
 import UpdateNpcReducer from "./update_npc_reducer";
@@ -69,6 +72,7 @@ import NpcRow from "./npc_table";
 import NpcHostRow from "./npc_host_table";
 import PlayerRow from "./player_table";
 import ProjectileRow from "./projectile_table";
+import SpaceStationRow from "./space_station_table";
 import WingmanRow from "./wingman_table";
 import WorldStateRow from "./world_state_table";
 
@@ -142,6 +146,17 @@ const tablesSchema = __schema({
       { name: 'player_identity_key', constraint: 'unique', columns: ['identity'] },
     ],
   }, PlayerRow),
+  space_station: __table({
+    name: 'space_station',
+    indexes: [
+      { accessor: 'id', name: 'space_station_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'space_station_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, SpaceStationRow),
   projectile: __table({
     name: 'projectile',
     indexes: [
@@ -181,6 +196,7 @@ const tablesSchema = __schema({
 const reducersSchema = __reducers(
   __reducerSchema("claim_npc_host", ClaimNpcHostReducer),
   __reducerSchema("damage_npc", DamageNpcReducer),
+  __reducerSchema("damage_station", DamageStationReducer),
   __reducerSchema("damage_wingman", DamageWingmanReducer),
   __reducerSchema("deal_damage", DealDamageReducer),
   __reducerSchema("delete_wingman", DeleteWingmanReducer),
@@ -194,10 +210,12 @@ const reducersSchema = __reducers(
   __reducerSchema("report_kill", ReportKillReducer),
   __reducerSchema("respawn_npc", RespawnNpcReducer),
   __reducerSchema("respawn_player", RespawnPlayerReducer),
+  __reducerSchema("respawn_station", RespawnStationReducer),
   __reducerSchema("seed_world", SeedWorldReducer),
   __reducerSchema("sell_ore", SellOreReducer),
   __reducerSchema("send_chat", SendChatReducer),
   __reducerSchema("spawn_npc", SpawnNpcReducer),
+  __reducerSchema("spawn_station", SpawnStationReducer),
   __reducerSchema("spawn_wingman", SpawnWingmanReducer),
   __reducerSchema("submit_score", SubmitScoreReducer),
   __reducerSchema("update_npc", UpdateNpcReducer),
