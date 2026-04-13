@@ -12,8 +12,6 @@ import {
 
 export default {
   name: __t.string(),
-  credits: __t.u64(),
-  kills: __t.u32(),
   mined: __t.u64(),
   ship: __t.string(),
   color: __t.string(),

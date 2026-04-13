@@ -50,6 +50,7 @@ import ReportKillReducer from "./report_kill_reducer";
 import RespawnNpcReducer from "./respawn_npc_reducer";
 import RespawnPlayerReducer from "./respawn_player_reducer";
 import SeedWorldReducer from "./seed_world_reducer";
+import SellOreReducer from "./sell_ore_reducer";
 import SendChatReducer from "./send_chat_reducer";
 import SpawnNpcReducer from "./spawn_npc_reducer";
 import SpawnWingmanReducer from "./spawn_wingman_reducer";
@@ -194,6 +195,7 @@ const reducersSchema = __reducers(
   __reducerSchema("respawn_npc", RespawnNpcReducer),
   __reducerSchema("respawn_player", RespawnPlayerReducer),
   __reducerSchema("seed_world", SeedWorldReducer),
+  __reducerSchema("sell_ore", SellOreReducer),
   __reducerSchema("send_chat", SendChatReducer),
   __reducerSchema("spawn_npc", SpawnNpcReducer),
   __reducerSchema("spawn_wingman", SpawnWingmanReducer),

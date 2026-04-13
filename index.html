@@ -5203,6 +5203,8 @@ function sellAllOreAtTradeShip(){
   val=Math.floor(val*bonus);
   if(val>0){
     player.credits+=val;player.totalEarned+=val;
+    // Server-authoritative earnings: notify server of the sale amount
+    if(stdbConn&&stdbConnected){try{stdbConn.reducers.sellOre({amount:BigInt(val)});}catch(e){console.warn('[STDB] sell_ore failed:',e);}}
     addFloatingText(player.x,player.y-30,`+${val} ⬡ (+50%)`,'#44ff88');
     notify(`Sold ore for ${val} credits (+50% bonus)!`,'#44ff88');
     player.cargo={};updateHUD();SFX.sell();saveGame();submitLeaderboard();
@@ -5512,7 +5514,9 @@ function killLeviathan(lev){
   SFX.leviathanRoar();SFX.explode();shake(20);
   notify('◈ LEVIATHAN SLAIN! +500⬡','#ff44ff');
   addFloatingText(lev.x,lev.y,'+500 CREDITS','#ff44ff');
-  if(player){player.credits+=500;player.totalEarned+=500;}
+  if(player){player.credits+=500;player.totalEarned+=500;
+    // Server-authoritative earnings: notify server of leviathan kill reward
+    if(stdbConn&&stdbConnected){try{stdbConn.reducers.sellOre({amount:BigInt(500)});}catch(e){}}}
   // Scatter voidstone as individual loot drops with outward velocity
   const voidTotal=randInt(5,12);
   const voidDrops=Math.min(voidTotal,randInt(4,7));
@@ -5876,6 +5880,8 @@ function sellAllOre(){
   const val=cargoValue(player.cargo);
   if(val>0){
     player.credits+=val;player.totalEarned+=val;
+    // Server-authoritative earnings: notify server of the sale amount
+    if(stdbConn&&stdbConnected){try{stdbConn.reducers.sellOre({amount:BigInt(val)});}catch(e){console.warn('[STDB] sell_ore failed:',e);}}
     addFloatingText(player.x,player.y-30,`+${val} ⬡`,'#ffcc44');
     notify(`Sold ore for ${val} credits!`,'#ffcc44');
     player.cargo={};updateHUD();SFX.sell();
@@ -6592,6 +6598,9 @@ function rebuildRemotePlayers(){
 // Sync our own HP/shield from server (server-authoritative combat)
 function syncSelfFromServer(p){
   if(!player)return;
+  // Always sync server-authoritative kills and earned (these are never stale)
+  if(p.kills!==undefined)player.totalKills=p.kills;
+  if(p.earned!==undefined)player.totalEarned=Number(p.earned);
   // During post-respawn invulnerability, ignore stale server states
   // Only accept server updates that confirm we're alive with full/higher HP
   if(player.invulnTimer>0){
@@ -6793,8 +6802,6 @@ function sendState(){
         dead:player.dead||false,
         cloaked:player.cloaked||false,
         bounty:player.bounty>0,
-        kills:player.totalKills||0,
-        earned:BigInt(player.totalEarned||0),
         ship:player.ship,
         color:player.color,
         maxHp:player.maxHp,
@@ -6839,8 +6846,6 @@ function submitScore(){
   try{
     stdbConn.reducers.submitScore({
       name:player.name,
-      credits:BigInt(player.totalEarned||0),
-      kills:player.totalKills||0,
       mined:BigInt(player.totalMined||0),
       ship:player.ship,
       color:player.color
