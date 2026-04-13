@@ -8,7 +8,7 @@
 
 <br>
 
-[![Built with AutoGPT AutoPilot](https://img.shields.io/badge/built_with-AutoGPT_AutoPilot-44ff88?style=flat-square&labelColor=0a0a2e)](https://autogpt.com)
+[![Built with AutoGPT AutoPilot](https://img.shields.io/badge/built_with-AutoGPT_AutoPilot-44ff88?style=flat-square&labelColor=0a0a2e)](https://agpt.co)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-ffcc44?style=flat-square&labelColor=0a0a2e)](.)
 [![Vibe Jam 2026](https://img.shields.io/badge/Vibe_Jam-2026-bb66ff?style=flat-square&labelColor=0a0a2e)](https://vibej.am/2026/)
 [![Lines of Code](https://img.shields.io/badge/lines-2100-5588ff?style=flat-square&labelColor=0a0a2e)](.)
