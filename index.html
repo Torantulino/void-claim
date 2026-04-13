@@ -918,18 +918,9 @@ function refreshAggressionTimer(entity){
 function checkAggressionRules(attacker,victim){
   if(!attacker||!victim)return;
   if(attacker.isPolice)return; // Police enforcing law is never aggression
-  // Rule: attacking the Trade Ship anywhere = immediate aggression
-  if(victim.isTradeShip){
-    refreshAggressionTimer(attacker);
-    if(!isAggressor(attacker)){
-      markAggressor(attacker);
-      if(attacker.isPlayer)notify('⚠ The Trade Ship marks you as hostile!','#ff4444');
-    }
-    return;
-  }
-  // Rule: attacking a non-aggressor who is inside the safe zone
+  // Rule: attacking a non-aggressor in the safe zone, or attacking the Trade Ship anywhere
   const victimZone=getZone(victim.x,victim.y);
-  if(victimZone==='safe'&&!isAggressor(victim)){
+  if((victimZone==='safe'&&!isAggressor(victim))||victim.isTradeShip){
     // If already aggressor, just refresh timer
     if(isAggressor(attacker)){refreshAggressionTimer(attacker);return;}
     // Warning system: 3 warnings before aggressor status
