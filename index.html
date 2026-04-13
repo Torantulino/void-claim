@@ -7597,6 +7597,9 @@ function respawn(){
   player.stunTimer=0;player.tractorActive=false;player.afterburnerTimer=0;
   player.invulnTimer=2.0; // 2 seconds of post-respawn invulnerability
   player._trail=[]; // Clear trail on respawn
+  // Clear held input so player doesn't keep shooting/moving after respawn
+  for(const k in input.keys)input.keys[k]=false;
+  input.mouseDown=false;input.spaceDown=false;
   // Reset aggressor status on respawn
   clearAggressor(player);
   // Wingmen are already destroyed on death — ensure clean state
