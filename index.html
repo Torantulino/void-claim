@@ -7899,6 +7899,18 @@ function gameLoop(timestamp){
       ctx.fillStyle=\`rgba(\${screenFlash.r},\${screenFlash.g},\${screenFlash.b},\${screenFlash.alpha})\`;
       ctx.fillRect(0,0,W,H);screenFlash.alpha=Math.max(0,screenFlash.alpha-screenFlash.decay*lastDt);
     }
+    // ── Low-HP danger vignette: persistent red edge glow when critically hurt ──
+    if(player&&!player.dead&&player.hp/player.maxHp<0.35){
+      const hpRatio=player.hp/player.maxHp;
+      const intensity=1-hpRatio/0.35; // 0→1 as HP goes 35%→0%
+      const pulse=0.7+0.3*Math.sin(performance.now()*0.004*(1+intensity*2)); // faster pulse at lower HP
+      const alpha=intensity*0.35*pulse;
+      const gradient=ctx.createRadialGradient(W/2,H/2,W*0.25,W/2,H/2,W*0.7);
+      gradient.addColorStop(0,'rgba(0,0,0,0)');
+      gradient.addColorStop(0.5,'rgba(80,0,0,0)');
+      gradient.addColorStop(1,\`rgba(160,20,0,\${alpha})\`);
+      ctx.fillStyle=gradient;ctx.fillRect(0,0,W,H);
+    }
     
     // HUD overlays
     if(player&&!player.dead){
