@@ -1544,7 +1544,7 @@ function addFloatingText(x,y,text,color,initialScale){
   const sc=initialScale||1;
   floatingTexts.push({x,y,text,color,life:1.5,maxLife:1.5,scale:sc,scaleV:(sc-1)*-6});
 }
-function shake(amt){camera.trauma=Math.min(1,camera.trauma+amt/15);}
+function shake(amt){const add=amt/15*(1-camera.trauma*0.5);camera.trauma=Math.min(0.6,camera.trauma+add);}
 
 // ═══════════════════════════════════════════
 // Tron-Style Ship Trails
@@ -4824,13 +4824,13 @@ function updateProjectiles(dt){
             // Local FX only (HP comes from server via host sync)
             if(nearPlayer)emitDirectionalSparks(p.x,p.y,p.angle,10,p.color);
             minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
-            if(nearPlayer){SFX.hit();shake(Math.max(0,1.5-distToPlayer(p.x,p.y)/FX_RANGE*1.5));}
+            if(nearPlayer){SFX.hit();shake(Math.max(0,0.8-distToPlayer(p.x,p.y)/FX_RANGE*0.8));}
           }else{
             // Offline / single-player: apply locally
             applyDamage(t,p.dmg,p.ownerId,nearPlayer);
             if(nearPlayer)emitDirectionalSparks(p.x,p.y,p.angle,10,p.color);
             minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
-            if(nearPlayer){SFX.hit();shake(Math.max(0,1.5-distToPlayer(p.x,p.y)/FX_RANGE*1.5));}
+            if(nearPlayer){SFX.hit();shake(Math.max(0,0.8-distToPlayer(p.x,p.y)/FX_RANGE*0.8));}
           }
         }else if(t.isRemotePlayer){
           // Server-authoritative: tell server to apply damage to remote player
@@ -4857,7 +4857,7 @@ function updateProjectiles(dt){
           // Local FX only (HP comes from server via host sync)
           if(nearPlayer)emitDirectionalSparks(p.x,p.y,p.angle,10,p.color);
           minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
-          if(nearPlayer){SFX.hit();shake(Math.max(0,1.5-distToPlayer(p.x,p.y)/FX_RANGE*1.5));}
+          if(nearPlayer){SFX.hit();shake(Math.max(0,0.8-distToPlayer(p.x,p.y)/FX_RANGE*0.8));}
         }else if(t.isPlayer&&stdbConn&&stdbConnected){
           // NPC/Police bullet hitting local player — route through server dealDamage reducer
           // Skip if player has post-respawn invulnerability
@@ -4875,14 +4875,17 @@ function updateProjectiles(dt){
           // Local FX immediately (HP will come from server via syncSelfFromServer)
           emitDirectionalSparks(p.x,p.y,p.angle,10,p.color);SFX.hit();
           minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
-          shake(4);
+          // Responsive shield/hull flash (server confirms HP change later via syncSelfFromServer)
+          if(player&&player.shield>0){flashScreen(80,150,255,0.1,6);emitBurst(player.x,player.y,4,50,'rgba(100,180,255,.8)',2,.2,6);}
+          else if(player){flashScreen(255,40,40,0.15,5);}
+          shake(2);triggerHitstop(1);haptic(15);
         }else{
           // Local damage (single-player offline, or NPC-vs-NPC on host)
           applyDamage(t,p.dmg,p.ownerId,nearPlayer||hitsPlayer);
           if(nearPlayer||hitsPlayer)emitDirectionalSparks(p.x,p.y,p.angle,10,p.color);
           minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
           if(hitsPlayer)shake(4);
-          else if(nearPlayer)shake(Math.max(0,1.5-distToPlayer(p.x,p.y)/FX_RANGE*1.5));
+          else if(nearPlayer)shake(Math.max(0,0.8-distToPlayer(p.x,p.y)/FX_RANGE*0.8));
         }
         hit=true;
       }
@@ -7112,8 +7115,30 @@ function syncSelfFromServer(p){
     // Ignore dead=true during invuln — it's a stale pre-respawn state
     return;
   }
+  // ── Juice FX on server HP/shield changes ──
+  const prevHp=player.hp,prevShield=player.shield;
   player.hp=p.hp;
   player.shield=p.shield;
+  // Detect damage from server-authoritative updates
+  if(p.hp<prevHp||p.shield<prevShield){
+    const hpLost=prevHp-p.hp,shieldLost=prevShield-p.shield,totalDmg=hpLost+shieldLost;
+    // Shield hit FX
+    if(shieldLost>0&&p.shield>0){flashScreen(80,150,255,0.15,6);SFX.shieldHit();haptic(15);}
+    // Shield break event
+    if(prevShield>0&&p.shield<=0){
+      for(let i=0;i<20;i++){const a=(i/20)*Math.PI*2,spd=150+Math.random()*100;spawnParticle(player.x,player.y,Math.cos(a)*spd,Math.sin(a)*spd,'rgba(100,180,255,.9)',2+Math.random()*2,.3+Math.random()*.3,12);}
+      spawnParticle(player.x,player.y,0,0,'rgba(150,200,255,.8)',30,.15,20);
+      flashScreen(80,150,255,0.3,6);shake(6);triggerHitstop(2);haptic(60);SFX.hit();
+    }
+    // Hull damage FX (red flash)
+    if(hpLost>0&&p.hp>0){haptic(25);flashScreen(255,40,40,0.2+(p.hp/player.maxHp<0.3?0.15:0),5);}
+    // Damage number
+    if(totalDmg>0){
+      const punchScale=1.2+Math.min(totalDmg/30,1.5);
+      const ox=-8+Math.random()*16,oy=-12+Math.random()*8;
+      addFloatingText(player.x+ox,player.y+oy,'-'+Math.round(totalDmg),shieldLost>0?'#66bbff':'#ff4444',punchScale);
+    }
+  }
   if(p.dead&&!player.dead){
     player.dead=true;player.hp=0;player.shield=0;
     gameState='dead';
@@ -7250,7 +7275,9 @@ function updateRemoteProjectiles(dt){
         // but we show FX locally for responsiveness
         player.lastDamageTime=performance.now(); // Track for safe zone heal cooldown
         emitBurst(rp.x,rp.y,8,80,rp.color,2,.3,8);
-        SFX.hit();shake(4);
+        SFX.hit();shake(2);triggerHitstop(1);haptic(15);
+        if(player&&player.shield>0){flashScreen(80,150,255,0.1,6);emitBurst(player.x,player.y,4,50,'rgba(100,180,255,.8)',2,.2,6);}
+        else if(player){flashScreen(255,40,40,0.15,5);}
         minimapEvents.push({x:rp.x,y:rp.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
         remoteProjectiles.splice(i,1);
       }
