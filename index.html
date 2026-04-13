@@ -4972,7 +4972,7 @@ function updateMissiles(dt){
         // Splash damage
         const splashTargets=[player,...npcs.filter(n=>!n.dead),...wingmen.filter(w=>!w.dead),...remotePlayers.filter(rp=>!rp.dead)].filter(Boolean);
         for(const st of splashTargets){
-          if(st.dead||st===t2)continue;
+          if(st.dead||st===t2||st.id===m.ownerId||(m.isPlayerOwned&&st.isWingman))continue;
           const sd=dist(m.x,m.y,st.x,st.y);
           if(sd<CFG.MISSILE_SPLASH_R)applyDamage(st,CFG.MISSILE_SPLASH_DMG*(1-sd/CFG.MISSILE_SPLASH_R),m.ownerId,distToPlayer(st.x,st.y)<FX_RANGE);
         }
