@@ -6531,17 +6531,39 @@ function renderMarket(){
   }
   const sgrid=document.getElementById('shipGrid');sgrid.innerHTML='';
   for(let key in SHIPS){
-    const s=SHIPS[key];const owned=player.ship===key;const canBuy=!owned&&player.credits>=s.cost;
+    const s=SHIPS[key];const owned=player.ship===key;
+    const tradeIn=Math.floor(SHIPS[player.ship].cost*.7);
+    const canBuy=!owned&&(player.credits+tradeIn)>=s.cost;
     const card=document.createElement('div');
     card.className='ship-card'+(owned?' active':(!canBuy&&!owned?' locked':''));
-    card.innerHTML=`<div class="card-name">${s.name}</div><div class="ship-stats">SPD:${'★'.repeat(Math.ceil(s.speed*3))} HP:${s.hull}<br>CARGO:${s.cargo} DMG:${'★'.repeat(Math.ceil(s.dmg*2.5))}</div><div class="ship-ability">${s.ability}: ${s.abilityDesc}</div><div class="card-cost">${owned?'ACTIVE':(s.cost===0?'FREE':'⬡ '+s.cost)}</div>`;
+    const canSell=owned&&key!=='prospector'&&SHIPS[key].cost>0;
+    const sellValue=canSell?Math.floor(s.cost*.7):0;
+    let costLabel=owned?'ACTIVE':(s.cost===0?'FREE':'⬡ '+s.cost);
+    if(canSell) costLabel=`ACTIVE · <span style="color:#ff6644;cursor:pointer" class="sell-ship-btn">SELL ⬡ +${sellValue}</span>`;
+    card.innerHTML=`<div class="card-name">${s.name}</div><div class="ship-stats">SPD:${'★'.repeat(Math.ceil(s.speed*3))} HP:${s.hull}<br>CARGO:${s.cargo} DMG:${'★'.repeat(Math.ceil(s.dmg*2.5))}</div><div class="ship-ability">${s.ability}: ${s.abilityDesc}</div><div class="card-cost">${costLabel}</div>`;
+    if(canSell){
+      const sellBtn=card.querySelector('.sell-ship-btn');
+      if(sellBtn) sellBtn.onclick=(()=>{const k=key;return(e)=>{
+        e.stopPropagation();
+        const sellVal=Math.floor(SHIPS[k].cost*.7);
+        player.credits+=sellVal;
+        player.ship='prospector';player.hp=SHIPS.prospector.hull;player.maxHp=SHIPS.prospector.hull;
+        player.shield=SHIPS.prospector.shield;player.maxShield=maxShield(player);
+        player.abilityCD=0;player.maxMissiles=SHIPS.prospector.missileCapacity||2;
+        if(player.missiles>player.maxMissiles) player.missiles=player.maxMissiles;
+        renderMarket();updateHUD();SFX.upgrade();
+        notify(`Sold ${SHIPS[k].name} for ⬡${sellVal} — switched to Prospector`,'#ff9944');
+        saveGame();
+      };})();
+    }
     if(canBuy){
       card.onclick=(()=>{const k=key;return()=>{
         const oldShip=SHIPS[player.ship];const sellBack=Math.floor(oldShip.cost*.7);
         player.credits-=SHIPS[k].cost;player.credits+=sellBack;
         player.ship=k;player.hp=SHIPS[k].hull;player.maxHp=SHIPS[k].hull;
         player.shield=SHIPS[k].shield;player.maxShield=maxShield(player);
-        player.abilityCD=0;
+        player.abilityCD=0;player.maxMissiles=SHIPS[k].missileCapacity||2;
+        if(player.missiles>player.maxMissiles) player.missiles=player.maxMissiles;
         renderMarket();updateHUD();SFX.upgrade();
         notify(`Switched to ${SHIPS[k].name}${sellBack>0?' (+'+sellBack+' from trade-in)':''}`,'#44ff88');
         saveGame();
