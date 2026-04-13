@@ -1195,6 +1195,14 @@ function updateTradeShipTurrets(dt){
         projectiles.push(p);
         turret.cooldown=CFG.TRADE_SHIP_TURRET_CD;
         if(distToPlayer(wx,wy)<FX_RANGE)SFX.laser();
+        // Broadcast turret projectile to server so all clients see it and it can deal server-authoritative damage
+        if(stdbConn&&stdbConnected&&isNpcHost){
+          try{stdbConn.reducers.fireProjectile({
+            x:p.x,y:p.y,vx:p.vx,vy:p.vy,
+            dmg:p.dmg,color:TRADE_SHIP_TURRET_COLOR,
+            ttlMs:Math.round(CFG.PROJ_TTL*1000)
+          });}catch(e){}
+        }
       }
     }else{
       turret.angle=lerpAngle(turret.angle,tradeShip.angle,1*dt);
@@ -4627,12 +4635,13 @@ function updateProjectiles(dt){
           emitBurst(p.x,p.y,8,80,p.color,2,.3,8);SFX.hit();
           minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
           shake(2);
-        }else if(t.isNPC&&stdbConn&&stdbConnected&&p.isPlayerOwned){
+        }else if(t.isNPC&&stdbConn&&stdbConnected&&(p.isPlayerOwned||isTSProj)){
           // Server-authoritative NPC damage: route through damageNpc reducer
+          // Trade ship turret bullets also route through server so NPC HP is authoritative
           try{stdbConn.reducers.damageNpc({
             npcId:t.npcId,
             damage:p.dmg,
-            attackerName:player?player.name:'Unknown'
+            attackerName:isTSProj?'Trade Ship':(player?player.name:'Unknown')
           });}catch(e){console.warn('[STDB] damage_npc failed:',e);}
           // Local FX only (HP comes from server via host sync)
           if(nearPlayer)emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
@@ -4669,12 +4678,18 @@ function updateProjectiles(dt){
     if(!hit&&tradeShip&&!tradeShip.dead&&p.ownerId!=='trade_ship'&&!isTSProj){
       if(dist(p.x,p.y,tradeShip.x,tradeShip.y)<220){
         const nearPlayer=distToPlayer(p.x,p.y)<FX_RANGE;
-        const attacker=player&&player.id===p.ownerId?player:null;
-        checkAggressionRules(attacker,tradeShip);
-        if(stdbConn&&stdbConnected&&p.isPlayerOwned){
+        // Find the actual attacker entity — could be player, NPC, or wingman
+        const attacker=player&&player.id===p.ownerId?player:
+          npcs.find(n=>n.id===p.ownerId)||
+          wingmen.find(w=>w.id===p.ownerId)||null;
+        // Aggression rules: attacking the trade ship anywhere triggers warnings/aggressor
+        if(attacker)checkAggressionRules(attacker,tradeShip);
+        if(stdbConn&&stdbConnected&&(p.isPlayerOwned||isNpcHost)){
+          // Route through server for both player bullets AND NPC bullets (when we're host)
+          const attackerName=attacker?attacker.name:(p.ownerName||'Unknown');
           try{stdbConn.reducers.damageNpc({
             npcId:tradeShip.npcId,damage:p.dmg,
-            attackerName:player?player.name:'Unknown'
+            attackerName:attackerName
           });}catch(e){}
           if(nearPlayer){emitBurst(p.x,p.y,8,80,p.color,2,.3,8);SFX.hit();shake(2);}
         }else{
