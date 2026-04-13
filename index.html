@@ -324,8 +324,14 @@ function resumeAudio(){
   if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();
 }
 
+// Global audio rate limiter — max 12 audio nodes per 100ms window
+let _sndCount=0,_sndWindowStart=0;
 function snd(fn){
   if(!soundEnabled||!audioCtx)return;
+  const now=performance.now();
+  if(now-_sndWindowStart>100){_sndCount=0;_sndWindowStart=now;}
+  if(_sndCount>=12)return; // skip — too many sounds this window
+  _sndCount++;
   try{fn(audioCtx,masterGain);}catch(e){}
 }
 
@@ -834,6 +840,91 @@ if(isMobile){
 }
 // Haptic feedback helper (mobile only)
 function haptic(ms){if((isMobile||mobileFallbackActivated)&&navigator.vibrate)try{navigator.vibrate(ms);}catch(e){}}
+
+// ── Player-impact FX throttle: prevents hundreds of audio nodes / floating texts ──
+// When the player is hit by many projectiles per frame, expensive FX are rate-limited
+// while cheap FX (sparks, minimap pips) always fire.
+const _playerHitFx={
+  lastSfx:0,        // last SFX.hit() timestamp
+  lastText:0,       // last addFloatingText timestamp
+  lastFlash:0,      // last flashScreen timestamp
+  lastHitstop:0,    // last triggerHitstop timestamp
+  lastHaptic:0,     // last haptic timestamp
+  lastShieldBurst:0, // last shield emitBurst timestamp
+  accDmg:0,         // accumulated damage between text cooldowns
+  accX:0,accY:0,    // average position for accumulated damage
+  accCount:0,       // number of hits accumulated
+  accIsShield:false, // shield or hull for accumulated damage color
+};
+// Cooldowns in ms
+const _HIT_CD={sfx:80,text:120,flash:100,hitstop:150,haptic:100,shieldBurst:100};
+
+// Call this instead of raw SFX/text/flash/etc in the two player-hit paths.
+// Always-fire: sparks (already budget-throttled), minimap pips, shake (already capped).
+// Throttled: SFX, floating text, flash, hitstop, haptic, shield burst.
+function playerHitFx(px,py,angle,color,dmg,isShield,sparkFn){
+  const now=performance.now();
+  const fx=_playerHitFx;
+
+  // ── Always: directional sparks (already budget-throttled) ──
+  if(sparkFn)sparkFn();
+
+  // ── Always: minimap pip ──
+  minimapEvents.push({x:px,y:py,color:'#ffffff',t:0,maxT:.8,type:'hit'});
+
+  // ── Always: camera shake (already has diminishing returns + cap) ──
+  shake(2);
+
+  // ── Throttled: SFX.hit() ──
+  if(now-fx.lastSfx>_HIT_CD.sfx){SFX.hit();fx.lastSfx=now;}
+
+  // ── Throttled: floating damage text (accumulate between cooldowns) ──
+  fx.accDmg+=Math.round(dmg||2);
+  fx.accX+=px;fx.accY+=py;fx.accCount++;
+  fx.accIsShield=isShield;
+  if(now-fx.lastText>_HIT_CD.text){
+    const ax=fx.accX/fx.accCount,ay=fx.accY/fx.accCount;
+    const ox=-6+Math.random()*12,oy=-10+Math.random()*6;
+    const col=fx.accIsShield?'#66bbff':'#ff4444';
+    addFloatingText(ax+ox,ay+oy,'-'+fx.accDmg,col,fx.accCount>2?1.5:1.2);
+    fx.accDmg=0;fx.accX=0;fx.accY=0;fx.accCount=0;
+    fx.lastText=now;
+  }
+
+  // ── Throttled: screen flash ──
+  if(now-fx.lastFlash>_HIT_CD.flash){
+    if(isShield){flashScreen(80,150,255,0.1,6);}
+    else{flashScreen(255,40,40,0.15,5);}
+    fx.lastFlash=now;
+  }
+
+  // ── Throttled: shield burst particles at player ──
+  if(isShield&&player&&now-fx.lastShieldBurst>_HIT_CD.shieldBurst){
+    emitBurst(player.x,player.y,4,50,'rgba(100,180,255,.8)',2,.2,6);
+    fx.lastShieldBurst=now;
+  }
+
+  // ── Throttled: hitstop ──
+  if(now-fx.lastHitstop>_HIT_CD.hitstop){triggerHitstop(1);fx.lastHitstop=now;}
+
+  // ── Throttled: haptic ──
+  if(now-fx.lastHaptic>_HIT_CD.haptic){haptic(15);fx.lastHaptic=now;}
+}
+
+// Flush any accumulated damage text that didn't fire due to cooldown
+// (called once per frame in the game loop so the last few hits always show)
+function flushPlayerHitFx(){
+  const fx=_playerHitFx;
+  if(fx.accCount>0&&fx.accDmg>0){
+    const ax=fx.accX/fx.accCount,ay=fx.accY/fx.accCount;
+    const ox=-6+Math.random()*12,oy=-10+Math.random()*6;
+    const col=fx.accIsShield?'#66bbff':'#ff4444';
+    addFloatingText(ax+ox,ay+oy,'-'+fx.accDmg,col,fx.accCount>2?1.5:1.2);
+    fx.accDmg=0;fx.accX=0;fx.accY=0;fx.accCount=0;
+    fx.lastText=performance.now();
+  }
+}
+
 let hintTimer=12;
 let portalParams=null;
 let portalPromptActive=false; // true when player is inside exit portal zone
@@ -4917,19 +5008,9 @@ function updateProjectiles(dt){
           }
           // Track damage time for safe zone heal cooldown
           if(player)player.lastDamageTime=performance.now();
-          // Local FX immediately (HP will come from server via syncSelfFromServer)
-          {const sparkCount=Math.max(3,Math.round(10*_fxBudget()));
-          emitDirectionalSparks(p.x,p.y,p.angle,sparkCount,p.color);}SFX.hit();
-          minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
-          // Immediate damage number at impact point
-          {const dmgVal=Math.round(p.dmg||2);
-          const isShield=player&&player.shield>0;
-          const ox=-6+Math.random()*12,oy=-10+Math.random()*6;
-          addFloatingText(p.x+ox,p.y+oy,'-'+dmgVal,isShield?'#66bbff':'#ff4444',1.2);}
-          // Responsive shield/hull flash (server confirms HP change later via syncSelfFromServer)
-          if(player&&player.shield>0){flashScreen(80,150,255,0.1,6);emitBurst(player.x,player.y,4,50,'rgba(100,180,255,.8)',2,.2,6);}
-          else if(player){flashScreen(255,40,40,0.15,5);}
-          shake(2);triggerHitstop(1);haptic(15);
+          // Local FX immediately — throttled to prevent lag under heavy fire
+          playerHitFx(p.x,p.y,p.angle,p.color,p.dmg,player&&player.shield>0,
+            ()=>{const sc=Math.max(3,Math.round(10*_fxBudget()));emitDirectionalSparks(p.x,p.y,p.angle,sc,p.color);});
         }else{
           // Local damage (single-player offline, or NPC-vs-NPC on host)
           applyDamage(t,p.dmg,p.ownerId,nearPlayer||hitsPlayer);
@@ -7341,20 +7422,10 @@ function updateRemoteProjectiles(dt){
       const shipDef=SHIPS[player.ship]||SHIPS.prospector;
       const sz=12+(shipDef.hull/30);
       if(dist(rp.x,rp.y,player.x,player.y)<sz+8){
-        // Hit local player — server already handled damage via deal_damage,
-        // but we show FX locally for responsiveness
+        // Hit local player — throttled FX for responsiveness without lag
         player.lastDamageTime=performance.now(); // Track for safe zone heal cooldown
-        {const burstCount=Math.max(3,Math.round(8*_fxBudget()));
-        emitBurst(rp.x,rp.y,burstCount,80,rp.color,2,.3,8);}
-        SFX.hit();shake(2);triggerHitstop(1);haptic(15);
-        // Immediate damage number at impact point
-        {const dmgVal=Math.round(rp.dmg||2);
-        const isShield=player&&player.shield>0;
-        const ox=-6+Math.random()*12,oy=-10+Math.random()*6;
-        addFloatingText(rp.x+ox,rp.y+oy,'-'+dmgVal,isShield?'#66bbff':'#ff4444',1.2);}
-        if(player&&player.shield>0){flashScreen(80,150,255,0.1,6);emitBurst(player.x,player.y,4,50,'rgba(100,180,255,.8)',2,.2,6);}
-        else if(player){flashScreen(255,40,40,0.15,5);}
-        minimapEvents.push({x:rp.x,y:rp.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
+        playerHitFx(rp.x,rp.y,Math.atan2(rp.vy,rp.vx),rp.color,rp.dmg,player&&player.shield>0,
+          ()=>{const bc=Math.max(3,Math.round(8*_fxBudget()));emitBurst(rp.x,rp.y,bc,80,rp.color,2,.3,8);});
         remoteProjectiles.splice(i,1);
       }
     }
@@ -7804,12 +7875,15 @@ function updateParticles(dt){
     else i++;
   }
   if(particles.length>500)particles.length=500; // hard trim (faster than splice)
+  // Cap floating texts — accelerate decay when too many, hard cap at 30
+  const ftDecayMul=floatingTexts.length>15?3:floatingTexts.length>8?1.5:1;
   for(let i=floatingTexts.length-1;i>=0;i--){
-    const ft=floatingTexts[i];ft.life-=dt;
+    const ft=floatingTexts[i];ft.life-=dt*ftDecayMul;
     // Punch scale: spring toward 1.0
     if(ft.scale!==undefined){ft.scale+=ft.scaleV*dt;ft.scaleV+=(1-ft.scale)*60*dt;ft.scaleV*=.85;}
-    if(ft.life<=0)floatingTexts.splice(i,1);
+    if(ft.life<=0){floatingTexts[i]=floatingTexts[floatingTexts.length-1];floatingTexts.pop();}
   }
+  if(floatingTexts.length>30)floatingTexts.length=30;
   updateChatBubbles();
 }
 
@@ -7998,7 +8072,7 @@ function gameLoop(timestamp){
     if(player&&!player.dead)drawShipEntity(player);
     projectiles.forEach(p=>drawProjectileEntity(p));
     drawRemoteProjectiles();
-    drawParticles();drawFloatingTexts();drawChatBubbles();drawMinimap();
+    drawParticles();flushPlayerHitFx();drawFloatingTexts();drawChatBubbles();drawMinimap();
     drawLeviathanScreenFX();
     // ── Screen flash overlay (damage feedback) ──
     if(screenFlash.alpha>0.01){
