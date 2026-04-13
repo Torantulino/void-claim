@@ -6118,14 +6118,22 @@ function clearSave(){
   try{localStorage.removeItem(SAVE_KEY);}catch(e){}
 }
 
+function escapeHtml(str){
+  const d=document.createElement('div');
+  d.appendChild(document.createTextNode(str));
+  return d.innerHTML;
+}
+
 function renderLeaderboard(){
   const el=document.getElementById('lbList');
   if(!el)return;
   const top=leaderboard.slice(0,8);
   el.innerHTML=top.map((e,i)=>{
     const isYou=player&&e.name===player.name;
-    const killTxt=e.kills?` ☠${e.kills}`:'';
-    return `<div class="lb-row${isYou?' lb-you':''}"><span>${i+1}. ${e.name}${killTxt}</span><span>⬡${e.credits}</span></div>`;
+    const safeName=escapeHtml(String(e.name||''));
+    const killTxt=e.kills?` ☠${Number(e.kills)||0}`:'';
+    const safeCredits=Number(e.credits)||0;
+    return `<div class="lb-row${isYou?' lb-you':''}"><span>${i+1}. ${safeName}${killTxt}</span><span>⬡${safeCredits}</span></div>`;
   }).join('');
   document.getElementById('leaderboard').style.display=leaderboard.length>0?'block':'none';
 }
