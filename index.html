@@ -1534,8 +1534,9 @@ function emitDirectionalSparks(x,y,angle,count,color){
   spawnParticle(x,y,0,0,'#ffffff',6,.05,15); // impact flash
 }
 
-function addFloatingText(x,y,text,color){
-  floatingTexts.push({x,y,text,color,life:1.5,maxLife:1.5});
+function addFloatingText(x,y,text,color,initialScale){
+  const sc=initialScale||1;
+  floatingTexts.push({x,y,text,color,life:1.5,maxLife:1.5,scale:sc,scaleV:(sc-1)*-6});
 }
 function shake(amt){camera.shakeAmt=Math.max(camera.shakeAmt,amt)}
 
@@ -1860,7 +1861,7 @@ function useAbility(){
         if(n.dead)return;
         if(dist(player.x,player.y,n.x,n.y)<empR){
           n.stunTimer=2;
-          addFloatingText(n.x,n.y,'STUNNED','#44ddff');
+          addFloatingText(n.x,n.y,'STUNNED','#44ddff',2.0);
         }
       });
       notify('⚡ EMP Pulse!','#44ddff');
@@ -1903,7 +1904,7 @@ function useAbility(){
           n.vx+=Math.cos(pushA)*pushF;
           n.vy+=Math.sin(pushA)*pushF;
           applyDamage(n,bashDmg*(1-d/bashR),player.id);
-          addFloatingText(n.x,n.y,'BASH!','#6699ff');
+          addFloatingText(n.x,n.y,'BASH!','#6699ff',2.2);
         }
       });
       shake(10);
@@ -2243,7 +2244,7 @@ function killWingman(w,attackerName){
   emitBurst(w.x,w.y,30,120,'#ff6644',3,.5,10);
   emitBurst(w.x,w.y,15,80,'#ffcc00',2,.3,8);
   SFX.explode();shake(5);
-  addFloatingText(w.x,w.y,w.name+' destroyed!','#ff4444');
+  addFloatingText(w.x,w.y,w.name+' destroyed!','#ff4444',1.8);
   notify('💀 '+w.name+' was destroyed! (permanent)','#ff4444');
   // Broadcast wingman death to server
   if(stdbConn&&stdbConnected){
@@ -3968,9 +3969,13 @@ function drawFloatingTexts(){
   floatingTexts.forEach(ft=>{
     const s=worldToScreen(ft.x,ft.y-(1-ft.life/ft.maxLife)*30);
     ctx.globalAlpha=Math.min(1,ft.life/ft.maxLife*1.3);ctx.fillStyle=ft.color;
-    ctx.font='bold 12px Courier New';ctx.textAlign='center';
-    ctx.strokeStyle='rgba(0,0,0,.8)';ctx.lineWidth=3;ctx.strokeText(ft.text,s.x,s.y);
-    ctx.fillText(ft.text,s.x,s.y);
+    const sc=Math.max(1,ft.scale||1);
+    ctx.save();ctx.translate(s.x,s.y);ctx.scale(sc,sc);
+    const fontSize=Math.round(12*Math.min(sc,2.5));
+    ctx.font='bold '+fontSize+'px Courier New';ctx.textAlign='center';
+    ctx.strokeStyle='rgba(0,0,0,.8)';ctx.lineWidth=3;ctx.strokeText(ft.text,0,0);
+    ctx.fillText(ft.text,0,0);
+    ctx.restore();
   });
   ctx.globalAlpha=1;
 }
@@ -5012,6 +5017,12 @@ function applyDamage(target,dmg,attackerId,playFX){
   }
   target.hp-=dmg;
   target.lastDamageTime=performance.now();
+  // ── Damage numbers with punch scale ──
+  if(playFX&&dmg>0){
+    const punchScale=1.2+Math.min(dmg/30,1.5);
+    const ox=rand(-8,8),oy=rand(-12,-4);
+    addFloatingText(target.x+ox,target.y+oy,'-'+Math.round(dmg),hadShield?'#66bbff':'#ff4444',punchScale);
+  }
   if(playFX&&!target.isPlayer)SFX.hit();
   if(target.isPlayer&&target.hp>0){haptic(25);flashScreen(255,40,40,0.2+(target.hp/target.maxHp<0.3?0.15:0),5);}
   if(target.hp<=0)killEntity(target,attackerId);
@@ -5699,7 +5710,7 @@ function updateLeviathan(dt){
           lev.biteCooldown=1.5;
           SFX.leviathanBite();shake(15);
           emitBurst(player.x,player.y,20,120,'#aa22cc',4,.5,12);
-          addFloatingText(player.x,player.y-20,'LEVIATHAN BITE!','#ff33aa');
+          addFloatingText(player.x,player.y-20,'LEVIATHAN BITE!','#ff33aa',2.5);
           leviathanScreenFX.distortion=1;
         }
       }
@@ -5727,7 +5738,7 @@ function updateLeviathan(dt){
           player.lastDamageTime=performance.now(); // Track for safe zone heal cooldown
           lev.biteCooldown=1.5;
           shake(12);emitBurst(player.x,player.y,15,100,'#aa22cc',3,.4,10);
-          addFloatingText(player.x,player.y-20,'CHOMP!','#ff33aa');
+          addFloatingText(player.x,player.y-20,'CHOMP!','#ff33aa',2.2);
           leviathanScreenFX.distortion=.8;
         }
       }
@@ -5852,7 +5863,7 @@ function killLeviathan(lev){
     spawnParticle(lev.x,lev.y,Math.cos(a)*s,Math.sin(a)*s,'#6622cc',rand(3,7),rand(1,2.5),10);}
   SFX.leviathanRoar();SFX.explode();shake(20);
   notify('◈ LEVIATHAN SLAIN! +500⬡','#ff44ff');
-  addFloatingText(lev.x,lev.y,'+500 CREDITS','#ff44ff');
+  addFloatingText(lev.x,lev.y,'+500 CREDITS','#ff44ff',2.8);
   if(player){player.credits+=500;player.totalEarned+=500;
     // Server-authoritative earnings: notify server of leviathan kill reward
     if(stdbConn&&stdbConnected){stdbConn.reducers.sellOre({amount:BigInt(500)}).catch(()=>{});}}
@@ -7674,7 +7685,10 @@ function updateParticles(dt){
   }
   if(particles.length>500)particles.splice(0,particles.length-500);
   for(let i=floatingTexts.length-1;i>=0;i--){
-    floatingTexts[i].life-=dt;if(floatingTexts[i].life<=0)floatingTexts.splice(i,1);
+    const ft=floatingTexts[i];ft.life-=dt;
+    // Punch scale: spring toward 1.0
+    if(ft.scale!==undefined){ft.scale+=ft.scaleV*dt;ft.scaleV+=(1-ft.scale)*60*dt;ft.scaleV*=.85;}
+    if(ft.life<=0)floatingTexts.splice(i,1);
   }
   updateChatBubbles();
 }
