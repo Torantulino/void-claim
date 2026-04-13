@@ -1389,8 +1389,8 @@ function updatePolice(dt){
     
     p.shootCD-=dt;p.thinkTimer-=dt;p.stateTimer-=dt;
     if(p.shield<p.maxShield)p.shield=Math.min(p.maxShield,p.shield+4*dt); // Faster shield regen
-    // Police heal hull in safe zone (they always patrol there)
-    if(p.hp<p.maxHp&&dist(p.x,p.y,0,0)<CFG.EARTH_SHIELD_R)p.hp=Math.min(p.maxHp,p.hp+40*dt);
+    // Police heal hull in safe zone (only if not recently damaged)
+    if(p.hp<p.maxHp&&dist(p.x,p.y,0,0)<CFG.EARTH_SHIELD_R&&performance.now()-(p.lastDamageTime||0)>=5000)p.hp=Math.min(p.maxHp,p.hp+40*dt);
     
     if(p.thinkTimer<=0){p.thinkTimer=rand(.5,1.2);policeThink(p);}
     policeAct(p,dt);
@@ -2061,8 +2061,8 @@ function updateWingmen(dt){
     
     w.shootCD-=dt;w.thinkTimer-=dt;w.stateTimer-=dt;
     if(w.shield<w.maxShield)w.shield=Math.min(w.maxShield,w.shield+2*dt);
-    // Wingmen heal hull in safe zone just like players
-    if(w.hp<w.maxHp&&dist(w.x,w.y,0,0)<CFG.EARTH_SHIELD_R)w.hp=Math.min(w.maxHp,w.hp+30*dt);
+    // Wingmen heal hull in safe zone (only if not recently damaged)
+    if(w.hp<w.maxHp&&dist(w.x,w.y,0,0)<CFG.EARTH_SHIELD_R&&performance.now()-(w.lastDamageTime||0)>=5000)w.hp=Math.min(w.maxHp,w.hp+30*dt);
     
     // Think: pick action
     if(w.thinkTimer<=0){
@@ -2790,8 +2790,8 @@ function updateNPCs(dt){
     
     n.thinkTimer-=dt;n.stateTimer-=dt;n.shootCD-=dt;n.bounty=Math.max(0,n.bounty-dt);
     if(n.shield<n.maxShield)n.shield=Math.min(n.maxShield,n.shield+1.5*dt);
-    // NPCs heal hull in safe zone just like players
-    if(n.hp<n.maxHp&&dist(n.x,n.y,0,0)<CFG.EARTH_SHIELD_R)n.hp=Math.min(n.maxHp,n.hp+30*dt);
+    // NPCs heal hull in safe zone (only if not recently damaged)
+    if(n.hp<n.maxHp&&dist(n.x,n.y,0,0)<CFG.EARTH_SHIELD_R&&performance.now()-(n.lastDamageTime||0)>=5000)n.hp=Math.min(n.maxHp,n.hp+30*dt);
     n.maxShield=maxShield(n);n.maxHp=maxHull(n);
     
     if(n.thinkTimer<=0){n.thinkTimer=rand(.5,1.5);npcThink(n);}
@@ -4611,6 +4611,7 @@ function updateProjectiles(dt){
               damage:p.dmg,
               attackerName:player?player.name:'Unknown'
             });}catch(e){console.warn('[STDB] damageNpc (police) failed:',e);}
+            t.lastDamageTime=performance.now(); // Track for safe zone heal cooldown
             // Local FX only (HP comes from server via host sync)
             if(nearPlayer)emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
             minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
@@ -4643,6 +4644,7 @@ function updateProjectiles(dt){
             damage:p.dmg,
             attackerName:isTSProj?'Trade Ship':(player?player.name:'Unknown')
           });}catch(e){console.warn('[STDB] damage_npc failed:',e);}
+          t.lastDamageTime=performance.now(); // Track for safe zone heal cooldown
           // Local FX only (HP comes from server via host sync)
           if(nearPlayer)emitBurst(p.x,p.y,8,80,p.color,2,.3,8);
           minimapEvents.push({x:p.x,y:p.y,color:'#ffffff',t:0,maxT:.8,type:'hit'});
@@ -4715,7 +4717,7 @@ function applyDamage(target,dmg,attackerId,playFX){
     if(target.isPlayer){SFX.shieldHit();haptic(15);}
   }
   target.hp-=dmg;
-  if(target.isPlayer)target.lastDamageTime=performance.now();
+  target.lastDamageTime=performance.now();
   if(playFX&&!target.isPlayer)SFX.hit();
   if(target.isPlayer&&target.hp>0)haptic(25);
   if(target.hp<=0)killEntity(target,attackerId);
