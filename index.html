@@ -4769,7 +4769,35 @@ function killEntity(target,attackerId){
     }
   }
   target.cargo={};
-  
+
+  // ── Salvage loot: every destroyed ship drops a small amount of ore based on ship class ──
+  // Better ships yield rarer salvage. This rewards combat even against empty ships.
+  const SALVAGE_TABLE={
+    prospector:{ores:['iron','copper'],min:2,max:4},
+    hauler:    {ores:['iron','copper','silver'],min:3,max:6},
+    corsair:   {ores:['copper','silver'],min:2,max:5},
+    sentinel:  {ores:['silver','gold'],min:3,max:6},
+    phantom:   {ores:['gold','platinum'],min:2,max:5},
+    carrier:   {ores:['platinum','titanium','voidstone'],min:4,max:8}
+  };
+  const salvageInfo=SALVAGE_TABLE[target.ship];
+  if(salvageInfo){
+    const salvageOre=pick(salvageInfo.ores);
+    const salvageAmt=randInt(salvageInfo.min,salvageInfo.max);
+    const salvageDrops=Math.min(salvageAmt,randInt(2,4));
+    let salvRemaining=salvageAmt;
+    for(let sd=0;sd<salvageDrops;sd++){
+      const amt=sd===salvageDrops-1?salvRemaining:Math.max(1,randInt(1,Math.ceil(salvRemaining/(salvageDrops-sd))));
+      salvRemaining-=amt;if(amt<=0)continue;
+      const ang=rand(0,Math.PI*2);
+      const spd=rand(30,90);
+      const salvCargo={};salvCargo[salvageOre]=amt;
+      const sl=createLoot(target.x,target.y,salvCargo,Math.cos(ang)*spd,Math.sin(ang)*spd);
+      if(sl)loot.push(sl);
+    }
+    if(near)addFloatingText(target.x,target.y,`+${salvageAmt} ${ORES[salvageOre].name} salvage`,ORES[salvageOre].glow);
+  }
+
   if(attackerId===player?.id&&!target.isPlayer){
     if(totalCargo(savedCargo)===0&&target.personality!=='pirate'&&target.personality!=='denPirate'){
       player.bounty+=CFG.BOUNTY_TIME;
