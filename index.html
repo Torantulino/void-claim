@@ -160,14 +160,14 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 <body>
 <canvas id="game" style="touch-action:none"></canvas>
 <div id="startScreen" class="screen-overlay">
-<h1>VOID CLAIM</h1>
-<p class="subtitle">Mine · Steal · Survive</p>
+<img src="images/cover.jpeg" alt="VOID CLAIM — Mine · Steal · Survive" style="width:clamp(280px,60vw,520px);max-width:90vw;margin-bottom:1.2em;border-radius:8px;box-shadow:0 0 30px rgba(100,160,255,.3);pointer-events:none">
 <input type="text" id="nameInput" placeholder="Enter callsign..." maxlength="16" autofocus>
 <div class="color-row" id="colorRow"></div>
 <button class="btn" id="launchBtn">▶ LAUNCH</button>
 <button class="btn" id="continueBtn" style="display:none;background:rgba(40,180,100,.25);border-color:rgba(40,180,100,.5)">▶ CONTINUE</button>
 <div id="playerCount">Initializing deep space...</div>
 <div class="jam-footer">Built for Vibe Jam 2026</div>
+<a href="https://discord.gg/autogpt" target="_blank" rel="noopener" style="margin-top:.8em;display:inline-flex;align-items:center;gap:6px;text-decoration:none;color:rgba(150,180,255,.5);font-size:.7rem;letter-spacing:.15em;transition:all .3s;opacity:.7" onmouseover="this.style.opacity='1';this.style.color='rgba(200,220,255,.9)'" onmouseout="this.style.opacity='.7';this.style.color='rgba(150,180,255,.5)'">Made with <img src="images/autogpt_logo.png" alt="AutoGPT" style="height:18px;vertical-align:middle;filter:brightness(0.85)"></a>
 </div>
 <div id="hud">
 <div id="credits">⬡ 0</div>
