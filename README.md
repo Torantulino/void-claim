@@ -115,10 +115,3 @@ MIT — do whatever you want with it.
 
 ---
 
-<div align="center">
-
-Made with <a href="https://discord.gg/autogpt"><img src="images/autogpt_logo.png" alt="AutoGPT" height="24" style="vertical-align: middle;" /></a> by **Torantulino**
-
-*A game about the oldest human struggle: knowing when to stop.*
-
-</div>
