@@ -2412,6 +2412,7 @@ function handleNpcInsert(sn){
       localNpc.hp=sn.hp;localNpc.shield=sn.shield;
       if(sn.dead&&!localNpc.dead){
         localNpc.dead=true;localNpc.hp=0;localNpc.respawnTimer=CFG.RESPAWN_TIME;
+        dropCargoAndSalvage(localNpc);
         const near=distToPlayer(localNpc.x,localNpc.y)<FX_RANGE;
         if(near){emitBurst(localNpc.x,localNpc.y,30,150,localNpc.color||'#ff5555',3,.7,12);emitBurst(localNpc.x,localNpc.y,15,80,'#fff',2,.4,8);SFX.explode();}
         minimapEvents.push({x:localNpc.x,y:localNpc.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
@@ -2424,6 +2425,7 @@ function handleNpcInsert(sn){
   const existing=npcServerMap.get(npcId);
   if(existing){
     // Already have this NPC — treat as update
+    if(sn.dead&&!existing.dead&&!existing.isTradeShip)dropCargoAndSalvage(existing);
     handleNpcUpdateInner(existing,sn,now);
   }else{
     // Brand new NPC from server
@@ -2472,6 +2474,7 @@ function handleNpcUpdate(oldNpc,newNpc){
           localNpc.dead=true;localNpc.hp=0;localNpc.shield=0;
           localNpc.respawnTimer=localNpc.personality==='denPirate'?
             rand(CFG.DEN_RESPAWN_MIN,CFG.DEN_RESPAWN_MAX):CFG.RESPAWN_TIME;
+          dropCargoAndSalvage(localNpc);
           const near=distToPlayer(localNpc.x,localNpc.y)<FX_RANGE;
           if(near){emitBurst(localNpc.x,localNpc.y,30,150,localNpc.color||'#ff5555',3,.7,12);emitBurst(localNpc.x,localNpc.y,15,80,'#fff',2,.4,8);SFX.explode();}
           minimapEvents.push({x:localNpc.x,y:localNpc.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
@@ -2488,10 +2491,14 @@ function handleNpcUpdate(oldNpc,newNpc){
     handleNpcInsert(newNpc);
     return;
   }
-  // Non-host: detect trade ship death/respawn transitions for FX
+  // Non-host: detect trade ship death/respawn transitions for FX + loot
   if(existing.isTradeShip){
     if(newNpc.dead&&!existing.dead)onTradeShipDeathFX();
     if(!newNpc.dead&&existing.dead)onTradeShipRespawnFX(newNpc.x,newNpc.y);
+  }
+  // Non-host: detect NPC death transition → drop cargo + salvage
+  if(newNpc.dead&&!existing.dead&&!existing.isTradeShip){
+    dropCargoAndSalvage(existing);
   }
   handleNpcUpdateInner(existing,newNpc,now);
 }
@@ -4868,6 +4875,66 @@ function updateProjectiles(dt){
   }
 }
 
+// ── Shared loot-drop helper: scatters held cargo + class-based salvage ──
+// Called from killEntity (local/offline) AND from multiplayer NPC death callbacks.
+const SALVAGE_TABLE={
+  prospector:{ores:['iron','copper'],min:2,max:4},
+  hauler:    {ores:['iron','copper','silver'],min:3,max:6},
+  corsair:   {ores:['copper','silver'],min:2,max:5},
+  sentinel:  {ores:['silver','gold'],min:3,max:6},
+  phantom:   {ores:['gold','platinum'],min:2,max:5},
+  carrier:   {ores:['platinum','titanium','voidstone'],min:4,max:8}
+};
+
+function dropCargoAndSalvage(target){
+  const near=target.isPlayer||distToPlayer(target.x,target.y)<FX_RANGE;
+  // 1) Scatter any held cargo as individual loot drops
+  const savedCargo={...(target.cargo||{})};
+  if(totalCargo(savedCargo)>0){
+    const cargoEntries=Object.entries(savedCargo).filter(([,v])=>v>0);
+    if(cargoEntries.length>0){
+      let allItems=[];
+      cargoEntries.forEach(([ore,amt])=>{for(let i=0;i<amt;i++)allItems.push(ore);});
+      const numDrops=Math.min(allItems.length,randInt(3,6));
+      let idx=0;
+      for(let d=0;d<numDrops;d++){
+        const cargo={};
+        const take=d===numDrops-1?allItems.length-idx:Math.max(1,Math.ceil((allItems.length-idx)/(numDrops-d)));
+        for(let t=0;t<take&&idx<allItems.length;t++,idx++){
+          cargo[allItems[idx]]=(cargo[allItems[idx]]||0)+1;
+        }
+        if(totalCargo(cargo)<=0)continue;
+        const ang=rand(0,Math.PI*2);
+        const spd=rand(40,120);
+        const vx=Math.cos(ang)*spd;
+        const vy=Math.sin(ang)*spd;
+        const l=createLoot(target.x,target.y,cargo,vx,vy);
+        if(l)loot.push(l);
+      }
+    }
+  }
+  target.cargo={};
+  // 2) Salvage loot: every ship drops a small amount of ore based on ship class
+  const salvageInfo=SALVAGE_TABLE[target.ship];
+  if(salvageInfo){
+    const salvageOre=pick(salvageInfo.ores);
+    const salvageAmt=randInt(salvageInfo.min,salvageInfo.max);
+    const salvageDrops=Math.min(salvageAmt,randInt(2,4));
+    let salvRemaining=salvageAmt;
+    for(let sd=0;sd<salvageDrops;sd++){
+      const amt=sd===salvageDrops-1?salvRemaining:Math.max(1,randInt(1,Math.ceil(salvRemaining/(salvageDrops-sd))));
+      salvRemaining-=amt;if(amt<=0)continue;
+      const ang=rand(0,Math.PI*2);
+      const spd=rand(30,90);
+      const salvCargo={};salvCargo[salvageOre]=amt;
+      const sl=createLoot(target.x,target.y,salvCargo,Math.cos(ang)*spd,Math.sin(ang)*spd);
+      if(sl)loot.push(sl);
+    }
+    if(near)addFloatingText(target.x,target.y,`+${salvageAmt} ${ORES[salvageOre].name} salvage`,ORES[salvageOre].glow);
+  }
+  return savedCargo; // returned so killEntity can check if cargo was empty (bounty logic)
+}
+
 function applyDamage(target,dmg,attackerId,playFX){
   // Guard: don't damage already-dead entities (prevents kill spam)
   if(target.dead)return;
@@ -4924,60 +4991,8 @@ function killEntity(target,attackerId){
   if(target.isPlayer){shake(8);target.missiles=0;updateMissileHUD();}
   else if(near)shake(Math.max(0,4-distToPlayer(target.x,target.y)/FX_RANGE*4));
   
-  const savedCargo = {...(target.cargo || {})};
-  if(totalCargo(savedCargo)>0){
-    // Scatter cargo as individual loot drops with outward velocity (like asteroid destruction)
-    const cargoEntries=Object.entries(savedCargo).filter(([,v])=>v>0);
-    if(cargoEntries.length>0){
-      let allItems=[];
-      cargoEntries.forEach(([ore,amt])=>{for(let i=0;i<amt;i++)allItems.push(ore);});
-      const numDrops=Math.min(allItems.length,randInt(3,6));
-      let idx=0;
-      for(let d=0;d<numDrops;d++){
-        const cargo={};
-        const take=d===numDrops-1?allItems.length-idx:Math.max(1,Math.ceil((allItems.length-idx)/(numDrops-d)));
-        for(let t=0;t<take&&idx<allItems.length;t++,idx++){
-          cargo[allItems[idx]]=(cargo[allItems[idx]]||0)+1;
-        }
-        if(totalCargo(cargo)<=0)continue;
-        const ang=rand(0,Math.PI*2);
-        const spd=rand(40,120);
-        const vx=Math.cos(ang)*spd;
-        const vy=Math.sin(ang)*spd;
-        const l=createLoot(target.x,target.y,cargo,vx,vy);
-        if(l)loot.push(l);
-      }
-    }
-  }
-  target.cargo={};
-
-  // ── Salvage loot: every destroyed ship drops a small amount of ore based on ship class ──
-  // Better ships yield rarer salvage. This rewards combat even against empty ships.
-  const SALVAGE_TABLE={
-    prospector:{ores:['iron','copper'],min:2,max:4},
-    hauler:    {ores:['iron','copper','silver'],min:3,max:6},
-    corsair:   {ores:['copper','silver'],min:2,max:5},
-    sentinel:  {ores:['silver','gold'],min:3,max:6},
-    phantom:   {ores:['gold','platinum'],min:2,max:5},
-    carrier:   {ores:['platinum','titanium','voidstone'],min:4,max:8}
-  };
-  const salvageInfo=SALVAGE_TABLE[target.ship];
-  if(salvageInfo){
-    const salvageOre=pick(salvageInfo.ores);
-    const salvageAmt=randInt(salvageInfo.min,salvageInfo.max);
-    const salvageDrops=Math.min(salvageAmt,randInt(2,4));
-    let salvRemaining=salvageAmt;
-    for(let sd=0;sd<salvageDrops;sd++){
-      const amt=sd===salvageDrops-1?salvRemaining:Math.max(1,randInt(1,Math.ceil(salvRemaining/(salvageDrops-sd))));
-      salvRemaining-=amt;if(amt<=0)continue;
-      const ang=rand(0,Math.PI*2);
-      const spd=rand(30,90);
-      const salvCargo={};salvCargo[salvageOre]=amt;
-      const sl=createLoot(target.x,target.y,salvCargo,Math.cos(ang)*spd,Math.sin(ang)*spd);
-      if(sl)loot.push(sl);
-    }
-    if(near)addFloatingText(target.x,target.y,`+${salvageAmt} ${ORES[salvageOre].name} salvage`,ORES[salvageOre].glow);
-  }
+  // Drop held cargo + class-based salvage (shared helper handles both)
+  const savedCargo=dropCargoAndSalvage(target);
 
   if(attackerId===player?.id&&!target.isPlayer){
     if(totalCargo(savedCargo)===0&&target.personality!=='pirate'&&target.personality!=='denPirate'){
