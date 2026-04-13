@@ -5964,6 +5964,7 @@ function renderLeaderboard(){
 let stdbConn=null;
 let stdbConnected=false;
 let stdbSubscribed=false;
+let myIdentityHex=''; // Cached at onConnect — used as robust self-check in callbacks
 const STDB_TOKEN_KEY='void_claim_stdb_token';
 
 // Debug panel toggle (press F2)
@@ -6007,8 +6008,9 @@ function connectSTDB(){
       .withToken(localStorage.getItem(STDB_TOKEN_KEY)||undefined)
       .onConnect((conn,identity,token)=>{
         stdbConnected=true;
+        myIdentityHex=identity.toHexString();
         localStorage.setItem(STDB_TOKEN_KEY,token);
-        console.log('[STDB] Connected as',identity.toHexString());
+        console.log('[STDB] Connected as',myIdentityHex);
         notify('🌐 Connected to server','#44ff88');
         startNpcStaleCheck(); // Start backup staleness detector
         document.getElementById('playerCount').textContent='Online';
@@ -6044,7 +6046,7 @@ function connectSTDB(){
         // Listen for remote projectiles (from other players)
         conn.db.projectile.onInsert((ctx,proj)=>{
           // Skip our own projectiles
-          if(stdbConn&&stdbConn.identity&&proj.ownerId===stdbConn.identity.toHexString())return;
+          if(myIdentityHex&&proj.ownerId===myIdentityHex)return;
           // Add to remote projectiles for local rendering/collision
           remoteProjectiles.push({
             id:Number(proj.id),ownerId:proj.ownerId,ownerName:proj.ownerName,
@@ -6252,6 +6254,7 @@ function connectSTDB(){
       .onDisconnect((ctx)=>{
         stdbConnected=false;
         stdbSubscribed=false;
+        myIdentityHex='';
         isNpcHost=false;
         npcHostCheckDone=false;
         npcHostHeartbeatTimer=0;
@@ -6321,10 +6324,9 @@ function stdbJoinGame(){
 
 function handlePlayerInsert(p){
   if(!stdbConn)return;
-  const myIdentity=stdbConn.identity;
   const id=p.identity.toHexString();
-  // Self — sync server-authoritative HP/shield
-  if(myIdentity&&id===myIdentity.toHexString()){
+  // Self — sync server-authoritative HP/shield (use cached hex for robust check)
+  if(myIdentityHex&&id===myIdentityHex){
     syncSelfFromServer(p);
     return;
   }
@@ -6353,10 +6355,9 @@ function handlePlayerInsert(p){
 
 function handlePlayerUpdate(oldP,newP){
   if(!stdbConn)return;
-  const myIdentity=stdbConn.identity;
   const id=newP.identity.toHexString();
-  // Self — sync server-authoritative HP/shield
-  if(myIdentity&&id===myIdentity.toHexString()){
+  // Self — sync server-authoritative HP/shield (use cached hex for robust check)
+  if(myIdentityHex&&id===myIdentityHex){
     syncSelfFromServer(newP);
     return;
   }
@@ -6402,6 +6403,11 @@ function handlePlayerDelete(p){
 
 // Rebuild the remotePlayers array from the map (only on join/leave, not every update)
 function rebuildRemotePlayers(){
+  // Safety: remove self from remote map if it somehow slipped through identity check
+  if(myIdentityHex&&remotePlayerMap.has(myIdentityHex)){
+    console.warn('[STDB] ⚠️ Self found in remotePlayerMap — removing (identity race fix)');
+    remotePlayerMap.delete(myIdentityHex);
+  }
   remotePlayers=Array.from(remotePlayerMap.values());
   // Update player count HUD
   const total=remotePlayers.length+1;
@@ -6439,11 +6445,10 @@ function syncSelfFromServer(p){
 // Initial snapshot sync — called ONCE from onApplied, uses iter() as SpacetimeDB recommends
 function initialSyncPlayers(){
   if(!stdbConn)return;
-  const myIdentity=stdbConn.identity;
   remotePlayerMap.clear();
   for(const p of stdbConn.db.player.iter()){
     const id=p.identity.toHexString();
-    if(myIdentity&&id===myIdentity.toHexString()){
+    if(myIdentityHex&&id===myIdentityHex){
       syncSelfFromServer(p);
       continue;
     }
@@ -6505,8 +6510,21 @@ function initialSyncNPCs(){
 }
 
 // Interpolate remote player positions each frame for smooth movement
+let _selfInRemoteWarned=false;
 function updateRemotePlayers(dt){
   const now=performance.now()/1000;
+  // Diagnostic: detect self in remotePlayers (should never happen)
+  if(!_selfInRemoteWarned&&myIdentityHex){
+    const selfEntry=remotePlayers.find(rp=>rp.id===myIdentityHex);
+    if(selfEntry){
+      console.error('[STDB] 🚨 LOCAL PLAYER IS IN remotePlayers! This causes the freeze bug. id=',myIdentityHex.slice(0,12));
+      _selfInRemoteWarned=true;
+      // Emergency fix: remove it
+      remotePlayerMap.delete(myIdentityHex);
+      rebuildRemotePlayers();
+      return;
+    }
+  }
   remotePlayers.forEach(rp=>{
     if(rp.targetX===undefined)return;
     const elapsed=now-rp.interpStart;
