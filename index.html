@@ -3827,14 +3827,14 @@ function drawProjectileEntity(p){
   const{r,g,b}=parseColor(p.color);
   ctx.save();ctx.translate(s.x,s.y);ctx.rotate(p.angle);
   // Layer 1: Wide soft glow
-  ctx.globalAlpha=.3;ctx.strokeStyle=\`rgba(\${r},\${g},\${b},.3)\`;
+  ctx.globalAlpha=.3;ctx.strokeStyle=`rgba(${r},${g},${b},.3)`;
   ctx.lineWidth=8;ctx.shadowColor=p.color;ctx.shadowBlur=12;
   ctx.beginPath();ctx.moveTo(-14,0);ctx.lineTo(14,0);ctx.stroke();
   // Layer 2: Core beam
   ctx.globalAlpha=1;ctx.strokeStyle=p.color;ctx.lineWidth=3;ctx.shadowBlur=6;
   ctx.beginPath();ctx.moveTo(-12,0);ctx.lineTo(12,0);ctx.stroke();
   // Layer 3: White-hot center
-  ctx.strokeStyle=\`rgba(\${Math.min(255,r+150)},\${Math.min(255,g+150)},\${Math.min(255,b+150)},.8)\`;
+  ctx.strokeStyle=`rgba(${Math.min(255,r+150)},${Math.min(255,g+150)},${Math.min(255,b+150)},.8)`;
   ctx.lineWidth=1.2;ctx.shadowBlur=0;
   ctx.beginPath();ctx.moveTo(-10,0);ctx.lineTo(10,0);ctx.stroke();
   // Bright tip dot
@@ -7896,7 +7896,7 @@ function gameLoop(timestamp){
     drawLeviathanScreenFX();
     // ── Screen flash overlay (damage feedback) ──
     if(screenFlash.alpha>0.01){
-      ctx.fillStyle=\`rgba(\${screenFlash.r},\${screenFlash.g},\${screenFlash.b},\${screenFlash.alpha})\`;
+      ctx.fillStyle=`rgba(${screenFlash.r},${screenFlash.g},${screenFlash.b},${screenFlash.alpha})`;
       ctx.fillRect(0,0,W,H);screenFlash.alpha=Math.max(0,screenFlash.alpha-screenFlash.decay*lastDt);
     }
     // ── Low-HP danger vignette: persistent red edge glow when critically hurt ──
@@ -7908,7 +7908,7 @@ function gameLoop(timestamp){
       const gradient=ctx.createRadialGradient(W/2,H/2,W*0.25,W/2,H/2,W*0.7);
       gradient.addColorStop(0,'rgba(0,0,0,0)');
       gradient.addColorStop(0.5,'rgba(80,0,0,0)');
-      gradient.addColorStop(1,\`rgba(160,20,0,\${alpha})\`);
+      gradient.addColorStop(1,`rgba(160,20,0,${alpha})`);
       ctx.fillStyle=gradient;ctx.fillRect(0,0,W,H);
     }
     
