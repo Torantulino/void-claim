@@ -278,7 +278,10 @@ const SHIPS={
   corsair:{name:'Corsair',speed:1.4,hull:70,cargo:12,dmg:1.6,mineRate:.8,shield:20,cost:800,desc:'Fast & deadly',ability:'Afterburner',abilityCd:6,abilityDesc:'Huge speed burst forward',missileCapacity:5},
   sentinel:{name:'Sentinel',speed:.88,hull:200,cargo:18,dmg:.9,mineRate:.9,shield:80,cost:1200,desc:'Tanky bodyguard',ability:'Shield Bash',abilityCd:10,abilityDesc:'Knockback + damage AoE',missileCapacity:4},
   phantom:{name:'Phantom',speed:1.25,hull:90,cargo:15,dmg:1.3,mineRate:1,shield:50,cost:2000,desc:'Cloaking hunter',ability:'Phase Cloak',abilityCd:15,abilityDesc:'Invisible for 4 seconds',missileCapacity:4},
-  carrier:{name:'Carrier',speed:.55,hull:350,cargo:30,dmg:.7,mineRate:.6,shield:120,cost:5000,visualScale:2.0,desc:'Capital ship — hire wingmen',ability:'Rally Wingmen',abilityCd:10,abilityDesc:'Wingmen focus your target 5s',missileCapacity:8}
+  carrier:{name:'Drone Carrier',speed:.55,hull:350,cargo:30,dmg:.7,mineRate:.6,shield:120,cost:5000,visualScale:2.0,desc:'Capital ship — deploys combat drones',ability:'Rally Drones',abilityCd:10,abilityDesc:'Drones focus your target 5s',missileCapacity:8},
+  drone_fighter:{name:'Strike Drone',speed:1.4,hull:50,cargo:0,dmg:1.2,mineRate:0,shield:15,cost:0,visualScale:.65,desc:'Fast attack drone',missileCapacity:0},
+  drone_guardian:{name:'Guardian Drone',speed:.9,hull:120,cargo:0,dmg:.6,mineRate:0,shield:50,cost:0,visualScale:.7,desc:'Shield drone',missileCapacity:0},
+  drone_harvester:{name:'Harvester Drone',speed:1.1,hull:70,cargo:0,dmg:.8,mineRate:.8,shield:20,cost:0,visualScale:.6,desc:'Mining drone',missileCapacity:0}
 };
 
 const UPGRADES={
@@ -956,18 +959,18 @@ let lastSeenClaimedAtLocalTime=0; // Local timestamp when claimedAt last changed
 const npcServerMap=new Map(); // npcId → server NPC object with interpolation state
 
 // ═══════════════════════════════════════════
-// Wingmen System — loyal AI escorts for Carrier pilots
+// Drone System — autonomous combat drones for Drone Carrier pilots
 // ═══════════════════════════════════════════
-let wingmen=[]; // Array of wingman objects (local AI, similar to NPCs)
-const WINGMAN_TYPES={
-  fighter:{name:'Fighter Wing',cost:800,ship:'corsair',hull:70,shield:20,dmg:1.4,speed:1.3,desc:'Fast attack escort'},
-  defender:{name:'Shield Wing',cost:1200,ship:'sentinel',hull:180,shield:70,dmg:.8,speed:.85,desc:'Tanky bodyguard'},
-  miner:{name:'Mining Wing',cost:600,ship:'prospector',hull:100,shield:30,dmg:1,speed:1,desc:'Mines & defends'}
+let drones=[]; // Array of drone objects (local AI, similar to NPCs)
+const DRONE_TYPES={
+  fighter:{name:'Strike Drone',cost:800,ship:'drone_fighter',hull:50,shield:15,dmg:1.2,speed:1.4,desc:'Fast attack drone'},
+  defender:{name:'Guardian Drone',cost:1200,ship:'drone_guardian',hull:120,shield:50,dmg:.6,speed:.9,desc:'Tanky shield drone'},
+  miner:{name:'Harvester Drone',cost:600,ship:'drone_harvester',hull:70,shield:20,dmg:.8,speed:1.1,desc:'Mining support drone'}
 };
-const MAX_WINGMEN=3;
-let wingmanRallyTimer=0; // seconds remaining for Rally ability
-let wingmanRallyTarget=null; // focused attack target during Rally
-let wmSyncTimer=0; // Timer for syncing wingmen state to server
+const MAX_DRONES=3;
+let droneRallyTimer=0; // seconds remaining for Rally ability
+let droneRallyTarget=null; // focused attack target during Rally
+let wmSyncTimer=0; // Timer for syncing drone state to server
 
 // ═══════════════════════════════════════════
 // Police System — Law enforcement in the safe zone
@@ -1138,7 +1141,7 @@ function createPoliceCarrier(patrolIndex){
     upgrades:{engine:3,laser:4,shields:4,cargo:0,scanner:3},
     shootCD:0,dead:false,respawnTimer:0,cloaked:false,bounty:0,
     personality:'policeCarrier',state:'patrol',target:null,stateTimer:2+patrolIndex,
-    thinkTimer:0,isPlayer:false,isNPC:true,isPolice:true,isWingman:false,
+    thinkTimer:0,isPlayer:false,isNPC:true,isPolice:true,isDrone:false,
     patrolIndex,patrolAngle,
     stunTimer:0,aggressor:false,
     totalKills:0,totalMined:0,totalEarned:0,cargo:{},credits:0
@@ -1161,7 +1164,7 @@ function createPoliceFighter(carrierRef,fighterIndex){
     upgrades:{engine:3,laser:4,shields:3,cargo:0,scanner:2},
     shootCD:0,dead:false,respawnTimer:0,cloaked:false,bounty:0,
     personality:'policeFighter',state:'escort',target:null,stateTimer:1+fighterIndex*0.5,
-    thinkTimer:0,isPlayer:false,isNPC:true,isPolice:true,isWingman:false,
+    thinkTimer:0,isPlayer:false,isNPC:true,isPolice:true,isDrone:false,
     carrierRef,fighterIndex,carrierNpcId:carrierRef.npcId,
     stunTimer:0,aggressor:false,
     totalKills:0,totalMined:0,totalEarned:0,cargo:{},credits:0
@@ -1187,7 +1190,7 @@ function createTradeShip(){
       {offsetX:160,offsetY:40,angle:0,targetId:null,cooldown:0}
     ],
     dead:false,deathTimer:0,respawnTimer:0,lootDropped:false,
-    isTradeShip:true,isNPC:true,isPolice:false,isWingman:false,isPlayer:false,
+    isTradeShip:true,isNPC:true,isPolice:false,isDrone:false,isPlayer:false,
     personality:'tradeShip',state:'orbit',
     name:'Trade Ship',color:TRADE_SHIP_COLOR,
     ship:'carrier',cargo:{},credits:0,
@@ -1284,7 +1287,7 @@ function updateTradeShipTurrets(dt){
       ...npcs.filter(n=>!n.dead&&!n.isTradeShip&&isAggressor(n)),
       ...(player&&!player.dead&&isAggressor(player)?[player]:[]),
       ...remotePlayers.filter(rp=>!rp.dead&&rp.aggressor),
-      ...wingmen.filter(w=>!w.dead&&player&&isAggressor(player))
+      ...drones.filter(w=>!w.dead&&player&&isAggressor(player))
     ];
     for(const c of candidates){
       if(c.isPolice)continue;
@@ -1298,7 +1301,7 @@ function updateTradeShipTurrets(dt){
       if(turret.cooldown<=0&&angleDiff<0.2){
         // Fire turret projectile
         const p=createProjectile({id:'trade_ship',name:'Trade Ship',color:TRADE_SHIP_TURRET_COLOR,
-          vx:0,vy:0,isPolice:false,isPlayer:false,isWingman:false,isTradeShip:true},
+          vx:0,vy:0,isPolice:false,isPlayer:false,isDrone:false,isTradeShip:true},
           wx,wy,turret.angle,CFG.TRADE_SHIP_TURRET_DMG);
         p.isTradeShipOwned=true;p.color=TRADE_SHIP_TURRET_COLOR;
         projectiles.push(p);
@@ -1704,10 +1707,10 @@ function updateTrails(dt){
   function tick(e){recordTrailPoint(e);pruneTrail(e);}
   if(player&&!player.dead)tick(player);
   npcs.forEach(n=>{if(!n.dead)tick(n);});
-  wingmen.forEach(w=>{if(!w.dead)tick(w);});
+  drones.forEach(w=>{if(!w.dead)tick(w);});
   policeUnits.forEach(p=>{if(!p.dead)tick(p);});
   remotePlayers.forEach(rp=>{if(!rp.dead&&!rp.cloaked)tick(rp);});
-  if(window._remoteWingmanMap){for(const rw of window._remoteWingmanMap.values()){if(!rw.dead)tick(rw);}}
+  if(window._remoteDroneMap){for(const rw of window._remoteDroneMap.values()){if(!rw.dead)tick(rw);}}
 }
 
 // ── Hex → RGB cache ──
@@ -1827,9 +1830,9 @@ function drawAllTrails(){
   if(player&&!player.dead&&!player.cloaked)drawEntityTrail(player,TRAIL_CFG.PLAYER_ALPHA);
   npcs.forEach(n=>{if(!n.dead&&!n.isTradeShip&&!n.cloaked)drawEntityTrail(n,TRAIL_CFG.NPC_ALPHA);});
   policeUnits.forEach(p=>{if(!p.dead)drawEntityTrail(p,TRAIL_CFG.NPC_ALPHA);});
-  wingmen.forEach(w=>{if(!w.dead)drawEntityTrail(w,TRAIL_CFG.NPC_ALPHA);});
+  drones.forEach(w=>{if(!w.dead)drawEntityTrail(w,TRAIL_CFG.NPC_ALPHA);});
   remotePlayers.forEach(rp=>{if(!rp.dead&&!rp.cloaked)drawEntityTrail(rp,TRAIL_CFG.REMOTE_ALPHA);});
-  if(window._remoteWingmanMap){for(const rw of window._remoteWingmanMap.values()){if(!rw.dead)drawEntityTrail(rw,TRAIL_CFG.NPC_ALPHA);}}
+  if(window._remoteDroneMap){for(const rw of window._remoteDroneMap.values()){if(!rw.dead)drawEntityTrail(rw,TRAIL_CFG.NPC_ALPHA);}}
 }
 
 // ═══════════════════════════════════════════
@@ -1899,7 +1902,7 @@ function createAsteroid(id,rng){
 }
 
 function createProjectile(owner,x,y,ang,dmg){
-  const isAllied=!!owner.isPlayer||!!owner.isWingman; // Wingmen are friendly — their projectiles skip player/other wingmen
+  const isAllied=!!owner.isPlayer||!!owner.isDrone; // Drones are friendly — their projectiles skip player/other drones
   const isPoliceProj=!!owner.isPolice;
   return{
     id:uid(),ownerId:owner.id,ownerName:owner.name||'Unknown',
@@ -2037,8 +2040,8 @@ function useAbility(){
       notify('👻 Phase Cloak!','#bb66ff');
       break;
     }
-    case 'carrier':{ // Rally Wingmen — all wingmen focus nearest enemy 5s
-      if(wingmen.length===0){notify('No wingmen to rally!','#ff6644');player.abilityCD=1;break;}
+    case 'carrier':{ // Rally Drones — all drones focus nearest enemy 5s
+      if(drones.length===0){notify('No drones to rally!','#ff6644');player.abilityCD=1;break;}
       // Find nearest hostile
       let nearestEnemy=null,nearestDist=1500;
       npcs.forEach(n=>{
@@ -2058,10 +2061,10 @@ function useAbility(){
         if(dLev<nearestDist){nearestDist=dLev;nearestEnemy=leviathan;}
       }
       if(nearestEnemy){
-        wingmanRallyTimer=5;
-        wingmanRallyTarget=nearestEnemy;
-        // Rally FX — lines from wingmen to target
-        wingmen.forEach(w=>{
+        droneRallyTimer=5;
+        droneRallyTarget=nearestEnemy;
+        // Rally FX — lines from drones to target
+        drones.forEach(w=>{
           if(!w.dead){
             for(let i=0;i<8;i++){
               const a=Math.random()*Math.PI*2,sp=rand(30,80);
@@ -2069,7 +2072,7 @@ function useAbility(){
             }
           }
         });
-        notify('📡 Rally Wingmen! Attack target!','#ffaa33');
+        notify('📡 Rally Drones! Attack target!','#ffaa33');
       }else{
         notify('No targets in range!','#ff6644');player.abilityCD=2;
       }
@@ -2133,10 +2136,10 @@ function updateAbilities(dt){
   }
   
   // Carrier rally timer
-  if(wingmanRallyTimer>0){
-    wingmanRallyTimer-=dt;
-    if(wingmanRallyTimer<=0){wingmanRallyTarget=null;}
-    else if(wingmanRallyTarget&&wingmanRallyTarget.dead){wingmanRallyTarget=null;wingmanRallyTimer=0;}
+  if(droneRallyTimer>0){
+    droneRallyTimer-=dt;
+    if(droneRallyTimer<=0){droneRallyTarget=null;}
+    else if(droneRallyTarget&&droneRallyTarget.dead){droneRallyTarget=null;droneRallyTimer=0;}
   }
   
   // Phantom cloak
@@ -2161,39 +2164,39 @@ function updateAbilities(dt){
 
 
 // ═══════════════════════════════════════════
-// Wingmen AI & Management
+// Drone AI & Management
 // ═══════════════════════════════════════════
 
-function createWingman(type){
-  const wt=WINGMAN_TYPES[type];
+function createDrone(type){
+  const wt=DRONE_TYPES[type];
   const base=SHIPS[wt.ship];
   const id='wm_'+uid();
   return{
-    id,wmType:type,name:wt.name+' #'+(wingmen.length+1),
+    id,wmType:type,name:wt.name+' #'+(drones.length+1),
     x:player.x+rand(-80,80),y:player.y+rand(-80,80),vx:0,vy:0,
     angle:player.angle,
     hp:wt.hull,maxHp:wt.hull,shield:wt.shield,maxShield:wt.shield,
     ship:wt.ship,color:player.color,
-    upgrades:{engine:2,laser:2,shields:2,cargo:1,scanner:0},
-    shootCD:0,dead:false,isPlayer:false,isNPC:false,isWingman:true,
+    upgrades:{engine:1,laser:1,shields:1,cargo:0,scanner:0},
+    shootCD:0,dead:false,isPlayer:false,isNPC:false,isDrone:true,
     state:'follow',target:null,stateTimer:0,thinkTimer:0,
     stunTimer:0,cloaked:false,bounty:0,
-    personality:'wingman', // needed for rendering compat
+    personality:'drone', // needed for rendering compat
     credits:0,cargo:{},totalKills:0,totalMined:0,totalEarned:0
   };
 }
 
-function hireWingman(type){
+function deployDrone(type){
   if(!player||player.ship!=='carrier')return;
-  if(wingmen.filter(w=>!w.dead).length>=MAX_WINGMEN){notify('Max wingmen reached ('+MAX_WINGMEN+')','#ff6644');return;}
-  const wt=WINGMAN_TYPES[type];
+  if(drones.filter(w=>!w.dead).length>=MAX_DRONES){notify('Max drones reached ('+MAX_DRONES+')','#ff6644');return;}
+  const wt=DRONE_TYPES[type];
   if(player.credits<wt.cost){notify('Not enough credits!','#ff6644');return;}
   player.credits-=wt.cost;
-  const w=createWingman(type);
-  wingmen.push(w);
+  const w=createDrone(type);
+  drones.push(w);
   SFX.upgrade();
-  notify('Hired '+wt.name+'!','#44ff88');
-  // Sync wingman to server
+  notify('Deployed '+wt.name+'!','#44ff88');
+  // Sync drone to server
   if(stdbConn&&stdbConnected){
     stdbConn.reducers.spawnWingman({
       wingmanId:w.id,name:w.name,ship:w.ship,color:w.color,
@@ -2203,11 +2206,11 @@ function hireWingman(type){
   updateHUD();saveGame();
 }
 
-function updateWingmen(dt){
+function updateDrones(dt){
   if(!player||player.dead)return;
   
-  // If player no longer in carrier, wingmen still follow but can't hire new ones
-  wingmen.forEach(w=>{
+  // If player no longer in carrier, drones still follow but can't hire new ones
+  drones.forEach(w=>{
     if(w.dead)return;
     
     // Stun
@@ -2220,41 +2223,41 @@ function updateWingmen(dt){
     
     w.shootCD-=dt;w.thinkTimer-=dt;w.stateTimer-=dt;
     if(w.shield<w.maxShield)w.shield=Math.min(w.maxShield,w.shield+2*dt);
-    // Wingmen heal hull in safe zone (only if not recently damaged)
+    // Drones heal hull in safe zone (only if not recently damaged)
     if(w.hp<w.maxHp&&dist(w.x,w.y,0,0)<CFG.EARTH_SHIELD_R&&performance.now()-(w.lastDamageTime||0)>=5000)w.hp=Math.min(w.maxHp,w.hp+30*dt);
     
     // Think: pick action
     if(w.thinkTimer<=0){
       w.thinkTimer=rand(.4,1);
-      wingmanThink(w);
+      droneThink(w);
     }
     
     // Act
-    wingmanAct(w,dt);
+    droneAct(w,dt);
   });
   
-  // Sync wingmen to server periodically (owner pushes their own wingmen)
-  if(stdbConn&&stdbConnected&&wingmen.length>0){
+  // Sync drones to server periodically (owner pushes their own drones)
+  if(stdbConn&&stdbConnected&&drones.length>0){
     wmSyncTimer-=dt;
     if(wmSyncTimer<=0){
       wmSyncTimer=0.1; // 10Hz
-      syncWingmenToServer();
+      syncDronesToServer();
     }
   }
 }
 
-function wingmanThink(w){
+function droneThink(w){
   const dToPlayer=dist(w.x,w.y,player.x,player.y);
   
   // Rally override — focus the rally target
-  if(wingmanRallyTimer>0&&wingmanRallyTarget&&!wingmanRallyTarget.dead){
-    w.state='attack';w.target=wingmanRallyTarget;return;
+  if(droneRallyTimer>0&&droneRallyTarget&&!droneRallyTarget.dead){
+    w.state='attack';w.target=droneRallyTarget;return;
   }
   
   // If too far from player, return to formation
   if(dToPlayer>600){w.state='follow';w.target=null;return;}
   
-  // Miner wingmen mine if near asteroids
+  // Miner drones mine if near asteroids
   if(w.wmType==='miner'){
     let bestAst=null,bestD=400;
     asteroids.forEach(a=>{
@@ -2283,7 +2286,7 @@ function wingmanThink(w){
   w.state='follow';w.target=null;
 }
 
-function wingmanAct(w,dt){
+function droneAct(w,dt){
   const spd=shipSpeed(w);
   const thrust=CFG.THRUST*(spd/CFG.BASE_SPEED)*.8;
   
@@ -2309,7 +2312,7 @@ function wingmanAct(w,dt){
     }
     case 'attack':{
       if(!w.target||w.target.dead){w.state='follow';break;}
-      // Wingmen can now attack in safe zone (police will handle law enforcement)
+      // Drones can now attack in safe zone (police will handle law enforcement)
       const d=dist(w.x,w.y,w.target.x,w.target.y);
       if(d>220){moveToward(w,w.target.x,w.target.y,thrust,dt);}
       else{
@@ -2354,21 +2357,21 @@ function wingmanAct(w,dt){
   if(v>30&&Math.random()<.3)emitThrust(w.x,w.y,w.angle,spd,w.color);
 }
 
-function killWingman(w,attackerName){
+function killDrone(w,attackerName){
   w.dead=true;w.hp=0;
   emitBurst(w.x,w.y,30,120,'#ff6644',3,.5,10);
   emitBurst(w.x,w.y,15,80,'#ffcc00',2,.3,8);
   SFX.explode();shake(5);
   addFloatingText(w.x,w.y,w.name+' destroyed!','#ff4444',1.8);
   notify('💀 '+w.name+' was destroyed! (permanent)','#ff4444');
-  // Broadcast wingman death to server
+  // Broadcast drone death to server
   if(stdbConn&&stdbConnected){
     stdbConn.reducers.deleteWingman({wingmanId:w.id}).catch(()=>{});
   }
   // Remove from array after a frame so death FX plays
   setTimeout(()=>{
-    const idx=wingmen.indexOf(w);
-    if(idx>=0)wingmen.splice(idx,1);
+    const idx=drones.indexOf(w);
+    if(idx>=0)drones.splice(idx,1);
   },100);
   saveGame();
 }
@@ -2596,7 +2599,7 @@ function handleNpcInsert(sn){
       shootCD:0,dead:sn.dead||false,respawnTimer:0,cloaked:false,bounty:0,
       personality:sn.personality,state:sn.state||'idle',target:null,stateTimer:1,
       thinkTimer:1,fleeHP:.25,isPlayer:false,isNPC:true,
-      isPolice:isPoliceNpc,isWingman:false,
+      isPolice:isPoliceNpc,isDrone:false,
       color:sn.color,stunTimer:sn.stunTimer||0,
       totalKills:sn.totalKills||0,totalMined:sn.totalMined||0,totalEarned:sn.totalEarned||0
     };
@@ -2759,7 +2762,7 @@ function rebuildTradeShipRef(){
   const tsNpc=npcs.find(n=>n.personality==='tradeShip');
   if(!tsNpc){tradeShip=null;return;}
   tsNpc.isTradeShip=true;
-  tsNpc.isNPC=true;tsNpc.isPolice=false;tsNpc.isWingman=false;tsNpc.isPlayer=false;
+  tsNpc.isNPC=true;tsNpc.isPolice=false;tsNpc.isDrone=false;tsNpc.isPlayer=false;
   tsNpc.id='trade_ship';
   tsNpc.color=TRADE_SHIP_COLOR;
   tsNpc.ship='carrier';
@@ -2941,10 +2944,10 @@ function syncNPCsToServer(){
   });
 }
 
-// Sync wingmen positions to server (owner pushes their wingmen — not gated on isNpcHost)
-function syncWingmenToServer(){
-  if(!stdbConn||!stdbConnected||wingmen.length===0)return;
-  wingmen.forEach(w=>{
+// Sync drones positions to server (owner pushes their drones — not gated on isNpcHost)
+function syncDronesToServer(){
+  if(!stdbConn||!stdbConnected||drones.length===0)return;
+  drones.forEach(w=>{
     if(w.dead)return;
       stdbConn.reducers.updateWingman({
         wingmanId:w.id,
@@ -3230,8 +3233,8 @@ function denPirateThink(n,hpPct){
       bestDist=dp;bestTarget=player;
     }
   }
-  // Also hunt wingmen near the den
-  wingmen.forEach(w=>{
+  // Also hunt drones near the den
+  drones.forEach(w=>{
     if(w.dead)return;
     const dw=dist(n.x,n.y,w.x,w.y);
     if(dw<bestDist*.8){bestDist=dw;bestTarget=w;}
@@ -3802,6 +3805,83 @@ function drawShipHull(ctx,shipType,sz,col){
     ctx.fillStyle='rgba(180,230,255,.3)';
     ctx.fillRect(-s*1.12,-s*.04,s*.08,s*.08);
   }
+  else if(shipType==='drone_fighter'){
+    // ═══ STRIKE DRONE — small, angular, aggressive delta shape ═══
+    ctx.moveTo(s*.9,0);              // sharp nose
+    ctx.lineTo(s*.3,-s*.15);         // upper nose
+    ctx.lineTo(-s*.1,-s*.5);         // wing tip
+    ctx.lineTo(-s*.35,-s*.4);        // wing trailing
+    ctx.lineTo(-s*.5,-s*.12);        // engine top
+    ctx.lineTo(-s*.5,s*.12);         // engine bottom
+    ctx.lineTo(-s*.35,s*.4);         // wing trailing
+    ctx.lineTo(-s*.1,s*.5);          // wing tip
+    ctx.lineTo(s*.3,s*.15);          // lower nose
+    ctx.closePath();ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.6)';ctx.lineWidth=1;ctx.stroke();
+    // Red racing stripe
+    ctx.strokeStyle='rgba(255,80,60,.5)';ctx.lineWidth=.8;
+    ctx.beginPath();ctx.moveTo(s*.7,0);ctx.lineTo(-s*.3,0);ctx.stroke();
+    // Sensor eye (single glowing dot)
+    ctx.fillStyle='rgba(255,100,80,.8)';
+    ctx.beginPath();ctx.arc(s*.5,0,s*.06,0,Math.PI*2);ctx.fill();
+    // Engine glow
+    ctx.fillStyle='rgba(255,80,50,.5)';
+    ctx.fillRect(-s*.54,-s*.08,s*.06,s*.16);
+  }
+  else if(shipType==='drone_guardian'){
+    // ═══ GUARDIAN DRONE — hexagonal shield platform, wide and flat ═══
+    ctx.moveTo(s*.6,0);              // front plate
+    ctx.lineTo(s*.35,-s*.4);         // upper front
+    ctx.lineTo(-s*.2,-s*.55);        // upper side
+    ctx.lineTo(-s*.55,-s*.4);        // upper rear
+    ctx.lineTo(-s*.65,-s*.15);       // engine top
+    ctx.lineTo(-s*.65,s*.15);        // engine bottom
+    ctx.lineTo(-s*.55,s*.4);         // lower rear
+    ctx.lineTo(-s*.2,s*.55);         // lower side
+    ctx.lineTo(s*.35,s*.4);          // lower front
+    ctx.closePath();ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.6)';ctx.lineWidth=1.2;ctx.stroke();
+    // Shield plate lines (armored look)
+    ctx.strokeStyle='rgba(100,200,255,.2)';ctx.lineWidth=.8;
+    ctx.beginPath();ctx.moveTo(s*.3,-s*.25);ctx.lineTo(-s*.35,-s*.45);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(s*.3,s*.25);ctx.lineTo(-s*.35,s*.45);ctx.stroke();
+    // Central shield emitter (glowing ring)
+    ctx.strokeStyle='rgba(80,200,255,.6)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(0,0,s*.15,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle='rgba(80,200,255,.3)';
+    ctx.beginPath();ctx.arc(0,0,s*.08,0,Math.PI*2);ctx.fill();
+    // Engine glow
+    ctx.fillStyle='rgba(60,160,255,.4)';
+    ctx.fillRect(-s*.68,-s*.1,s*.06,s*.2);
+  }
+  else if(shipType==='drone_harvester'){
+    // ═══ HARVESTER DRONE — compact utility shape with mining arms ═══
+    ctx.moveTo(s*.65,0);             // nose
+    ctx.lineTo(s*.35,-s*.2);         // upper nose
+    ctx.lineTo(s*.1,-s*.35);         // upper body
+    ctx.lineTo(-s*.25,-s*.4);        // upper rear
+    ctx.lineTo(-s*.5,-s*.25);        // engine top
+    ctx.lineTo(-s*.5,s*.25);         // engine bottom
+    ctx.lineTo(-s*.25,s*.4);         // lower rear
+    ctx.lineTo(s*.1,s*.35);          // lower body
+    ctx.lineTo(s*.35,s*.2);          // lower nose
+    ctx.closePath();ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.6)';ctx.lineWidth=1;ctx.stroke();
+    // Mining arm struts (extending forward)
+    ctx.strokeStyle='rgba(255,200,50,.5)';ctx.lineWidth=1.2;
+    ctx.beginPath();ctx.moveTo(s*.3,-s*.18);ctx.lineTo(s*.75,-s*.3);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(s*.3,s*.18);ctx.lineTo(s*.75,s*.3);ctx.stroke();
+    // Mining tips (glowing)
+    ctx.fillStyle='rgba(255,220,80,.7)';
+    ctx.beginPath();ctx.arc(s*.75,-s*.3,s*.04,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(s*.75,s*.3,s*.04,0,Math.PI*2);ctx.fill();
+    // Cargo scanner window
+    ctx.fillStyle='rgba(100,255,150,.4)';
+    ctx.beginPath();ctx.moveTo(s*.45,0);ctx.lineTo(s*.25,-s*.1);ctx.lineTo(s*.2,0);ctx.lineTo(s*.25,s*.1);ctx.closePath();ctx.fill();
+    // Engine glow
+    ctx.fillStyle='rgba(80,200,100,.4)';
+    ctx.fillRect(-s*.54,-s*.08,s*.06,s*.16);
+  }
   else{
     // Fallback (same as prospector)
     ctx.moveTo(s*1.05,0);
@@ -4061,8 +4141,8 @@ function drawAllMiningBeams(){
     drawMiningBeamFX(ns.x,ns.y,as.x,as.y,ore.glow,ore.glow,0.7);
   });
 
-  // 3) Wingmen mining beams
-  wingmen.forEach(w=>{
+  // 3) Drone mining beams
+  drones.forEach(w=>{
     if(w.dead||w.state!=='mine'||!w.target||!w.target.alive)return;
     if(!inView(w.x,w.y,300)&&!inView(w.target.x,w.target.y,300))return;
     const ws=worldToScreen(w.x,w.y);
@@ -4328,8 +4408,8 @@ function drawMinimap(){
     }
   });
 
-  // ── Wingmen (friendly markers) ──
-  wingmen.forEach(w=>{
+  // ── Drones (friendly markers) ──
+  drones.forEach(w=>{
     if(w.dead)return;
     const wx=mx+(w.x-player.x)*scale,wy=my+(w.y-player.y)*scale;
     if(dist(wx,wy,mx,my)<mr){
@@ -4925,9 +5005,9 @@ function updateProjectiles(dt){
     const isPoliceProj=p.isPoliceOwned||policeUnits.some(pu=>pu.id===p.ownerId);
     const isTSProj=!!p.isTradeShipOwned;
     const targets=p.isPlayerOwned?[...npcs.filter(n=>n.id!==p.ownerId&&!n.isTradeShip),...remotePlayers.filter(rp=>rp.id!==p.ownerId)]
-      :isTSProj?[player,...npcs.filter(n=>!n.isPolice&&!n.isTradeShip&&isAggressor(n)),...wingmen,...remotePlayers].filter(t=>t&&t.id!==p.ownerId&&(isAggressor(t)||t.aggressor))
-      :isPoliceProj?[player,...npcs.filter(n=>!n.isPolice&&!n.isTradeShip),...wingmen,...remotePlayers].filter(t=>t&&t.id!==p.ownerId)
-      :[player,...npcs.filter(n=>n.id!==p.ownerId&&!n.isTradeShip),...wingmen.filter(w=>w.id!==p.ownerId),...remotePlayers.filter(rp=>rp.id!==p.ownerId)];
+      :isTSProj?[player,...npcs.filter(n=>!n.isPolice&&!n.isTradeShip&&isAggressor(n)),...drones,...remotePlayers].filter(t=>t&&t.id!==p.ownerId&&(isAggressor(t)||t.aggressor))
+      :isPoliceProj?[player,...npcs.filter(n=>!n.isPolice&&!n.isTradeShip),...drones,...remotePlayers].filter(t=>t&&t.id!==p.ownerId)
+      :[player,...npcs.filter(n=>n.id!==p.ownerId&&!n.isTradeShip),...drones.filter(w=>w.id!==p.ownerId),...remotePlayers.filter(rp=>rp.id!==p.ownerId)];
     let hit=false;
     targets.forEach(t=>{
       if(!t||t.dead||t.cloaked||hit)return;
@@ -4943,7 +5023,7 @@ function updateProjectiles(dt){
         const attacker=player&&player.id===p.ownerId?player:
           npcs.find(n=>n.id===p.ownerId)||
           policeUnits.find(pu=>pu.id===p.ownerId)||
-          wingmen.find(w=>w.id===p.ownerId)||null;
+          drones.find(w=>w.id===p.ownerId)||null;
         checkAggressionRules(attacker,t);
         if(t.isPolice){
           // Police are now synced via NPC system — route player damage through server
@@ -5045,10 +5125,10 @@ function updateProjectiles(dt){
     if(!hit&&tradeShip&&!tradeShip.dead&&p.ownerId!=='trade_ship'&&!isTSProj){
       if(dist(p.x,p.y,tradeShip.x,tradeShip.y)<220){
         const nearPlayer=distToPlayer(p.x,p.y)<FX_RANGE;
-        // Find the actual attacker entity — could be player, NPC, or wingman
+        // Find the actual attacker entity — could be player, NPC, or drone
         const attacker=player&&player.id===p.ownerId?player:
           npcs.find(n=>n.id===p.ownerId)||
-          wingmen.find(w=>w.id===p.ownerId)||null;
+          drones.find(w=>w.id===p.ownerId)||null;
         // Aggression rules: attacking the trade ship anywhere triggers warnings/aggressor
         if(attacker)checkAggressionRules(attacker,tradeShip);
         if(stdbConn&&stdbConnected&&(p.isPlayerOwned||isNpcHost)){
@@ -5113,7 +5193,10 @@ const SALVAGE_TABLE={
   corsair:   {ores:['copper','silver'],min:2,max:5},
   sentinel:  {ores:['silver','gold'],min:3,max:6},
   phantom:   {ores:['gold','platinum'],min:2,max:5},
-  carrier:   {ores:['platinum','titanium','voidstone'],min:4,max:8}
+  carrier:   {ores:['platinum','titanium','voidstone'],min:4,max:8},
+  drone_fighter:  {ores:['copper'],min:1,max:2},
+  drone_guardian: {ores:['iron','copper'],min:1,max:2},
+  drone_harvester:{ores:['iron'],min:1,max:3}
 };
 
 function dropCargoAndSalvage(target){
@@ -5203,8 +5286,8 @@ function applyDamage(target,dmg,attackerId,playFX){
 function killEntity(target,attackerId){
   // Guard: prevent double-kill (multiple projectiles in same frame)
   if(target.dead)return;
-  // Wingmen die permanently — use dedicated handler
-  if(target.isWingman){killWingman(target,attackerId);return;}
+  // Drones die permanently — use dedicated handler
+  if(target.isDrone){killDrone(target,attackerId);return;}
   // Trade ship — special death handler
   if(target.isTradeShip){killTradeShip(attackerId);return;}
   // Clear aggressor status on death
@@ -5264,22 +5347,22 @@ function killEntity(target,attackerId){
     document.getElementById('deathScreen').style.display='flex';
     const val=cargoValue(savedCargo);
     const killedByLeviathan=leviathan&&attackerId===leviathan.id;
-    // All wingmen are destroyed when carrier pilot dies
-    const wmCount=wingmen.filter(w=>!w.dead).length;
-    wingmen.forEach(w=>{
+    // All drones are destroyed when carrier pilot dies
+    const wmCount=drones.filter(w=>!w.dead).length;
+    drones.forEach(w=>{
       if(!w.dead){
         emitBurst(w.x,w.y,20,100,'#ff6644',2,.5,8);
         if(stdbConn&&stdbConnected){stdbConn.reducers.deleteWingman({wingmanId:w.id}).catch(()=>{});}
       }
     });
-    wingmen=[];
+    drones=[];
     const killedByPolice=policeUnits.some(pu=>pu.id===attackerId);
     if(killedByLeviathan){
-      document.getElementById('lostInfo').textContent='The Void Leviathan consumed you'+(val>0?` and ${val} credits worth of ore.`:'.')+(wmCount>0?' Your wingmen were lost.':'');
+      document.getElementById('lostInfo').textContent='The Void Leviathan consumed you'+(val>0?` and ${val} credits worth of ore.`:'.')+(wmCount>0?' Your drones were lost.':'');
     }else if(killedByPolice){
-      document.getElementById('lostInfo').textContent='SSPD Police destroyed you for attacking civilians in the Safe Zone.'+(val>0?` You lost ${val} credits worth of ore.`:'')+(wmCount>0?' Your wingmen were lost.':'');
+      document.getElementById('lostInfo').textContent='SSPD Police destroyed you for attacking civilians in the Safe Zone.'+(val>0?` You lost ${val} credits worth of ore.`:'')+(wmCount>0?' Your drones were lost.':'');
     }else{
-      document.getElementById('lostInfo').textContent=(val>0?`You lost ${val} credits worth of ore.`:'Your empty ship was destroyed.')+(wmCount>0?' Your wingmen were lost.':'');
+      document.getElementById('lostInfo').textContent=(val>0?`You lost ${val} credits worth of ore.`:'Your empty ship was destroyed.')+(wmCount>0?' Your drones were lost.':'');
     }
     SFX.death();killStreak=0;haptic([50,30,80]);
     // Report player death to SpacetimeDB
@@ -5334,9 +5417,9 @@ function updateLoot(dt){
         if(l.items.length===0)loot.splice(i,1);
       }
     });
-    // Wingmen also collect loot for the player
+    // Drones also collect loot for the player
     if(player&&!player.dead){
-      wingmen.forEach(w=>{
+      drones.forEach(w=>{
         if(w.dead)return;
         if(dist(w.x,w.y,l.x,l.y)<CFG.COLLECT_RANGE){
           const mc=maxCargo(player);
@@ -5405,7 +5488,7 @@ function createMissile(owner,target){
     targetId:target.id,targetX:target.x,targetY:target.y,
     dmg:CFG.MISSILE_DMG,ttl:CFG.MISSILE_TTL,
     speed:CFG.MISSILE_SPEED,turnRate:CFG.MISSILE_TURN_RATE,
-    isPlayerOwned:!!owner.isPlayer||!!owner.isWingman,
+    isPlayerOwned:!!owner.isPlayer||!!owner.isDrone,
     isMissile:true,armed:false,armTimer:0.3,
     trailParticles:[]
   };
@@ -5458,7 +5541,7 @@ function updateMissiles(dt){
     // vs entities
     const targets2=m.isPlayerOwned?
       [...npcs.filter(n=>!n.dead&&n.id!==m.ownerId&&!n.isTradeShip),...remotePlayers.filter(rp=>!rp.dead)]:
-      [player,...npcs.filter(n=>!n.dead&&n.id!==m.ownerId&&!n.isTradeShip),...wingmen.filter(w=>!w.dead)].filter(Boolean);
+      [player,...npcs.filter(n=>!n.dead&&n.id!==m.ownerId&&!n.isTradeShip),...drones.filter(w=>!w.dead)].filter(Boolean);
     for(const t2 of targets2){
       if(t2.dead||t2.id===m.ownerId)continue;
       if(t2.isPlayer&&t2.invulnTimer>0)continue;
@@ -5468,7 +5551,7 @@ function updateMissiles(dt){
         checkAggressionRules({id:m.ownerId,isPolice:false,isPlayer:m.isPlayerOwned},t2);
         applyDamage(t2,m.dmg,m.ownerId,true);
         // Splash damage
-        const splashTargets=[player,...npcs.filter(n=>!n.dead),...wingmen.filter(w=>!w.dead),...remotePlayers.filter(rp=>!rp.dead)].filter(Boolean);
+        const splashTargets=[player,...npcs.filter(n=>!n.dead),...drones.filter(w=>!w.dead),...remotePlayers.filter(rp=>!rp.dead)].filter(Boolean);
         for(const st of splashTargets){
           if(st.dead||st===t2)continue;
           const sd=dist(m.x,m.y,st.x,st.y);
@@ -5531,7 +5614,7 @@ function findEntityById(id){
   if(player&&player.id===id)return player;
   let e=npcs.find(n=>n.id===id);if(e)return e;
   e=remotePlayers.find(rp=>rp.id===id);if(e)return e;
-  e=wingmen.find(w=>w.id===id);if(e)return e;
+  e=drones.find(w=>w.id===id);if(e)return e;
   return null;
 }
 
@@ -6612,6 +6695,7 @@ function renderMarket(){
   }
   const sgrid=document.getElementById('shipGrid');sgrid.innerHTML='';
   for(let key in SHIPS){
+    if(key.startsWith('drone_'))continue; // Drone ships are not purchasable — they're deployed via the Drone Carrier
     const s=SHIPS[key];const owned=player.ship===key;
     const tradeIn=Math.floor(SHIPS[player.ship].cost*.7);
     const canBuy=!owned&&(player.credits+tradeIn)>=s.cost;
@@ -6641,10 +6725,24 @@ function renderMarket(){
       card.onclick=(()=>{const k=key;return()=>{
         const oldShip=SHIPS[player.ship];const sellBack=Math.floor(oldShip.cost*.7);
         player.credits-=SHIPS[k].cost;player.credits+=sellBack;
+        // Clear existing drones when switching ships
+        if(player.ship==='carrier'&&k!=='carrier'){
+          drones.forEach(w=>{if(!w.dead&&stdbConn&&stdbConnected)stdbConn.reducers.deleteWingman({wingmanId:w.id}).catch(()=>{});});
+          drones=[];droneRallyTimer=0;droneRallyTarget=null;
+        }
         player.ship=k;player.hp=SHIPS[k].hull;player.maxHp=SHIPS[k].hull;
         player.shield=SHIPS[k].shield;player.maxShield=maxShield(player);
         player.abilityCD=0;player.maxMissiles=SHIPS[k].missileCapacity||2;
         if(player.missiles>player.maxMissiles) player.missiles=player.maxMissiles;
+        // Drone Carrier comes with a free Strike Drone
+        if(k==='carrier'&&drones.filter(w=>!w.dead).length===0){
+          const freeDrone=createDrone('fighter');
+          drones.push(freeDrone);
+          if(stdbConn&&stdbConnected){
+            stdbConn.reducers.spawnWingman({wingmanId:freeDrone.id,name:freeDrone.name,ship:freeDrone.ship,color:freeDrone.color,wmType:'fighter',hp:freeDrone.hp,maxHp:freeDrone.maxHp,shield:freeDrone.shield,maxShield:freeDrone.maxShield}).catch(()=>{});
+          }
+          notify('Strike Drone deployed!','#ffaa33');
+        }
         renderMarket();updateHUD();SFX.upgrade();
         notify(`Switched to ${SHIPS[k].name}${sellBack>0?' (+'+sellBack+' from trade-in)':''}`,'#44ff88');
         saveGame();
@@ -6652,34 +6750,34 @@ function renderMarket(){
     }
     sgrid.appendChild(card);
   }
-  // Wingmen section (only visible when in carrier)
-  let wmSection=document.getElementById('wingmenSection');
+  // Drones section (only visible when in carrier)
+  let wmSection=document.getElementById('dronesSection');
   if(player.ship==='carrier'){
     if(!wmSection){
       wmSection=document.createElement('div');
-      wmSection.id='wingmenSection';
+      wmSection.id='dronesSection';
       wmSection.className='market-section';
       document.getElementById('market').insertBefore(wmSection,document.getElementById('sellRow'));
     }
-    const aliveWingmen=wingmen.filter(w=>!w.dead);
-    let wmHTML='<h3>✦ WINGMEN ('+aliveWingmen.length+'/'+MAX_WINGMEN+')</h3>';
+    const aliveDrones=drones.filter(w=>!w.dead);
+    let wmHTML='<h3>✦ DRONES ('+aliveDrones.length+'/'+MAX_DRONES+')</h3>';
     wmHTML+='<div class="ship-grid">';
-    for(let key in WINGMAN_TYPES){
-      const wt=WINGMAN_TYPES[key];
-      const canHire=aliveWingmen.length<MAX_WINGMEN&&player.credits>=wt.cost;
+    for(let key in DRONE_TYPES){
+      const wt=DRONE_TYPES[key];
+      const canHire=aliveDrones.length<MAX_DRONES&&player.credits>=wt.cost;
       const locked=!canHire;
       wmHTML+='<div class="ship-card'+(locked?' locked':'')+'" data-wm-type="'+key+'">';
       wmHTML+='<div class="card-name">'+wt.name+'</div>';
-      wmHTML+='<div class="ship-stats">Ship: '+SHIPS[wt.ship].name+'<br>HP:'+wt.hull+' Shield:'+wt.shield+'</div>';
+      wmHTML+='<div class="ship-stats">HP:'+wt.hull+' Shield:'+wt.shield+'<br>DMG:'+wt.dmg+'x Speed:'+wt.speed+'x</div>';
       wmHTML+='<div class="card-desc">'+wt.desc+'</div>';
       wmHTML+='<div class="card-cost">⬡ '+wt.cost+'</div>';
       wmHTML+='</div>';
     }
     wmHTML+='</div>';
-    if(aliveWingmen.length>0){
+    if(aliveDrones.length>0){
       wmHTML+='<div style="margin-top:10px;font-size:.7rem;color:rgba(255,200,100,.7)">';
-      wmHTML+='Active wingmen: ';
-      aliveWingmen.forEach(w=>{
+      wmHTML+='Active drones: ';
+      aliveDrones.forEach(w=>{
         wmHTML+='<span style="color:'+w.color+'">'+w.name+' (HP:'+Math.round(w.hp)+')</span> ';
       });
       wmHTML+='</div>';
@@ -6689,7 +6787,7 @@ function renderMarket(){
     wmSection.querySelectorAll('.ship-card:not(.locked)').forEach(card=>{
       card.onclick=()=>{
         const type=card.dataset.wmType;
-        hireWingman(type);
+        deployDrone(type);
         renderMarket();
       };
     });
@@ -6773,7 +6871,7 @@ function saveGame(){
       totalKills:player.totalKills,totalMined:player.totalMined,
       totalEarned:player.totalEarned,kills:player.kills,
       missiles:player.missiles||0,
-      wingmenTypes:wingmen.filter(w=>!w.dead).map(w=>w.wmType),
+      droneTypes:drones.filter(w=>!w.dead).map(w=>w.wmType),
       ts:Date.now()
     };
     localStorage.setItem(SAVE_KEY,JSON.stringify(data));
@@ -7023,23 +7121,23 @@ function connectSTDB(){
           npcHostRecheckTimer=0; // trigger immediate re-check
         });
         
-        // Wingman table callbacks — render other players' wingmen
-        const remoteWingmanMap=new Map(); // wingmanId → wingman object (for OTHER players' wingmen)
-        conn.db.wingman.onInsert((ctx,wm)=>{
+        // Drone table callbacks — render other players' drones
+        const remoteDroneMap=new Map(); // droneId → drone object (for OTHER players' drones)
+        conn.db.drone.onInsert((ctx,wm)=>{
           const myHex=stdbConn&&stdbConn.identity?stdbConn.identity.toHexString():'';
-          if(wm.ownerIdentityHex===myHex)return; // skip our own wingmen (we run them locally)
-          remoteWingmanMap.set(wm.id,{
+          if(wm.ownerIdentityHex===myHex)return; // skip our own drones (we run them locally)
+          remoteDroneMap.set(wm.id,{
             id:wm.id,name:wm.name,x:wm.x,y:wm.y,vx:wm.vx,vy:wm.vy,angle:wm.angle,
             ship:wm.ship,color:wm.color,hp:wm.hp,maxHp:wm.maxHp,shield:wm.shield,maxShield:wm.maxShield,
-            dead:wm.dead,state:wm.state,isWingman:true,isPlayer:false,isNPC:false,
+            dead:wm.dead,state:wm.state,isDrone:true,isPlayer:false,isNPC:false,
             cloaked:false,bounty:0,stunTimer:0,upgrades:{engine:2,laser:2,shields:2,cargo:1,scanner:0},
-            personality:'wingman',cargo:{},credits:0
+            personality:'drone',cargo:{},credits:0
           });
         });
-        conn.db.wingman.onUpdate((ctx,oldWm,newWm)=>{
+        conn.db.drone.onUpdate((ctx,oldWm,newWm)=>{
           const myHex=stdbConn&&stdbConn.identity?stdbConn.identity.toHexString():'';
           if(newWm.ownerIdentityHex===myHex)return;
-          const existing=remoteWingmanMap.get(newWm.id);
+          const existing=remoteDroneMap.get(newWm.id);
           if(existing){
             existing._tx=existing.x;existing._ty=existing.y;
             existing._nx=newWm.x;existing._ny=newWm.y;existing._t=0;
@@ -7048,11 +7146,11 @@ function connectSTDB(){
             existing.state=newWm.state;
           }
         });
-        conn.db.wingman.onDelete((ctx,wm)=>{
-          remoteWingmanMap.delete(wm.id);
+        conn.db.drone.onDelete((ctx,wm)=>{
+          remoteDroneMap.delete(wm.id);
         });
-        // Expose remoteWingmanMap for rendering
-        window._remoteWingmanMap=remoteWingmanMap;
+        // Expose remoteDroneMap for rendering
+        window._remoteDroneMap=remoteDroneMap;
 
         // Listen for Space Station table changes (server-authoritative HP)
         conn.db.space_station.onInsert((ctx,row)=>{
@@ -7093,8 +7191,8 @@ function connectSTDB(){
             if(player){
               console.log('[STDB] Joining game after subscription applied...');
               stdbJoinGame();
-              // Sync any wingmen restored from localStorage so other players can see them
-              syncExistingWingmenToServer();
+              // Sync any drones restored from localStorage so other players can see them
+              syncExistingDronesToServer();
             }
             // Check NPC host status from initial snapshot and claim if needed
             if(!npcHostCheckDone){
@@ -7163,11 +7261,11 @@ function connectSTDB(){
   }
 }
 
-// Sync locally-restored wingmen (from localStorage) to SpacetimeDB so other players can see them
-function syncExistingWingmenToServer(){
-  if(!stdbConn||!stdbConnected||wingmen.length===0)return;
-  console.log('[STDB] Syncing',wingmen.length,'existing wingmen to server...');
-  wingmen.forEach(w=>{
+// Sync locally-restored drones (from localStorage) to SpacetimeDB so other players can see them
+function syncExistingDronesToServer(){
+  if(!stdbConn||!stdbConnected||drones.length===0)return;
+  console.log('[STDB] Syncing',drones.length,'existing drones to server...');
+  drones.forEach(w=>{
     if(w.dead)return;
     stdbConn.reducers.spawnWingman({
         wingmanId:w.id,name:w.name,ship:w.ship,color:w.color,
@@ -7400,7 +7498,7 @@ function initialSyncNPCs(){
       shootCD:0,dead:sn.dead||false,respawnTimer:0,cloaked:false,bounty:0,
       personality:sn.personality,state:sn.state||'idle',target:null,stateTimer:1,
       thinkTimer:1,fleeHP:.25,isPlayer:false,isNPC:true,
-      isPolice:isPoliceNpc,isWingman:false,
+      isPolice:isPoliceNpc,isDrone:false,
       color:sn.color,stunTimer:sn.stunTimer||0,
       totalKills:sn.totalKills||0,totalMined:sn.totalMined||0,totalEarned:sn.totalEarned||0
     };
@@ -7864,7 +7962,7 @@ function updateMobileHUD(){
       ring.setAttribute('stroke','rgba(100,255,150,.6)');
     }
     // Show ability icon per ship
-    const icons={prospector:'⚡',hauler:'🧲',corsair:'🔥',sentinel:'🛡',phantom:'👻',carrier:'📢'};
+    const icons={prospector:'⚡',hauler:'🧲',corsair:'🔥',sentinel:'🛡',phantom:'👻',carrier:'🤖'};
     abBtn.firstChild.textContent=icons[player.ship]||'⚡';
   }
   // Portal button visibility
@@ -8064,7 +8162,7 @@ function gameLoop(timestamp){
     }
     if(gameState==='dead'&&player)player.respawnTimer-=dt;
     
-    updateNPCs(dt);updateDenPirates(dt);updateWingmen(dt);updatePolice(dt);updateTradeShip(dt);updateStationRespawns();updateProjectiles(dt);updateMissiles(dt);updateMissileLock(dt);updateLeviathan(dt);updateRemotePlayers(dt);updateRemoteProjectiles(dt);
+    updateNPCs(dt);updateDenPirates(dt);updateDrones(dt);updatePolice(dt);updateTradeShip(dt);updateStationRespawns();updateProjectiles(dt);updateMissiles(dt);updateMissileLock(dt);updateLeviathan(dt);updateRemotePlayers(dt);updateRemoteProjectiles(dt);
     // Decay minimap events
     for(let i=minimapEvents.length-1;i>=0;i--){minimapEvents[i].t+=dt;if(minimapEvents[i].t>=minimapEvents[i].maxT)minimapEvents.splice(i,1);}updateLoot(dt);
     updateAggressorDecay(dt);updateAsteroidRespawn(dt);updateParticles(dt);updateTrails(dt);updateCamera(dt);
@@ -8090,10 +8188,10 @@ function gameLoop(timestamp){
     drawAllTrails(); // Tron-style light trails behind all ships
     npcs.forEach(n=>{if(!n.isPolice&&!n.isTradeShip)drawShipEntity(n);});
     policeUnits.forEach(p=>{if(!p.dead)drawShipEntity(p);});
-    wingmen.forEach(w=>{if(!w.dead)drawShipEntity(w);});
-    // Draw remote players' wingmen too
-    if(window._remoteWingmanMap){
-      for(const rw of window._remoteWingmanMap.values()){
+    drones.forEach(w=>{if(!w.dead)drawShipEntity(w);});
+    // Draw remote players' drones too
+    if(window._remoteDroneMap){
+      for(const rw of window._remoteDroneMap.values()){
         if(!rw.dead){
           // Interpolate position
           if(rw._t!==undefined&&rw._t<1){rw._t+=lastDt*10;rw.x=lerp(rw._tx||rw.x,rw._nx||rw.x,Math.min(1,rw._t));rw.y=lerp(rw._ty||rw.y,rw._ny||rw.y,Math.min(1,rw._t));}
@@ -8101,15 +8199,15 @@ function gameLoop(timestamp){
         }
       }
     }
-    // Draw wingman formation lines to player
-    if(player&&!player.dead&&wingmen.length>0){
-      wingmen.forEach(w=>{
+    // Draw drone formation lines to player
+    if(player&&!player.dead&&drones.length>0){
+      drones.forEach(w=>{
         if(w.dead)return;
         const ws=worldToScreen(w.x,w.y);const ps=worldToScreen(player.x,player.y);
         ctx.strokeStyle='rgba(255,200,100,.12)';ctx.lineWidth=1;ctx.setLineDash([4,8]);
         ctx.beginPath();ctx.moveTo(ws.x,ws.y);ctx.lineTo(ps.x,ps.y);ctx.stroke();
         ctx.setLineDash([]);
-        // Wingman indicator diamond above name
+        // Drone indicator diamond above name
         ctx.fillStyle='rgba(255,200,100,.7)';ctx.font='bold 9px Courier New';ctx.textAlign='center';
         ctx.fillText('◆ WING',ws.x,ws.y-(SHIPS[w.ship].hull/30+12)-18);
       });
@@ -8243,11 +8341,11 @@ function startGame(name,color,saved){
     player.totalMined=saved.totalMined||0;
     player.totalEarned=saved.totalEarned||0;
     player.kills=saved.kills||0;
-    // Restore wingmen if player is in a carrier
-    if(saved.wingmenTypes&&saved.ship==='carrier'){
-      wingmen=[];
-      saved.wingmenTypes.forEach(wType=>{
-        if(WINGMAN_TYPES[wType])wingmen.push(createWingman(wType));
+    // Restore drones if player is in a carrier
+    if(saved.droneTypes&&saved.ship==='carrier'){
+      drones=[];
+      saved.droneTypes.forEach(wType=>{
+        if(DRONE_TYPES[wType])drones.push(createDrone(wType));
       });
     }
   }
@@ -8303,8 +8401,16 @@ function respawn(){
   input.mouseDown=false;input.spaceDown=false;
   // Reset aggressor status on respawn
   clearAggressor(player);
-  // Wingmen are already destroyed on death — ensure clean state
-  wingmen=[];wingmanRallyTimer=0;wingmanRallyTarget=null;
+  // Drones are already destroyed on death — ensure clean state
+  drones=[];droneRallyTimer=0;droneRallyTarget=null;
+  // Drone Carrier respawns with a free Strike Drone
+  if(player.ship==='carrier'){
+    const freeDrone=createDrone('fighter');
+    drones.push(freeDrone);
+    if(stdbConn&&stdbConnected){
+      stdbConn.reducers.spawnWingman({wingmanId:freeDrone.id,name:freeDrone.name,ship:freeDrone.ship,color:freeDrone.color,wmType:'fighter',hp:freeDrone.hp,maxHp:freeDrone.maxHp,shield:freeDrone.shield,maxShield:freeDrone.maxShield}).catch(()=>{});
+    }
+  }
   // Clear any in-flight projectiles targeting us (NPC bullets etc.)
   for(let i=projectiles.length-1;i>=0;i--){
     if(!projectiles[i].isPlayerOwned)projectiles.splice(i,1);
