@@ -1058,7 +1058,7 @@ function createTradeShip(){
       {offsetX:160,offsetY:-40,angle:0,targetId:null,cooldown:0},
       {offsetX:160,offsetY:40,angle:0,targetId:null,cooldown:0}
     ],
-    dead:false,deathTimer:0,respawnTimer:0,
+    dead:false,deathTimer:0,respawnTimer:0,lootDropped:false,
     isTradeShip:true,isNPC:true,isPolice:false,isWingman:false,isPlayer:false,
     personality:'tradeShip',state:'orbit',
     name:'Trade Ship',color:TRADE_SHIP_COLOR,
@@ -1094,6 +1094,17 @@ function spawnPolice(){
 // ═══════════════════════════════════════════
 function updateTradeShip(dt){
   if(!tradeShip)return;
+  // Non-host in multiplayer: position/HP comes from server interpolation
+  if(stdbConn&&stdbConnected&&!isNpcHost){
+    // Derive angles from interpolated position (for drawing)
+    if(!tradeShip.dead){
+      tradeShip.orbitAngle=Math.atan2(tradeShip.y,tradeShip.x);
+      if(tradeShip.orbitAngle<0)tradeShip.orbitAngle+=Math.PI*2;
+      tradeShip.angle=tradeShip.orbitAngle+Math.PI/2;
+    }
+    return; // Everything else (regen, respawn, turrets) is host-authoritative
+  }
+  // Host or offline: run full trade ship logic
   // Respawn logic
   if(tradeShip.dead){
     tradeShip.respawnTimer-=dt;
@@ -1102,12 +1113,9 @@ function updateTradeShip(dt){
       tradeShip.dead=false;
       tradeShip.hp=CFG.TRADE_SHIP_HP;tradeShip.shield=CFG.TRADE_SHIP_SHIELD;
       tradeShip.turrets.forEach(t=>{t.cooldown=0;t.targetId=null;});
-      notify('📡 The Trade Ship has arrived!','#ffaa22');
-      SFX.warp();
-      // Warp-in burst
-      if(distToPlayer(tradeShip.x,tradeShip.y)<FX_RANGE*2){
-        emitBurst(tradeShip.x,tradeShip.y,40,300,'#ffaa22',4,1,12);
-      }
+      tradeShip.lootDropped=false;
+      onTradeShipRespawnFX(tradeShip.x,tradeShip.y);
+      if(isNpcHost)serverRespawnNPC(tradeShip);
     }else if(tradeShip.respawnTimer<30&&tradeShip.respawnTimer+dt>=30){
       notify('📡 Trade Ship signal detected — arrival in 30s','#ffcc44');
     }
@@ -2173,8 +2181,6 @@ function handleNpcInsert(sn){
     // Already have this NPC — treat as update
     handleNpcUpdateInner(existing,sn,now);
   }else{
-    // Trade ship is managed locally (deterministic orbit) — skip server duplicates
-    if(sn.personality==='tradeShip')return;
     // Brand new NPC from server
     const isPoliceNpc=sn.personality==='policeCarrier'||sn.personality==='policeFighter';
     const obj={
@@ -2210,10 +2216,21 @@ function handleNpcUpdate(oldNpc,newNpc){
         localNpc.hp=newNpc.hp;localNpc.shield=Math.max(0,newNpc.shield);
       }
       if(newNpc.dead&&!localNpc.dead){
-        localNpc.dead=true;localNpc.hp=0;localNpc.shield=0;localNpc.respawnTimer=CFG.RESPAWN_TIME;
-        const near=distToPlayer(localNpc.x,localNpc.y)<FX_RANGE;
-        if(near){emitBurst(localNpc.x,localNpc.y,30,150,localNpc.color||'#ff5555',3,.7,12);emitBurst(localNpc.x,localNpc.y,15,80,'#fff',2,.4,8);SFX.explode();}
-        minimapEvents.push({x:localNpc.x,y:localNpc.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
+        if(localNpc.isTradeShip){
+          // Trade ship uses its own long respawn timer (120s, not generic 3s)
+          localNpc.dead=true;localNpc.hp=0;localNpc.shield=0;
+          localNpc.deathTimer=3;
+          localNpc.respawnTimer=CFG.TRADE_SHIP_RESPAWN;
+          onTradeShipDeathFX();
+          onTradeShipDeathLoot(); // Host only drops loot
+        }else{
+          localNpc.dead=true;localNpc.hp=0;localNpc.shield=0;
+          localNpc.respawnTimer=localNpc.personality==='denPirate'?
+            rand(CFG.DEN_RESPAWN_MIN,CFG.DEN_RESPAWN_MAX):CFG.RESPAWN_TIME;
+          const near=distToPlayer(localNpc.x,localNpc.y)<FX_RANGE;
+          if(near){emitBurst(localNpc.x,localNpc.y,30,150,localNpc.color||'#ff5555',3,.7,12);emitBurst(localNpc.x,localNpc.y,15,80,'#fff',2,.4,8);SFX.explode();}
+          minimapEvents.push({x:localNpc.x,y:localNpc.y,color:'#ff4444',t:0,maxT:1.5,type:'explosion'});
+        }
       }
     }
     return;
@@ -2225,6 +2242,11 @@ function handleNpcUpdate(oldNpc,newNpc){
     // Don't have it yet — treat as insert
     handleNpcInsert(newNpc);
     return;
+  }
+  // Non-host: detect trade ship death/respawn transitions for FX
+  if(existing.isTradeShip){
+    if(newNpc.dead&&!existing.dead)onTradeShipDeathFX();
+    if(!newNpc.dead&&existing.dead)onTradeShipRespawnFX(newNpc.x,newNpc.y);
   }
   handleNpcUpdateInner(existing,newNpc,now);
 }
@@ -2241,6 +2263,7 @@ function handleNpcUpdateInner(existing,sn,now){
   existing.dead=sn.dead||false;existing.state=sn.state||'idle';
   existing.personality=sn.personality;existing.ship=sn.ship;
   existing.isPolice=sn.personality==='policeCarrier'||sn.personality==='policeFighter';
+  existing.isTradeShip=sn.personality==='tradeShip';
   existing.color=sn.color;existing.name=sn.name;
   existing.stunTimer=sn.stunTimer||0;
   existing.totalKills=sn.totalKills||0;existing.totalMined=sn.totalMined||0;
@@ -2257,8 +2280,6 @@ function handleNpcDelete(sn){
 function rebuildNpcsFromServerMap(){
   if(isNpcHost)return;
   npcs=Array.from(npcServerMap.values());
-  // Re-add local trade ship (it's deterministic and not in server map)
-  if(tradeShip&&!npcs.includes(tradeShip))npcs.push(tradeShip);
   // Rebuild denPirates array and assign denIndex from nearest den
   rebuildDenPirateRefs();
 }
@@ -2281,6 +2302,8 @@ function rebuildDenPirateRefs(){
   });
   // Rebuild police from synced NPCs — reconstruct isPolice flag and carrierRef links
   rebuildPoliceRefs();
+  // Rebuild trade ship ref from synced NPCs
+  rebuildTradeShipRef();
 }
 
 function rebuildPoliceRefs(){
@@ -2313,6 +2336,34 @@ function rebuildPoliceRefs(){
     if(carrier){f.carrierRef=carrier;f.carrierNpcId=carrier.npcId;}
     policeUnits.push(f);
   });
+}
+
+function rebuildTradeShipRef(){
+  const tsNpc=npcs.find(n=>n.personality==='tradeShip');
+  if(!tsNpc){tradeShip=null;return;}
+  tsNpc.isTradeShip=true;
+  tsNpc.isNPC=true;tsNpc.isPolice=false;tsNpc.isWingman=false;tsNpc.isPlayer=false;
+  tsNpc.id='trade_ship';
+  tsNpc.color=TRADE_SHIP_COLOR;
+  tsNpc.ship='carrier';
+  // Derive orbit from server position
+  tsNpc.orbitAngle=Math.atan2(tsNpc.y,tsNpc.x);
+  if(tsNpc.orbitAngle<0)tsNpc.orbitAngle+=Math.PI*2;
+  tsNpc.orbitSpeed=0.015;
+  tsNpc.angle=tsNpc.orbitAngle+Math.PI/2;
+  // Reconstruct turrets if missing
+  if(!tsNpc.turrets){
+    tsNpc.turrets=[
+      {offsetX:-160,offsetY:-40,angle:0,targetId:null,cooldown:0},
+      {offsetX:-160,offsetY:40,angle:0,targetId:null,cooldown:0},
+      {offsetX:160,offsetY:-40,angle:0,targetId:null,cooldown:0},
+      {offsetX:160,offsetY:40,angle:0,targetId:null,cooldown:0}
+    ];
+  }
+  if(tsNpc.deathTimer===undefined)tsNpc.deathTimer=0;
+  if(tsNpc.respawnTimer===undefined)tsNpc.respawnTimer=0;
+  tsNpc.lootDropped=false;
+  tradeShip=tsNpc;
 }
 
 // Initialize just the den landmark positions (no pirates) — for non-host clients
@@ -2356,7 +2407,6 @@ function interpolateRemoteNPCs(dt){
 function syncNPCsToServer(){
   if(!stdbConn||!stdbConnected||!isNpcHost)return;
   npcs.forEach(n=>{
-    if(n.isTradeShip)return; // Trade ship orbit is deterministic — no server sync needed
     try{
       stdbConn.reducers.updateNpc({
         npcId:n.npcId,
@@ -4415,6 +4465,24 @@ function updateProjectiles(dt){
         hit=true;
       }
     });
+    // vs trade ship (separate larger hitbox, routed through damageNpc)
+    if(!hit&&tradeShip&&!tradeShip.dead&&p.ownerId!=='trade_ship'&&!isTSProj){
+      if(dist(p.x,p.y,tradeShip.x,tradeShip.y)<220){
+        const nearPlayer=distToPlayer(p.x,p.y)<FX_RANGE;
+        const attacker=player&&player.id===p.ownerId?player:null;
+        checkAggressionRules(attacker,tradeShip);
+        if(stdbConn&&stdbConnected&&p.isPlayerOwned){
+          try{stdbConn.reducers.damageNpc({
+            npcId:tradeShip.npcId,damage:p.dmg,
+            attackerName:player?player.name:'Unknown'
+          });}catch(e){}
+          if(nearPlayer){emitBurst(p.x,p.y,8,80,p.color,2,.3,8);SFX.hit();shake(2);}
+        }else{
+          applyDamage(tradeShip,p.dmg,p.ownerId,nearPlayer);
+        }
+        hit=true;
+      }
+    }
     if(hit)projectiles.splice(i,1);
   }
 }
@@ -4718,8 +4786,8 @@ function updateMissiles(dt){
     if(hitSomething){missiles.splice(i,1);continue;}
     // vs entities
     const targets2=m.isPlayerOwned?
-      [...npcs.filter(n=>!n.dead&&n.id!==m.ownerId),...remotePlayers.filter(rp=>!rp.dead)]:
-      [player,...npcs.filter(n=>!n.dead&&n.id!==m.ownerId),...wingmen.filter(w=>!w.dead)].filter(Boolean);
+      [...npcs.filter(n=>!n.dead&&n.id!==m.ownerId&&!n.isTradeShip),...remotePlayers.filter(rp=>!rp.dead)]:
+      [player,...npcs.filter(n=>!n.dead&&n.id!==m.ownerId&&!n.isTradeShip),...wingmen.filter(w=>!w.dead)].filter(Boolean);
     for(const t2 of targets2){
       if(t2.dead||t2.id===m.ownerId)continue;
       if(t2.isPlayer&&t2.invulnTimer>0)continue;
@@ -4739,10 +4807,17 @@ function updateMissiles(dt){
       }
     }
     if(hitSomething){missiles.splice(i,1);continue;}
-    // vs trade ship (if attacker is aggressor)
+    // vs trade ship (separate larger hitbox, routed through damageNpc)
     if(tradeShip&&!tradeShip.dead&&m.ownerId!=='trade_ship'){
       if(dist(m.x,m.y,tradeShip.x,tradeShip.y)<220){
-        applyDamage(tradeShip,m.dmg,m.ownerId,distToPlayer(tradeShip.x,tradeShip.y)<FX_RANGE);
+        if(stdbConn&&stdbConnected){
+          try{stdbConn.reducers.damageNpc({
+            npcId:tradeShip.npcId,damage:m.dmg,
+            attackerName:player?player.name:'Unknown'
+          });}catch(e){}
+        }else{
+          applyDamage(tradeShip,m.dmg,m.ownerId,distToPlayer(tradeShip.x,tradeShip.y)<FX_RANGE);
+        }
         missileExplode(m);missiles.splice(i,1);continue;
       }
     }
@@ -5198,14 +5273,11 @@ function moveLeviathan(lev,tx,ty,speed,dt){
 
 
 // ═══════════════════════════════════════════
-// Trade Ship — Death & Loot
+// Trade Ship — Death FX, Loot & Respawn Helpers
 // ═══════════════════════════════════════════
-function killTradeShip(attackerId){
-  if(!tradeShip||tradeShip.dead)return;
-  tradeShip.dead=true;
+function onTradeShipDeathFX(){
+  if(!tradeShip)return;
   tradeShip.deathTimer=3;
-  tradeShip.respawnTimer=CFG.TRADE_SHIP_RESPAWN;
-  // Massive explosion
   const near=distToPlayer(tradeShip.x,tradeShip.y)<FX_RANGE*2;
   if(near){
     emitBurst(tradeShip.x,tradeShip.y,60,400,'#ffaa22',5,1.2,15);
@@ -5214,24 +5286,43 @@ function killTradeShip(attackerId){
     SFX.explode();shake(15);
   }
   notify('⚠ The Trade Ship has been destroyed!','#ff4444');
-  // Close market for everyone
   if(tradeShipMarketOpen)closeTradeShipMarket();
-  // Drop tons of widely scattered voidstone
+  minimapEvents.push({x:tradeShip.x,y:tradeShip.y,color:'#ffaa22',t:0,maxT:3,type:'explosion'});
+}
+
+function onTradeShipDeathLoot(){
+  if(!tradeShip||tradeShip.lootDropped)return;
+  tradeShip.lootDropped=true;
   const voidTotal=randInt(20,30);
   const voidDrops=Math.min(voidTotal,randInt(8,14));
   let voidRemaining=voidTotal;
   for(let d=0;d<voidDrops;d++){
     const amt=d===voidDrops-1?voidRemaining:Math.max(1,randInt(1,Math.ceil(voidRemaining/(voidDrops-d))));
     voidRemaining-=amt;if(amt<=0)continue;
-    const ang=rand(0,Math.PI*2);
-    const spd=rand(80,250); // Widely scattered
-    const vx2=Math.cos(ang)*spd;
-    const vy2=Math.sin(ang)*spd;
-    const vl=createLoot(tradeShip.x,tradeShip.y,{voidstone:amt},vx2,vy2);
+    const ang=rand(0,Math.PI*2);const spd=rand(80,250);
+    const vl=createLoot(tradeShip.x,tradeShip.y,{voidstone:amt},Math.cos(ang)*spd,Math.sin(ang)*spd);
     if(vl)loot.push(vl);
   }
-  minimapEvents.push({x:tradeShip.x,y:tradeShip.y,color:'#ffaa22',t:0,maxT:3,type:'explosion'});
-  // Kill credit
+}
+
+function onTradeShipRespawnFX(x,y){
+  notify('📡 The Trade Ship has arrived!','#ffaa22');
+  SFX.warp();
+  if(distToPlayer(x||0,y||0)<FX_RANGE*2){
+    emitBurst(x||0,y||0,40,300,'#ffaa22',4,1,12);
+  }
+}
+
+// ═══════════════════════════════════════════
+// Trade Ship — Death (offline/single-player kill path)
+// ═══════════════════════════════════════════
+function killTradeShip(attackerId){
+  if(!tradeShip||tradeShip.dead)return;
+  tradeShip.dead=true;
+  tradeShip.respawnTimer=CFG.TRADE_SHIP_RESPAWN;
+  onTradeShipDeathFX();
+  // Only drop loot in offline/single-player mode (online: host handles via server callback)
+  if(!stdbConn||!stdbConnected)onTradeShipDeathLoot();
   if(attackerId===player?.id){
     notify('☠ TRADE SHIP DESTROYED — loot the wreckage!','#ffaa22');
     player.totalKills++;
