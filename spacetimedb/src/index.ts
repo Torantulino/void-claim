@@ -694,6 +694,9 @@ export const submit_score = spacetimedb.reducer(
 // ≈ 200 × 60 = 12000 credits, with generous headroom for trade ship bonus (1.5x).
 const MAX_SALE_VALUE = BigInt(20000);
 
+// Valid sale types — reject anything else to prevent spoofed bonus indicators
+const VALID_SALE_TYPES = ['earth', 'trade_ship'] as const;
+
 export const sell_ore = spacetimedb.reducer(
   {
     amount: t.u64(),     // total credit value of the sale
@@ -704,6 +707,11 @@ export const sell_ore = spacetimedb.reducer(
   (ctx, args) => {
     const p = ctx.db.player.identity.find(ctx.sender);
     if (!p || p.dead) return;
+
+    // Validate sale_type
+    const saleType = VALID_SALE_TYPES.includes(args.sale_type as any)
+      ? args.sale_type
+      : 'earth';
 
     // Clamp to reasonable maximum to prevent absurd values
     const saleValue = args.amount > MAX_SALE_VALUE ? MAX_SALE_VALUE : args.amount;
@@ -721,7 +729,7 @@ export const sell_ore = spacetimedb.reducer(
       seller_name: p.name,
       seller_type: 'player',
       amount_earned: saleValue,
-      sale_type: args.sale_type,
+      sale_type: saleType,
       x: args.x,
       y: args.y,
       timestamp: BigInt(Date.now()),
@@ -742,14 +750,26 @@ export const npc_sell_ore = spacetimedb.reducer(
     const npc = ctx.db.npc.id.find(args.npc_id);
     if (!npc) return;
 
-    // Verify caller is the NPC host
+    // Verify caller is the NPC host (field is host_identity, a string)
     const host = ctx.db.npc_host.id.find(0);
-    if (!host || host.identity.toHexString() !== ctx.sender.toHexString()) return;
+    if (!host || host.host_identity !== ctx.sender.toHexString()) return;
 
-    // Update NPC earnings
+    // Validate sale_type
+    const saleType = VALID_SALE_TYPES.includes(args.sale_type as any)
+      ? args.sale_type
+      : 'earth';
+
+    // Clamp to reasonable maximum (same cap as player sales)
+    const saleValue = args.amount > MAX_SALE_VALUE ? MAX_SALE_VALUE : args.amount;
+    if (saleValue <= BigInt(0)) return;
+
+    // Update NPC earnings (clamp to u32 max to prevent overflow)
+    const MAX_U32 = 4294967295;
+    const newEarned = Math.min(npc.total_earned + Number(saleValue), MAX_U32);
+
     ctx.db.npc.id.update({
       ...npc,
-      total_earned: npc.total_earned + Number(args.amount),
+      total_earned: newEarned,
       last_update: BigInt(Date.now()),
     });
 
@@ -758,8 +778,8 @@ export const npc_sell_ore = spacetimedb.reducer(
       seller_id: `npc_${args.npc_id}`,
       seller_name: npc.name,
       seller_type: 'npc',
-      amount_earned: args.amount,
-      sale_type: args.sale_type,
+      amount_earned: saleValue,
+      sale_type: saleType,
       x: args.x,
       y: args.y,
       timestamp: BigInt(Date.now()),

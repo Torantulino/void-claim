@@ -1,0 +1,2 @@
+# Mark bundled output as generated so GitHub collapses it in PRs
+dist/** linguist-generated=true

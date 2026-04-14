@@ -6902,7 +6902,7 @@ function killLeviathan(lev){
   addFloatingText(lev.x,lev.y,'+500 CREDITS','#ff44ff',2.8);
   if(player){player.credits+=500;player.totalEarned+=500;
     // Server-authoritative earnings: notify server of leviathan kill reward
-    if(stdbConn&&stdbConnected){stdbConn.reducers.sellOre({amount:BigInt(500)}).catch(()=>{});}}
+    if(stdbConn&&stdbConnected){stdbConn.reducers.sellOre({amount:BigInt(500), sale_type:'earth', x:player.x, y:player.y}).catch(()=>{});}}
   // Scatter voidstone as individual loot drops with outward velocity
   const voidTotal=randInt(5,12);
   const voidDrops=Math.min(voidTotal,randInt(4,7));
@@ -7790,18 +7790,11 @@ function connectSTDB(){
           if(sale.seller_type === 'player' && sale.seller_id === conn.identity?.toHexString()) {
             return;
           }
-          
-          const multiplier = sale.sale_type === 'trade_ship' ? '1.5x' : '';
-          const bonus = multiplier ? ` (${multiplier})` : '';
+          const bonus = sale.sale_type === 'trade_ship' ? ' (1.5x)' : '';
           const credits = Number(sale.amount_earned).toLocaleString();
-          
-          if(sale.seller_type === 'npc') {
-            notify(`💰 ${sale.seller_name} earned $${credits}${bonus}`, '#44ff66');
-            if(soundEnabled) SFX.sell();
-          } else {
-            notify(`💰 ${sale.seller_name} earned $${credits}${bonus}`, '#66ff44');
-            if(soundEnabled) SFX.sell();
-          }
+          const color = sale.seller_type === 'npc' ? '#44ff66' : '#66ff44';
+          notify(`💰 ${sale.seller_name} earned $${credits}${bonus}`, color);
+          if(soundEnabled) SFX.sell();
         });
         
         // Listen for chat messages
