@@ -3263,7 +3263,11 @@ function updateNPCs(dt){
         }
         n.npcLevel=0;n.sellAccum=0;n.killsSinceSpawn=0;
         const base=SHIPS[n.ship];
-        const d=rand(CFG.GREEN_R,CFG.RED_R);const a=rand(0,Math.PI*2);
+        // Respawn in greed-appropriate zone (same as createNPC)
+        const _g=n.greed||0;const _isMiner=n.personality==='miner';
+        const _minD=_isMiner?(_g<.3?CFG.GREEN_R:_g<.7?CFG.YELLOW_R*.6:CFG.YELLOW_R):CFG.GREEN_R;
+        const _maxD=_isMiner?(_g<.3?CFG.YELLOW_R*.8:_g<.7?CFG.RED_R*.7:CFG.RED_R):CFG.RED_R;
+        const d=rand(_minD,_maxD);const a=rand(0,Math.PI*2);
         n.x=Math.cos(a)*d;n.y=Math.sin(a)*d;n.vx=0;n.vy=0;
         n.hp=base.hull;n.maxHp=base.hull;n.shield=base.shield;n.maxShield=base.shield;
         n.dead=false;n.cargo={};n.state='idle';n.bounty=0;n.stunTimer=0;
@@ -3390,7 +3394,7 @@ function npcThink(n){
     let bestAst=null,bestScore=-Infinity;
     const g=n.greed||0;
     // Greed determines max range NPC will travel to mine
-    const searchRange=1500+g*3000; // 1500 (cautious) to 4500 (greedy)
+    const searchRange=3000+g*1500; // 3000 (cautious, matches original) to 4500 (greedy)
     // Greed-based zone limits: cautious stays in green, greedy pushes to red
     const maxMineR=g<.3?CFG.YELLOW_R*.8:g<.7?CFG.RED_R*.7:CFG.RED_R;
     asteroids.forEach(a=>{
