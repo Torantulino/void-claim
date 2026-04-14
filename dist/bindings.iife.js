@@ -7903,6 +7903,12 @@ ${ty.variants.map(
   // src/claim_npc_host_reducer.ts
   var claim_npc_host_reducer_default = {};
 
+  // src/damage_asteroid_reducer.ts
+  var damage_asteroid_reducer_default = {
+    asteroidId: t.u32(),
+    damage: t.f32()
+  };
+
   // src/damage_npc_reducer.ts
   var damage_npc_reducer_default = {
     npcId: t.u32(),
@@ -7980,6 +7986,11 @@ ${ty.variants.map(
     victimName: t.string()
   };
 
+  // src/respawn_asteroid_reducer.ts
+  var respawn_asteroid_reducer_default = {
+    asteroidId: t.u32()
+  };
+
   // src/respawn_npc_reducer.ts
   var respawn_npc_reducer_default = {
     npcId: t.u32(),
@@ -7996,6 +8007,9 @@ ${ty.variants.map(
   var respawn_station_reducer_default = {
     stationId: t.u32()
   };
+
+  // src/seed_asteroids_reducer.ts
+  var seed_asteroids_reducer_default = {};
 
   // src/seed_world_reducer.ts
   var seed_world_reducer_default = {};
@@ -8078,7 +8092,8 @@ ${ty.variants.map(
     stunTimer: t.f32(),
     totalKills: t.u32(),
     totalMined: t.u32(),
-    totalEarned: t.u32()
+    totalEarned: t.u32(),
+    miningTargetId: t.i32()
   };
 
   // src/update_player_reducer.ts
@@ -8113,6 +8128,20 @@ ${ty.variants.map(
     hp: t.f32(),
     shield: t.f32()
   };
+
+  // src/asteroid_table.ts
+  var asteroid_table_default = t.row({
+    id: t.u32().primaryKey(),
+    x: t.f32(),
+    y: t.f32(),
+    oreType: t.u32().name("ore_type"),
+    size: t.f32(),
+    hp: t.f32(),
+    maxHp: t.f32().name("max_hp"),
+    alive: t.bool(),
+    respawnAt: t.u64().name("respawn_at"),
+    rotSpeed: t.f32().name("rot_speed")
+  });
 
   // src/chat_message_table.ts
   var chat_message_table_default = t.row({
@@ -8165,6 +8194,7 @@ ${ty.variants.map(
     totalMined: t.u32().name("total_mined"),
     totalEarned: t.u32().name("total_earned"),
     stunTimer: t.f32().name("stun_timer"),
+    miningTargetId: t.i32().name("mining_target_id"),
     lastUpdate: t.u64().name("last_update")
   });
 
@@ -8263,6 +8293,17 @@ ${ty.variants.map(
 
   // src/index.ts
   var tablesSchema = schema({
+    asteroid: table({
+      name: "asteroid",
+      indexes: [
+        { accessor: "id", name: "asteroid_id_idx_btree", algorithm: "btree", columns: [
+          "id"
+        ] }
+      ],
+      constraints: [
+        { name: "asteroid_id_key", constraint: "unique", columns: ["id"] }
+      ]
+    }, asteroid_table_default),
     chat_message: table({
       name: "chat_message",
       indexes: [
@@ -8376,6 +8417,7 @@ ${ty.variants.map(
   });
   var reducersSchema = reducers(
     reducerSchema("claim_npc_host", claim_npc_host_reducer_default),
+    reducerSchema("damage_asteroid", damage_asteroid_reducer_default),
     reducerSchema("damage_npc", damage_npc_reducer_default),
     reducerSchema("damage_station", damage_station_reducer_default),
     reducerSchema("damage_wingman", damage_wingman_reducer_default),
@@ -8389,9 +8431,11 @@ ${ty.variants.map(
     reducerSchema("prune_events", prune_events_reducer_default),
     reducerSchema("prune_projectiles", prune_projectiles_reducer_default),
     reducerSchema("report_kill", report_kill_reducer_default),
+    reducerSchema("respawn_asteroid", respawn_asteroid_reducer_default),
     reducerSchema("respawn_npc", respawn_npc_reducer_default),
     reducerSchema("respawn_player", respawn_player_reducer_default),
     reducerSchema("respawn_station", respawn_station_reducer_default),
+    reducerSchema("seed_asteroids", seed_asteroids_reducer_default),
     reducerSchema("seed_world", seed_world_reducer_default),
     reducerSchema("sell_ore", sell_ore_reducer_default),
     reducerSchema("send_chat", send_chat_reducer_default),

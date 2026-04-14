@@ -11,20 +11,5 @@ import {
 } from "spacetimedb";
 
 export default {
-  npcId: __t.u32(),
-  x: __t.f32(),
-  y: __t.f32(),
-  vx: __t.f32(),
-  vy: __t.f32(),
-  angle: __t.f32(),
-  state: __t.string(),
-  hp: __t.f32(),
-  shield: __t.f32(),
-  dead: __t.bool(),
-  cargoUsed: __t.u32(),
-  stunTimer: __t.f32(),
-  totalKills: __t.u32(),
-  totalMined: __t.u32(),
-  totalEarned: __t.u32(),
-  miningTargetId: __t.i32(),
+  asteroidId: __t.u32(),
 };

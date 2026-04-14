@@ -10,21 +10,15 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default {
-  npcId: __t.u32(),
+export default __t.row({
+  id: __t.u32().primaryKey(),
   x: __t.f32(),
   y: __t.f32(),
-  vx: __t.f32(),
-  vy: __t.f32(),
-  angle: __t.f32(),
-  state: __t.string(),
+  oreType: __t.u32().name("ore_type"),
+  size: __t.f32(),
   hp: __t.f32(),
-  shield: __t.f32(),
-  dead: __t.bool(),
-  cargoUsed: __t.u32(),
-  stunTimer: __t.f32(),
-  totalKills: __t.u32(),
-  totalMined: __t.u32(),
-  totalEarned: __t.u32(),
-  miningTargetId: __t.i32(),
-};
+  maxHp: __t.f32().name("max_hp"),
+  alive: __t.bool(),
+  respawnAt: __t.u64().name("respawn_at"),
+  rotSpeed: __t.f32().name("rot_speed"),
+});

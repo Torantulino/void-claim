@@ -32,5 +32,6 @@ export default __t.row({
   totalMined: __t.u32().name("total_mined"),
   totalEarned: __t.u32().name("total_earned"),
   stunTimer: __t.f32().name("stun_timer"),
+  miningTargetId: __t.i32().name("mining_target_id"),
   lastUpdate: __t.u64().name("last_update"),
 });

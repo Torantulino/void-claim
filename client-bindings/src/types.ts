@@ -10,6 +10,20 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
+export const Asteroid = __t.object("Asteroid", {
+  id: __t.u32(),
+  x: __t.f32(),
+  y: __t.f32(),
+  oreType: __t.u32(),
+  size: __t.f32(),
+  hp: __t.f32(),
+  maxHp: __t.f32(),
+  alive: __t.bool(),
+  respawnAt: __t.u64(),
+  rotSpeed: __t.f32(),
+});
+export type Asteroid = __Infer<typeof Asteroid>;
+
 export const ChatMessage = __t.object("ChatMessage", {
   id: __t.u64(),
   sender: __t.string(),
@@ -60,6 +74,7 @@ export const Npc = __t.object("Npc", {
   totalMined: __t.u32(),
   totalEarned: __t.u32(),
   stunTimer: __t.f32(),
+  miningTargetId: __t.i32(),
   lastUpdate: __t.u64(),
 });
 export type Npc = __Infer<typeof Npc>;

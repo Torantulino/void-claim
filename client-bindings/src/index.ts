@@ -35,6 +35,7 @@ import {
 
 // Import all reducer arg schemas
 import ClaimNpcHostReducer from "./claim_npc_host_reducer";
+import DamageAsteroidReducer from "./damage_asteroid_reducer";
 import DamageNpcReducer from "./damage_npc_reducer";
 import DamageStationReducer from "./damage_station_reducer";
 import DamageWingmanReducer from "./damage_wingman_reducer";
@@ -48,9 +49,11 @@ import LeaveGameReducer from "./leave_game_reducer";
 import PruneEventsReducer from "./prune_events_reducer";
 import PruneProjectilesReducer from "./prune_projectiles_reducer";
 import ReportKillReducer from "./report_kill_reducer";
+import RespawnAsteroidReducer from "./respawn_asteroid_reducer";
 import RespawnNpcReducer from "./respawn_npc_reducer";
 import RespawnPlayerReducer from "./respawn_player_reducer";
 import RespawnStationReducer from "./respawn_station_reducer";
+import SeedAsteroidsReducer from "./seed_asteroids_reducer";
 import SeedWorldReducer from "./seed_world_reducer";
 import SellOreReducer from "./sell_ore_reducer";
 import SendChatReducer from "./send_chat_reducer";
@@ -65,6 +68,7 @@ import UpdateWingmanReducer from "./update_wingman_reducer";
 // Import all procedure arg schemas
 
 // Import all table schema definitions
+import AsteroidRow from "./asteroid_table";
 import ChatMessageRow from "./chat_message_table";
 import KillEventRow from "./kill_event_table";
 import LeaderboardEntryRow from "./leaderboard_entry_table";
@@ -80,6 +84,17 @@ import WorldStateRow from "./world_state_table";
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
+  asteroid: __table({
+    name: 'asteroid',
+    indexes: [
+      { accessor: 'id', name: 'asteroid_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'asteroid_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, AsteroidRow),
   chat_message: __table({
     name: 'chat_message',
     indexes: [
@@ -195,6 +210,7 @@ const tablesSchema = __schema({
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
   __reducerSchema("claim_npc_host", ClaimNpcHostReducer),
+  __reducerSchema("damage_asteroid", DamageAsteroidReducer),
   __reducerSchema("damage_npc", DamageNpcReducer),
   __reducerSchema("damage_station", DamageStationReducer),
   __reducerSchema("damage_wingman", DamageWingmanReducer),
@@ -208,9 +224,11 @@ const reducersSchema = __reducers(
   __reducerSchema("prune_events", PruneEventsReducer),
   __reducerSchema("prune_projectiles", PruneProjectilesReducer),
   __reducerSchema("report_kill", ReportKillReducer),
+  __reducerSchema("respawn_asteroid", RespawnAsteroidReducer),
   __reducerSchema("respawn_npc", RespawnNpcReducer),
   __reducerSchema("respawn_player", RespawnPlayerReducer),
   __reducerSchema("respawn_station", RespawnStationReducer),
+  __reducerSchema("seed_asteroids", SeedAsteroidsReducer),
   __reducerSchema("seed_world", SeedWorldReducer),
   __reducerSchema("sell_ore", SellOreReducer),
   __reducerSchema("send_chat", SendChatReducer),
