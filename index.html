@@ -1580,7 +1580,7 @@ function policeAct(p,dt){
   
   // Face movement direction when not attacking
   if(p.state!=='hunt'){
-    if(v>5)p.angle=lerp(p.angle,Math.atan2(p.vy,p.vx),.05);
+    if(v>5)p.angle=lerpAngle(p.angle,Math.atan2(p.vy,p.vx),.05);
   }
   if(v>30&&Math.random()<.3&&distToPlayer(p.x,p.y)<FX_RANGE)emitThrust(p.x,p.y,p.angle,spd,p.color);
 }
@@ -2609,7 +2609,7 @@ function droneAct(w,dt){
   
   if(w.state!=='attack'){
     const moveAngle=Math.atan2(w.vy,w.vx);
-    if(v>5)w.angle=lerp(w.angle,moveAngle,.1);
+    if(v>5)w.angle=lerpAngle(w.angle,moveAngle,.1);
   }
   if(v>30&&Math.random()<.3)emitThrust(w.x,w.y,w.angle,spd,w.color);
 }
@@ -3736,7 +3736,7 @@ function npcAct(n,dt){
   
   if(n.state!=='attack'){
     const moveAngle=Math.atan2(n.vy,n.vx);
-    if(v>5)n.angle=lerp(n.angle,moveAngle,.1);
+    if(v>5)n.angle=lerpAngle(n.angle,moveAngle,.1);
   }
   if(v>30&&Math.random()<.3)emitThrust(n.x,n.y,n.angle,spd,n.color);
 }
