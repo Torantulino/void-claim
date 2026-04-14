@@ -293,15 +293,15 @@ const ORES={
 const SHIP_COLORS=['#33ff77','#ff3355','#3388ff','#ffaa00','#cc44ff','#00eedd','#ff2277','#77ff33'];
 
 const SHIPS={
-  prospector:{name:'Prospector',speed:1,hull:100,cargo:20,dmg:1,mineRate:1,shield:30,cost:0,desc:'Balanced starter',ability:'EMP Pulse',abilityCd:12,abilityDesc:'Stuns nearby enemies 2s',missileCapacity:2},
-  hauler:{name:'Hauler',speed:.72,hull:140,cargo:45,dmg:.5,mineRate:1.3,shield:40,cost:500,desc:'Massive cargo',ability:'Tractor Beam',abilityCd:8,abilityDesc:'Pulls loot & ore toward you',missileCapacity:3},
-  corsair:{name:'Corsair',speed:1.4,hull:70,cargo:12,dmg:1.6,mineRate:.8,shield:20,cost:800,desc:'Fast & deadly',ability:'Afterburner',abilityCd:6,abilityDesc:'Huge speed burst forward',missileCapacity:5},
-  sentinel:{name:'Sentinel',speed:.88,hull:200,cargo:18,dmg:.9,mineRate:.9,shield:80,cost:1200,desc:'Tanky bodyguard',ability:'Shield Bash',abilityCd:10,abilityDesc:'Knockback + damage AoE',missileCapacity:4},
-  phantom:{name:'Phantom',speed:1.25,hull:90,cargo:15,dmg:1.3,mineRate:1,shield:50,cost:2000,desc:'Cloaking hunter',ability:'Phase Cloak',abilityCd:15,abilityDesc:'Invisible for 4 seconds',missileCapacity:4},
-  carrier:{name:'Drone Carrier',speed:.55,hull:350,cargo:30,dmg:.7,mineRate:.6,shield:120,cost:5000,visualScale:2.0,desc:'Capital ship — deploys combat drones',ability:'Rally Drones',abilityCd:10,abilityDesc:'Drones focus your target 5s',missileCapacity:8},
-  drone_fighter:{name:'Strike Drone',speed:1.4,hull:50,cargo:0,dmg:1.2,mineRate:0,shield:15,cost:0,visualScale:.65,desc:'Fast attack drone',missileCapacity:0},
-  drone_guardian:{name:'Guardian Drone',speed:.9,hull:120,cargo:0,dmg:.6,mineRate:0,shield:50,cost:0,visualScale:.7,desc:'Shield drone',missileCapacity:0},
-  drone_harvester:{name:'Harvester Drone',speed:1.1,hull:70,cargo:0,dmg:.8,mineRate:.8,shield:20,cost:0,visualScale:.6,desc:'Mining drone',missileCapacity:0}
+  prospector:{name:'Prospector',speed:1,hull:100,cargo:20,dmg:1,fireRate:1,projSpeed:1,mineRate:1,shield:30,cost:0,desc:'Balanced starter',ability:'EMP Pulse',abilityCd:12,abilityDesc:'Stuns nearby enemies 2s',missileCapacity:2},
+  hauler:{name:'Hauler',speed:.72,hull:140,cargo:45,dmg:.45,fireRate:.7,projSpeed:1,mineRate:1.3,shield:40,cost:500,desc:'Massive cargo',ability:'Tractor Beam',abilityCd:8,abilityDesc:'Pulls loot & ore toward you',missileCapacity:3},
+  corsair:{name:'Corsair',speed:1.4,hull:70,cargo:12,dmg:.75,fireRate:.55,projSpeed:.85,mineRate:.8,shield:20,cost:800,desc:'Fast & deadly',ability:'Afterburner',abilityCd:6,abilityDesc:'Huge speed burst forward',missileCapacity:5},
+  sentinel:{name:'Sentinel',speed:.88,hull:200,cargo:18,dmg:2,fireRate:1.8,projSpeed:1.15,mineRate:.9,shield:80,cost:1200,desc:'Tanky bodyguard',ability:'Shield Bash',abilityCd:10,abilityDesc:'Knockback + damage AoE',missileCapacity:4},
+  phantom:{name:'Phantom',speed:1.25,hull:90,cargo:15,dmg:2.2,fireRate:1.5,projSpeed:1.25,mineRate:1,shield:50,cost:2000,desc:'Cloaking hunter',ability:'Phase Cloak',abilityCd:15,abilityDesc:'Invisible for 4 seconds',missileCapacity:4},
+  carrier:{name:'Drone Carrier',speed:.55,hull:350,cargo:30,dmg:1.8,fireRate:2.2,projSpeed:1.1,mineRate:.6,shield:120,cost:5000,visualScale:2.0,desc:'Capital ship — deploys combat drones',ability:'Rally Drones',abilityCd:10,abilityDesc:'Drones focus your target 5s',missileCapacity:8},
+  drone_fighter:{name:'Strike Drone',speed:1.4,hull:50,cargo:0,dmg:1.2,fireRate:1,projSpeed:1,mineRate:0,shield:15,cost:0,visualScale:.65,desc:'Fast attack drone',missileCapacity:0},
+  drone_guardian:{name:'Guardian Drone',speed:.9,hull:120,cargo:0,dmg:.6,fireRate:1,projSpeed:1,mineRate:0,shield:50,cost:0,visualScale:.7,desc:'Shield drone',missileCapacity:0},
+  drone_harvester:{name:'Harvester Drone',speed:1.1,hull:70,cargo:0,dmg:.8,fireRate:1,projSpeed:1,mineRate:.8,shield:20,cost:0,visualScale:.6,desc:'Mining drone',missileCapacity:0}
 };
 
 const UPGRADES={
@@ -1548,7 +1548,7 @@ function policeAct(p,dt){
         // In firing range
         p.angle=angle(p.x,p.y,p.target.x,p.target.y);
         if(p.shootCD<=0){
-          fireProjectile(p);p.shootCD=CFG.SHOOT_CD*(p.ship==='carrier'?1.5:0.8);
+          fireProjectile(p);p.shootCD=shipFireRate(p)*0.8;
         }
         // Strafe
         const strafeA=p.angle+Math.PI/2*(Math.sin(performance.now()*.002+p.x)>0?1:-1);
@@ -1691,6 +1691,7 @@ function maxShield(p){const base=SHIPS[p.ship].shield;const upg=1+(p.upgrades?.s
 function maxHull(p){return SHIPS[p.ship].hull}
 function shipSpeed(p){const base=CFG.BASE_SPEED*SHIPS[p.ship].speed;const upg=1+(p.upgrades?.engine||0)*(UPGRADES.engine.pct/100);return base*upg}
 function shipDmg(p){const base=CFG.PROJ_DMG*SHIPS[p.ship].dmg;const upg=1+(p.upgrades?.laser||0)*(UPGRADES.laser.pct/100);return base*upg}
+function shipFireRate(p){return CFG.SHOOT_CD*(SHIPS[p.ship].fireRate||1)}
 function mineRateCalc(p){const base=CFG.MINE_RATE*SHIPS[p.ship].mineRate;const upg=1+(p.upgrades?.laser||0)*(UPGRADES.laser.pct/100);return base*upg}
 function upgradeCost(type,lvl){const u=UPGRADES[type];return Math.floor(u.baseCost*Math.pow(u.mult,lvl))}
 function cargoValue(cargo){let v=0;for(let k in cargo)v+=cargo[k]*(ORES[k]?ORES[k].value:0);return v}
@@ -2149,7 +2150,7 @@ function createProjectile(owner,x,y,ang,dmg){
   const isPoliceProj=!!owner.isPolice;
   return{
     id:uid(),ownerId:owner.id,ownerName:owner.name||'Unknown',
-    x,y,vx:Math.cos(ang)*CFG.PROJ_SPEED+owner.vx*.3,vy:Math.sin(ang)*CFG.PROJ_SPEED+owner.vy*.3,
+    x,y,vx:Math.cos(ang)*CFG.PROJ_SPEED*(SHIPS[owner.ship]?.projSpeed||1)+owner.vx*.3,vy:Math.sin(ang)*CFG.PROJ_SPEED*(SHIPS[owner.ship]?.projSpeed||1)+owner.vy*.3,
     angle:ang,dmg,ttl:CFG.PROJ_TTL,
     color:isPoliceProj?'#4488ff':isAllied?owner.color||'#66aaff':'#ff6644',
     isPlayerOwned:isAllied,isPoliceOwned:isPoliceProj
@@ -2574,7 +2575,7 @@ function droneAct(w,dt){
       if(d>220){moveToward(w,w.target.x,w.target.y,thrust,dt);}
       else{
         w.angle=angle(w.x,w.y,w.target.x,w.target.y);
-        if(w.shootCD<=0){fireProjectile(w);w.shootCD=CFG.SHOOT_CD*1.2;}
+        if(w.shootCD<=0){fireProjectile(w);w.shootCD=shipFireRate(w)*1.2;}
         // Strafe
         const strafeA=w.angle+Math.PI/2*(Math.sin(performance.now()*.003)>.0?1:-1);
         w.vx+=Math.cos(strafeA)*thrust*.3*dt;w.vy+=Math.sin(strafeA)*thrust*.3*dt;
@@ -3619,7 +3620,7 @@ function npcAct(n,dt){
       if(d>200){moveToward(n,n.target.x,n.target.y,thrust,dt);}
       else{
         n.angle=angle(n.x,n.y,n.target.x,n.target.y);
-        if(n.shootCD<=0){fireProjectile(n);n.shootCD=CFG.SHOOT_CD*1.3;}
+        if(n.shootCD<=0){fireProjectile(n);n.shootCD=shipFireRate(n)*1.3;}
         const strafeA=n.angle+Math.PI/2;
         n.vx+=Math.cos(strafeA)*thrust*.3*dt;n.vy+=Math.sin(strafeA)*thrust*.3*dt;
       }
@@ -5450,7 +5451,7 @@ function updatePlayer(dt){
   player.shootCD-=dt;
   const wantsShoot=input.mouseDown||input.spaceDown;
   if(wantsShoot&&player.shootCD<=0&&!miningTarget){
-    fireProjectile(player);player.shootCD=CFG.SHOOT_CD;
+    fireProjectile(player);player.shootCD=shipFireRate(player);
   }
   if(player.shield<player.maxShield&&performance.now()-(player.lastDamageTime||0)>=CFG.SHIELD_REGEN_DELAY*1000)player.shield=Math.min(player.maxShield,player.shield+2*dt);
   if(player.bounty>0)player.bounty-=dt;
@@ -7268,7 +7269,7 @@ function renderMarket(){
     let costLabel=owned?'ACTIVE':(s.cost===0?'FREE':'⬡ '+s.cost);
     if(canSell) costLabel=`ACTIVE · <span style="color:#ff6644;cursor:pointer" class="sell-ship-btn">SELL ⬡ +${sellValue}</span>`;
     const previewCanvas=document.createElement('canvas');
-    card.innerHTML=`<div class="card-name">${s.name}</div><div class="ship-stats">SPD:${'★'.repeat(Math.ceil(s.speed*3))} HP:${s.hull}<br>CARGO:${s.cargo} DMG:${'★'.repeat(Math.ceil(s.dmg*2.5))}</div><div class="ship-ability">${s.ability}: ${s.abilityDesc}</div><div class="card-cost">${costLabel}</div>`;
+    card.innerHTML=`<div class="card-name">${s.name}</div><div class="ship-stats">SPD:${'★'.repeat(Math.ceil(s.speed*3))} HP:${s.hull}<br>CARGO:${s.cargo} DMG:${'★'.repeat(Math.ceil(s.dmg*2.5))}<br>FIRE:${'★'.repeat(Math.round(3/s.fireRate))} PROJ:${'★'.repeat(Math.ceil(s.projSpeed*3))}</div><div class="ship-ability">${s.ability}: ${s.abilityDesc}</div><div class="card-cost">${costLabel}</div>`;
     card.insertBefore(previewCanvas,card.querySelector('.ship-stats'));
     renderShipPreview(previewCanvas,key,owned?(player.color||'#44ff88'):'#5588ff');
     if(canSell){
