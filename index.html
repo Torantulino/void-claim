@@ -3739,20 +3739,6 @@ function npcAct(n,dt){
     if(v>5)n.angle=lerp(n.angle,moveAngle,.1);
   }
   if(v>30&&Math.random()<.3)emitThrust(n.x,n.y,n.angle,spd,n.color);
-  
-  // ── Hard boundary: pirates physically cannot enter green/safe zone ──
-  if(n.personality==='pirate'){
-    const dE=dist(n.x,n.y,0,0);
-    if(dE<CFG.GREEN_R){
-      const bAng=Math.atan2(n.y,n.x); // angle FROM Earth
-      n.x=Math.cos(bAng)*(CFG.GREEN_R+50);
-      n.y=Math.sin(bAng)*(CFG.GREEN_R+50);
-      // Kill inward velocity component
-      const bnx=Math.cos(bAng),bny=Math.sin(bAng);
-      const bdot=n.vx*bnx+n.vy*bny;
-      if(bdot<0){n.vx-=bdot*bnx;n.vy-=bdot*bny;}
-    }
-  }
 }
 
 
