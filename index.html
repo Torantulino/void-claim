@@ -2165,6 +2165,9 @@ function createLoot(x,y,cargo,vx,vy){
 
 // Destroy an asteroid and scatter its ore as individual loot drops with velocity
 function destroyAsteroid(ast,destroyerEntity){
+  // Guard: prevent double-destruction (optimistic local + server confirmation)
+  if(ast._destroyed)return;
+  ast._destroyed=true;
   const oreType=ast.oreType;
   const totalAmt=randInt(2,5+Math.floor(ast.maxHp/25));
   // Scatter individual ore units (or small clusters) as separate loot drops
@@ -2589,7 +2592,10 @@ function droneAct(w,dt){
       if(d>CFG.MINE_RANGE){moveToward(w,w.target.x,w.target.y,thrust,dt);}
       else{
         const rate=mineRateCalc(w)*.6;
-        w.target.hp-=rate*dt;
+        const droneDmg=rate*dt;
+        w.target.hp-=droneDmg;
+        // Batch drone mining damage to server
+        if(w.target.serverId!==undefined)batchAsteroidDamage(w.target.serverId,droneDmg);
         if(Math.random()<.2)emitMiningParticles(w.target.x,w.target.y,ORES[w.target.oreType].glow);
         if(w.target.hp<=0){
           destroyAsteroid(w.target,player);
@@ -2958,6 +2964,13 @@ function handleNpcUpdateInner(existing,sn,now){
   existing.stunTimer=sn.stunTimer||0;
   existing.totalKills=sn.totalKills||0;existing.totalMined=sn.totalMined||0;
   existing.totalEarned=sn.totalEarned||0;
+  // Resolve mining target from server's miningTargetId → local asteroid object
+  const mtId=sn.miningTargetId;
+  if(mtId!==undefined&&mtId>=0){
+    existing.target=asteroids.find(a=>a.serverId===mtId)||null;
+  }else{
+    existing.target=null;
+  }
 }
 
 function handleNpcDelete(sn){
@@ -3111,6 +3124,92 @@ function handleStationDelete(row){
   if(idx>=0)spaceStations.splice(idx,1);
 }
 
+// ── Server-Authoritative Asteroid event handlers (SpacetimeDB table callbacks) ──
+// Asteroids are fully owned by the server. Clients render from the asteroid table.
+// Mining/weapon damage is sent to the server via damage_asteroid reducer.
+
+// Map from server ore_type index to client ore key
+const ORE_INDEX_TO_KEY=['iron','copper','silver','gold','platinum','titanium','voidstone'];
+
+// Damage batching: accumulate local mining/weapon damage and flush to server periodically
+const _asteroidDamageBatch=new Map(); // asteroid_id → accumulated damage
+let _asteroidDamageFlushTimer=0;
+const ASTEROID_DAMAGE_FLUSH_RATE=0.2; // flush every 200ms
+
+function flushAsteroidDamage(){
+  if(!stdbConn||!stdbConnected||_asteroidDamageBatch.size===0)return;
+  for(const[astId,dmg] of _asteroidDamageBatch){
+    stdbConn.reducers.damageAsteroid({asteroidId:astId,damage:dmg}).catch((e)=>{
+      console.warn('[STDB] damageAsteroid failed:',e);
+    });
+  }
+  _asteroidDamageBatch.clear();
+}
+
+function batchAsteroidDamage(asteroidId,damage){
+  const existing=_asteroidDamageBatch.get(asteroidId)||0;
+  _asteroidDamageBatch.set(asteroidId,existing+damage);
+}
+
+function handleAsteroidInsert(row){
+  const oreKey=ORE_INDEX_TO_KEY[row.oreType]||'iron';
+  const ore=ORES[oreKey];
+  // Check if asteroid already exists locally (from a previous local spawn)
+  const existing=asteroids.find(a=>a.serverId===row.id);
+  if(existing){
+    existing.x=row.x;existing.y=row.y;existing.hp=row.hp;existing.maxHp=row.maxHp;
+    existing.alive=row.alive;existing.oreType=oreKey;existing.size=row.size;
+    existing.rotSpeed=row.rotSpeed;
+    return;
+  }
+  // Generate verts deterministically from asteroid ID (matches visual style)
+  const rng=seededRng(row.id*31337);
+  const sRand=(min,max)=>min+rng()*(max-min);
+  const n=Math.floor(sRand(6,11));
+  const verts=[];
+  for(let i=0;i<n;i++){
+    const ang=(i/n)*Math.PI*2;
+    const vr=row.size*sRand(.7,1.1);
+    verts.push({x:Math.cos(ang)*vr,y:Math.sin(ang)*vr});
+  }
+  asteroids.push({
+    id:'ast_srv_'+row.id,serverId:row.id,
+    x:row.x,y:row.y,oreType:oreKey,size:row.size,
+    hp:row.hp,maxHp:row.maxHp,verts:verts,
+    rotation:rng()*Math.PI*2,rotSpeed:row.rotSpeed,
+    respawnTimer:0,alive:row.alive
+  });
+}
+
+function handleAsteroidUpdate(oldRow,newRow){
+  const ast=asteroids.find(a=>a.serverId===newRow.id);
+  if(!ast)return;
+  // Sync HP from server (server is authoritative)
+  ast.hp=newRow.hp;
+  // Detect asteroid destruction (transition from alive to dead)
+  if(!newRow.alive&&oldRow.alive){
+    ast.alive=false;ast.hp=0;
+    // Trigger destruction FX and loot drops (client-side visuals)
+    destroyAsteroid(ast,null);
+  }
+  // Detect asteroid respawn (transition from dead to alive)
+  if(newRow.alive&&!oldRow.alive){
+    ast.alive=true;ast.hp=newRow.maxHp;ast.maxHp=newRow.maxHp;
+    ast.x=newRow.x;ast.y=newRow.y;
+    ast.respawnTimer=0;
+    ast._destroyed=false; // Reset destruction guard for next lifecycle
+  }
+  // Update position (in case of respawn at new location)
+  if(newRow.alive){
+    ast.x=newRow.x;ast.y=newRow.y;
+  }
+}
+
+function handleAsteroidDelete(row){
+  const idx=asteroids.findIndex(a=>a.serverId===row.id);
+  if(idx>=0)asteroids.splice(idx,1);
+}
+
 function onStationDestroyed(st){
   // Visual FX
   const near=distToPlayer(st.x,st.y)<FX_RANGE;
@@ -3209,7 +3308,8 @@ function syncNPCsToServer(){
         stunTimer:+(Math.max(0,n.stunTimer||0).toFixed(2)),
         totalKills:n.totalKills||0,
         totalMined:n.totalMined||0,
-        totalEarned:n.totalEarned||0
+        totalEarned:n.totalEarned||0,
+        miningTargetId:(n.target&&n.target.serverId!==undefined)?n.target.serverId:-1
       }).catch((e)=>{console.warn('[STDB] updateNpc failed:',e)});
   });
 }
@@ -3610,7 +3710,10 @@ function npcAct(n,dt){
       if(d>CFG.MINE_RANGE){moveToward(n,n.target.x,n.target.y,thrust,dt);}
       else{
         const rate=mineRateCalc(n)*.7;
-        n.target.hp-=rate*dt;
+        const npcDmg=rate*dt;
+        n.target.hp-=npcDmg;
+        // Batch NPC mining damage to server
+        if(n.target.serverId!==undefined)batchAsteroidDamage(n.target.serverId,npcDmg);
         if(Math.random()<.2)emitMiningParticles(n.target.x,n.target.y,ORES[n.target.oreType].glow);
         if(n.target.hp<=0){
           destroyAsteroid(n.target,n);
@@ -5526,10 +5629,16 @@ function updateMining(dt){
   const mc=maxCargo(player);if(totalCargo(player.cargo)>=mc)return;
   miningTarget=closest;
   const rate=mineRateCalc(player);
-  closest.hp-=rate*dt;
+  const dmgThisFrame=rate*dt;
+  // Optimistic local HP reduction for responsive mining feel
+  closest.hp-=dmgThisFrame;
+  // Batch damage to server (flushed every 200ms)
+  if(closest.serverId!==undefined)batchAsteroidDamage(closest.serverId,dmgThisFrame);
   if(Math.random()<.4)emitMiningParticles(closest.x+rand(-closest.size/2,closest.size/2),closest.y+rand(-closest.size/2,closest.size/2),ORES[closest.oreType].glow);
   mineSndCD-=dt;if(mineSndCD<=0){SFX.mine();mineSndCD=.12;}
   if(closest.hp<=0){
+    // Server will confirm destruction via asteroid table update callback
+    // Still trigger local FX immediately for responsive feel
     destroyAsteroid(closest,player);
     miningTarget=null;
   }
@@ -5556,6 +5665,8 @@ function updateProjectiles(dt){
       if(!a.alive)continue;
       if(dist(p.x,p.y,a.x,a.y)<a.size+4){
         a.hp-=p.dmg;
+        // Batch damage to server for server-authoritative asteroids
+        if(a.serverId!==undefined)batchAsteroidDamage(a.serverId,p.dmg);
         const nearP=distToPlayer(p.x,p.y)<FX_RANGE;
         if(nearP){
           emitBurst(p.x,p.y,6,60,ORES[a.oreType].glow,2,.3,6);
@@ -6126,7 +6237,7 @@ function updateMissiles(dt){
     for(const a of asteroids){
       if(!a.alive)continue;
       if(dist(m.x,m.y,a.x,a.y)<a.size+8){
-        a.hp-=m.dmg;if(a.hp<=0)destroyAsteroid(a,null);
+        a.hp-=m.dmg;if(a.serverId!==undefined)batchAsteroidDamage(a.serverId,m.dmg);if(a.hp<=0)destroyAsteroid(a,null);
         missileExplode(m);hitSomething=true;break;
       }
     }
@@ -7628,8 +7739,7 @@ function connectSTDB(){
           if(worldSeed===null){
             worldSeed=Number(ws.worldSeed);
             console.log('[STDB] World seed received:',worldSeed);
-            // Re-generate asteroids with shared seed
-            spawnAsteroids();
+            // Asteroids are now server-authoritative — no client-side spawnAsteroids()
           }
         });
         
@@ -7769,6 +7879,17 @@ function connectSTDB(){
           handleStationDelete(row);
         });
         
+        // Listen for Asteroid table changes (server-authoritative asteroids)
+        conn.db.asteroid.onInsert((ctx,row)=>{
+          handleAsteroidInsert(row);
+        });
+        conn.db.asteroid.onUpdate((ctx,oldRow,newRow)=>{
+          handleAsteroidUpdate(oldRow,newRow);
+        });
+        conn.db.asteroid.onDelete((ctx,row)=>{
+          handleAsteroidDelete(row);
+        });
+        
         // NOW subscribe to all tables — listeners are ready
         conn.subscriptionBuilder()
           .onApplied(()=>{
@@ -7783,7 +7904,7 @@ function connectSTDB(){
                 if(worldSeed===null){
                   worldSeed=Number(ws.worldSeed);
                   console.log('[STDB] World seed from initial sync:',worldSeed);
-                  spawnAsteroids();
+                  // Asteroids are server-authoritative — loaded via asteroid table callbacks
                 }
                 seedFound=true;
                 break;
@@ -7793,6 +7914,9 @@ function connectSTDB(){
               console.log('[STDB] No world seed found — calling seedWorld reducer');
               conn.reducers.seedWorld().catch((e)=>{console.warn('[STDB] seedWorld failed:',e);});
             }
+            // Seed server-side asteroids if none exist yet
+            // (idempotent — server skips if asteroids already present)
+            conn.reducers.seedAsteroids({}).catch((e)=>{console.warn('[STDB] seedAsteroids failed:',e);});
             // Join game AFTER subscriptions are ready (critical!)
             if(player){
               console.log('[STDB] Joining game after subscription applied...');
@@ -8593,10 +8717,18 @@ function notify(text,color){
 
 function updateAsteroidRespawn(dt){
   asteroids.forEach(a=>{
-    if(!a.alive){a.respawnTimer-=dt;if(a.respawnTimer<=0){
-      const ore=ORES[a.oreType];const d=rand(ore.minR,ore.maxR);const ang=rand(0,Math.PI*2);
-      a.x=Math.cos(ang)*d;a.y=Math.sin(ang)*d;a.hp=a.maxHp;a.alive=true;a.rotation=rand(0,Math.PI*2);
-    }}else{a.rotation+=a.rotSpeed*dt;}
+    if(!a.alive){
+      // Server-authoritative respawn: NPC host calls respawn_asteroid reducer
+      // Dead asteroids just wait for server to mark them alive again
+      if(isNpcHost&&stdbConn&&stdbConnected&&a.serverId!==undefined){
+        // Try to respawn via server (server checks its own timer)
+        a.respawnTimer-=dt;
+        if(a.respawnTimer<=0){
+          a.respawnTimer=2; // retry every 2s until server confirms respawn
+          stdbConn.reducers.respawnAsteroid({asteroidId:a.serverId}).catch(()=>{});
+        }
+      }
+    }else{a.rotation+=a.rotSpeed*dt;}
   });
 }
 
@@ -8776,6 +8908,8 @@ function gameLoop(timestamp){
     
     hudTimer-=dt;if(hudTimer<=0){updateHUD();updateChatFade();if(isMobile||mobileFallbackActivated)updateMobileHUD();hudTimer=.15;}
     wsTimer-=dt;if(wsTimer<=0){sendState();wsTimer=.05;} // 20Hz net tick
+    // Flush batched asteroid damage to server
+    _asteroidDamageFlushTimer-=dt;if(_asteroidDamageFlushTimer<=0){flushAsteroidDamage();_asteroidDamageFlushTimer=ASTEROID_DAMAGE_FLUSH_RATE;}
     projPruneTimer-=dt;if(projPruneTimer<=0&&stdbConn&&stdbConnected){stdbConn.reducers.pruneProjectiles().catch(()=>{});projPruneTimer=2;}
     pruneTimer-=dt;if(pruneTimer<=0&&stdbConn&&stdbConnected){stdbConn.reducers.pruneEvents().catch(()=>{});pruneTimer=60;}
     autoSaveTimer-=dt;if(autoSaveTimer<=0){saveGame();autoSaveTimer=30;}
@@ -8967,7 +9101,9 @@ function startGame(name,color,saved){
     // Spawn return portal near Earth so the traveler can go back
     if(portalParams.ref)returnPortal={x:200,y:-(CFG.EARTH_SHIELD_R-300),size:50,pulse:0};
   }
-  spawnAsteroids();spawnNPCs();spawnPolice();spawnTradeShip();
+  spawnNPCs();spawnPolice();spawnTradeShip();
+  // Asteroids are server-authoritative in multiplayer. In offline mode, spawn locally.
+  if(!CFG.STDB_ENABLED||window.__STDB_UNAVAILABLE){spawnAsteroids();}
   gameState='playing';
   document.getElementById('startScreen').style.display='none';
   document.getElementById('hud').style.display='block';
