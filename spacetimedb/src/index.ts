@@ -1,10 +1,12 @@
 /**
- * VOID CLAIM — SpacetimeDB Server Module (v3 — Hybrid Authority + Server-Synced NPCs)
+ * VOID CLAIM — SpacetimeDB Server Module (v4 — Server-Authoritative Asteroids)
  * 
- * Server-authoritative combat, seeded asteroids, projectile sync, NPC host-authority.
- * Tables: players, kill_feed, chat, leaderboard, world_state, projectiles, npc, npc_host
+ * Server-authoritative combat, server-synced asteroids, projectile sync, NPC host-authority.
+ * Tables: players, kill_feed, chat, leaderboard, world_state, projectiles, npc, npc_host,
+ *         asteroid (NEW)
  * Reducers: player CRUD, deal_damage, fire_projectile, world seed, chat, leaderboard,
- *           claim_npc_host, update_npcs_batch, damage_npc, respawn_npc
+ *           claim_npc_host, update_npcs_batch, damage_npc, respawn_npc,
+ *           seed_asteroids, damage_asteroid, respawn_asteroid (NEW)
  */
 
 import { schema, table, t } from 'spacetimedb/server';
@@ -132,6 +134,7 @@ const spacetimedb = schema({
       total_mined: t.u32(),
       total_earned:t.u32(),
       stun_timer:  t.f32(),
+      mining_target_id: t.i32(),  // asteroid ID being mined (-1 = none)
       last_update: t.u64(),
     }
   ),
@@ -189,6 +192,25 @@ const spacetimedb = schema({
       dead:        t.bool(),
       respawn_at:  t.u64(),               // ms timestamp when station respawns (0 if alive)
       last_update: t.u64(),
+    }
+  ),
+
+  // ── Server-Authoritative Asteroids ──
+  // All asteroid state is owned by the server. Clients render from this table.
+  // Seeded deterministically from world_seed via seed_asteroids reducer.
+  asteroid: table(
+    { public: true },
+    {
+      id:          t.u32().primaryKey(),   // asteroid index 0..AST_COUNT-1
+      x:           t.f32(),
+      y:           t.f32(),
+      ore_type:    t.u32(),               // index into ORES array (0-6, see ORE_ZONES)
+      size:        t.f32(),               // visual radius
+      hp:          t.f32(),
+      max_hp:      t.f32(),
+      alive:       t.bool(),
+      respawn_at:  t.u64(),               // ms timestamp when asteroid respawns (0 if alive)
+      rot_speed:   t.f32(),               // rotation speed for visual consistency
     }
   ),
 });
@@ -818,6 +840,7 @@ export const spawn_npc = spacetimedb.reducer(
       total_mined:  args.total_mined,
       total_earned: args.total_earned,
       stun_timer:   0,
+      mining_target_id: -1,
       last_update:  BigInt(Date.now()),
     });
   }
@@ -841,6 +864,7 @@ export const update_npc = spacetimedb.reducer(
     total_kills: t.u32(),
     total_mined: t.u32(),
     total_earned:t.u32(),
+    mining_target_id: t.i32(),
   },
   (ctx, args) => {
     // Only the NPC host can update NPCs
@@ -866,6 +890,7 @@ export const update_npc = spacetimedb.reducer(
       total_kills:  args.total_kills,
       total_mined:  args.total_mined,
       total_earned: args.total_earned,
+      mining_target_id: args.mining_target_id,
       last_update:  BigInt(Date.now()),
     });
   }
@@ -948,6 +973,7 @@ export const respawn_npc = spacetimedb.reducer(
       cargo_used:  0,
       state:       'idle',
       stun_timer:  0,
+      mining_target_id: -1,
       last_update: BigInt(Date.now()),
     });
   }
@@ -1221,5 +1247,152 @@ export const respawn_station = spacetimedb.reducer(
       last_update: BigInt(Date.now()),
     });
     console.log(`Pirate Station ${args.station_id} respawned`);
+  }
+);
+
+// ═══════════════════════════════════════════
+// Reducers — Server-Authoritative Asteroids
+// ═══════════════════════════════════════════
+// Asteroids are seeded deterministically from the world seed.
+// Any client can damage them; the server tracks HP and alive state.
+// Respawn is server-driven (NPC host calls respawn_asteroid after timer).
+
+// Server-side mulberry32 PRNG (matches client seededRng exactly)
+function mulberry32(seed: number): () => number {
+  let s = seed | 0;
+  return function(): number {
+    s = s + 0x6D2B79F5 | 0;
+    let t = Math.imul(s ^ s >>> 15, 1 | s);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// Ore distribution: mirrors client ORES array order and spawn radii
+// Index: 0=iron, 1=copper, 2=silver, 3=gold, 4=platinum, 5=titanium, 6=voidstone
+const ORE_ZONES: Array<{ minR: number; maxR: number; value: number }> = [
+  { minR: 800,   maxR: 2500,  value: 1 },    // iron
+  { minR: 800,   maxR: 3500,  value: 3 },    // copper
+  { minR: 2200,  maxR: 6000,  value: 8 },    // silver
+  { minR: 3500,  maxR: 8000,  value: 18 },   // gold
+  { minR: 5500,  maxR: 12000, value: 35 },   // platinum
+  { minR: 8000,  maxR: 15000, value: 55 },   // titanium
+  { minR: 12000, maxR: 25000, value: 200 },  // voidstone
+];
+
+const AST_COUNT = 350;
+const ASTEROID_RESPAWN_MS = 25_000; // ~25s average respawn (client used rand(15,35))
+
+// seed_asteroids — deterministically generate all asteroids from world seed
+// Called by the first client (NPC host) after connecting. Idempotent: skips if asteroids exist.
+export const seed_asteroids = spacetimedb.reducer(
+  (ctx) => {
+    // Only seed if no asteroids exist yet
+    let count = 0;
+    for (const _ of ctx.db.asteroid.iter()) {
+      count++;
+      if (count > 0) break;
+    }
+    if (count > 0) {
+      console.log('Asteroids already seeded — skipping');
+      return;
+    }
+
+    // Get world seed
+    const ws = ctx.db.world_state.id.find(0);
+    if (!ws) {
+      console.log('ERROR: No world seed — cannot seed asteroids');
+      return;
+    }
+
+    const rng = mulberry32(Number(ws.world_seed));
+    const sRand = (min: number, max: number) => min + rng() * (max - min);
+
+    for (let i = 0; i < AST_COUNT; i++) {
+      const oreType = Math.floor(rng() * ORE_ZONES.length);
+      const ore = ORE_ZONES[oreType];
+      const d = sRand(ore.minR, ore.maxR);
+      const a = sRand(0, Math.PI * 2);
+      const hp = sRand(30, 80) * (1 + ore.value / 20);
+      const size = sRand(18, 42) * (1 + ore.value / 80);
+
+      ctx.db.asteroid.insert({
+        id:         i,
+        x:          Math.cos(a) * d,
+        y:          Math.sin(a) * d,
+        ore_type:   oreType,
+        size:       size,
+        hp:         hp,
+        max_hp:     hp,
+        alive:      true,
+        respawn_at: BigInt(0),
+        rot_speed:  sRand(-0.3, 0.3),
+      });
+    }
+    console.log(`Seeded ${AST_COUNT} asteroids from world seed ${ws.world_seed}`);
+  }
+);
+
+// damage_asteroid — any client can deal mining/weapon damage to an asteroid
+export const damage_asteroid = spacetimedb.reducer(
+  {
+    asteroid_id: t.u32(),
+    damage:      t.f32(),
+  },
+  (ctx, args) => {
+    const ast = ctx.db.asteroid.id.find(args.asteroid_id);
+    if (!ast || !ast.alive) return;
+
+    const newHp = ast.hp - args.damage;
+    if (newHp <= 0) {
+      // Asteroid destroyed — mark dead with respawn timer
+      ctx.db.asteroid.id.update({
+        ...ast,
+        hp:         0,
+        alive:      false,
+        respawn_at: BigInt(Date.now() + ASTEROID_RESPAWN_MS),
+      });
+      console.log(`Asteroid ${args.asteroid_id} destroyed`);
+    } else {
+      ctx.db.asteroid.id.update({
+        ...ast,
+        hp: newHp,
+      });
+    }
+  }
+);
+
+// respawn_asteroid — NPC host respawns a dead asteroid after its timer expires
+// The asteroid respawns at a new random position within its ore zone
+export const respawn_asteroid = spacetimedb.reducer(
+  {
+    asteroid_id: t.u32(),
+  },
+  (ctx, args) => {
+    // Only the NPC host can respawn asteroids (they run the timer)
+    const host = ctx.db.npc_host.id.find(0);
+    if (!host || host.host_identity !== ctx.sender.toHexString()) return;
+
+    const ast = ctx.db.asteroid.id.find(args.asteroid_id);
+    if (!ast || ast.alive) return;
+
+    // Only respawn if enough time has passed
+    if (ast.respawn_at > BigInt(Date.now())) return;
+
+    // Use a deterministic seed based on asteroid ID + current time for new position
+    const rng = mulberry32(args.asteroid_id * 7919 + (Date.now() & 0xFFFF));
+    const ore = ORE_ZONES[ast.ore_type] || ORE_ZONES[0];
+    const d = ore.minR + rng() * (ore.maxR - ore.minR);
+    const a = rng() * Math.PI * 2;
+
+    ctx.db.asteroid.id.update({
+      ...ast,
+      x:          Math.cos(a) * d,
+      y:          Math.sin(a) * d,
+      hp:         ast.max_hp,
+      alive:      true,
+      respawn_at: BigInt(0),
+    });
+    console.log(`Asteroid ${args.asteroid_id} respawned`);
   }
 );
