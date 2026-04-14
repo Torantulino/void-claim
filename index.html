@@ -3855,70 +3855,133 @@ const NPC_PIRATE_SHIP_TIERS=['prospector','corsair','phantom'];
 
 function npcProgressionOnSell(n,saleValue){
   if(!n.isNPC||n.isPolice||n.isTradeShip||n.personality==='denPirate')return;
-  // Both miners and pirates use economy-based progression
-  npcTryBuyUpgrades(n);
-  npcTryBuyShip(n);
+  
+  // 1. SHIP PROGRESSION CHECK (Priority #1)
+  const shipUpgraded = npcTryBuyShip(n);
+  
+  // 2. UPGRADE PURCHASING (Only after ship check)
+  if(!shipUpgraded){
+    npcTryBuyUpgradesBalanced(n);
+  }
 }
 
-// ── Economy-Based Miner Upgrade Purchasing ──
-// Miners spend credits on upgrades using the same upgradeCost() curve as players.
-// Greed personality drives purchase priority:
-//   Greedy miners (greed > 0.6): cargo → engine → laser → shields (maximize hauls)
-//   Cautious miners (greed < 0.3): shields → engine → laser → cargo (survive longer)
-//   Balanced miners: engine → cargo → laser → shields (general improvement)
-function npcTryBuyUpgrades(n){
+// ── Balanced NPC Upgrade Purchasing ──
+// Smart upgrade purchasing with ship savings and upgrade caps
+function npcTryBuyUpgradesBalanced(n){
+  // SHIP SAVINGS: Reserve credits for next ship purchase
+  const tiers=n.personality==='pirate'?NPC_PIRATE_SHIP_TIERS:NPC_MINER_SHIP_TIERS;
+  const curIdx=tiers.indexOf(n.ship);
+  let reservedCredits=0;
+  
+  if(curIdx>=0&&curIdx<tiers.length-1){
+    const nextShip=tiers[curIdx+1];
+    const nextCost=SHIPS[nextShip].cost;
+    const tradeIn=Math.floor(SHIPS[n.ship].cost*0.7);
+    const netCost=nextCost-tradeIn;
+    
+    // Reserve 20-40% of ship cost based on how close NPC is to affording it
+    const reservePercent=0.2+(0.2*Math.min(n.credits/netCost,1));
+    reservedCredits=Math.floor(netCost*reservePercent);
+  }
+  
+  const spendableCredits=Math.max(0,n.credits-reservedCredits);
+  
+  // UPGRADE CAPS: Limit upgrades on lower-tier ships
+  const upgradeCaps={
+    'prospector':2,  // Max level 2 upgrades on starter ship
+    'hauler':4,      // Max level 4 on mid-tier
+    'sentinel':5,    // Max level 5 on high-tier
+    'corsair':4,     // Same for pirates
+    'phantom':5
+  };
+  const maxUpgradeLevel=upgradeCaps[n.ship]||5;
+  
+  // PERSONALITY-BASED PRIORITIES
   let priority;
   if(n.personality==='pirate'){
-    // Pirates prioritize combat: laser → engine (chase) → shields (survive) → cargo (loot)
     priority=['laser','engine','shields','cargo'];
   } else {
-    // Miners: greed-based priorities
     const g=n.greed||0;
     priority=g>.6?['cargo','engine','laser','shields']:
              g<.3?['shields','engine','laser','cargo']:
                   ['engine','cargo','laser','shields'];
   }
-  let bought=true;
-  while(bought){
-    bought=false;
-    for(const key of priority){
-      const curLvl=n.upgrades[key]||0;
-      if(curLvl>=UPGRADES[key].levels)continue;
-      const cost=upgradeCost(key,curLvl);
-      if(n.credits>=cost){
-        n.credits-=cost;
-        n.upgrades[key]=curLvl+1;
-        n.npcLevel=(n.npcLevel||0)+1;
-        // Refresh derived stats
-        n.maxShield=maxShield(n);n.maxHp=maxHull(n);
-        n.shield=Math.min(n.shield,n.maxShield);
-        bought=true;
-        break; // Re-evaluate priority after each purchase
-      }
+  
+  // BALANCED PURCHASING: One upgrade per purchase cycle
+  for(const key of priority){
+    const curLvl=n.upgrades[key]||0;
+    
+    // Skip if at cap for this ship or global max
+    if(curLvl>=maxUpgradeLevel||curLvl>=UPGRADES[key].levels)continue;
+    
+    const cost=upgradeCost(key,curLvl);
+    
+    if(cost<=spendableCredits){
+      n.credits-=cost;
+      n.upgrades[key]=curLvl+1;
+      n.npcLevel=(n.npcLevel||0)+1;
+      
+      // Refresh derived stats
+      n.maxShield=maxShield(n);
+      n.maxHp=maxHull(n);
+      n.shield=Math.min(n.shield,n.maxShield);
+      
+      break; // Only one upgrade per sell cycle
     }
   }
 }
 
-// ── Economy-Based Miner Ship Purchasing ──
-// Miners buy ships along NPC_MINER_SHIP_TIERS using the same trade-in system as players:
-//   Trade-in value = 70% of current ship cost
-//   Net cost = new ship cost - trade-in value
+// Legacy function name for compatibility
+function npcTryBuyUpgrades(n){
+  npcTryBuyUpgradesBalanced(n);
+}
+
+// ── Balanced NPC Ship Purchasing ──
+// Enhanced ship purchasing with urgency and upgrade saturation factors
 function npcTryBuyShip(n){
   const tiers=n.personality==='pirate'?NPC_PIRATE_SHIP_TIERS:NPC_MINER_SHIP_TIERS;
   const curIdx=tiers.indexOf(n.ship);
-  if(curIdx<0||curIdx>=tiers.length-1)return;
+  if(curIdx<0||curIdx>=tiers.length-1)return false;
+  
   const nextShip=tiers[curIdx+1];
   const nextCost=SHIPS[nextShip].cost;
   const tradeIn=Math.floor(SHIPS[n.ship].cost*0.7);
   const netCost=nextCost-tradeIn;
-  if(n.credits>=netCost){
+  
+  // SHIP URGENCY: More likely to buy ships as wealth accumulates
+  const totalWealth=n.credits+(n.totalEarned||0);
+  const shipUrgency=Math.min(totalWealth/(netCost*2),1); // 0.0 to 1.0
+  
+  // UPGRADE SATURATION: If current ship is highly upgraded, prioritize ship change
+  const avgUpgradeLevel=Object.values(n.upgrades).reduce((a,b)=>a+b,0)/4;
+  const upgradeSaturation=Math.min(avgUpgradeLevel/3,1); // Maxes at level 3 average
+  
+  // COMBINED SHIP PRIORITY (higher = more likely to buy ship)
+  const shipPriority=(shipUrgency*0.6)+(upgradeSaturation*0.4);
+  
+  // PURCHASE DECISION
+  const affordThreshold=netCost*(1.2-shipPriority); // Lower threshold as priority increases
+  
+  if(n.credits>=affordThreshold){
     n.credits-=netCost;
     n.ship=nextShip;
     const base=SHIPS[nextShip];
     n.maxHp=base.hull;n.hp=base.hull;
     n.maxShield=maxShield(n);n.shield=n.maxShield;
     n.npcLevel=(n.npcLevel||0)+2;
+    
+    // RESET some upgrades to encourage re-upgrading new ship
+    const resetChance=0.3;
+    Object.keys(n.upgrades).forEach(key=>{
+      if(Math.random()<resetChance&&n.upgrades[key]>1){
+        n.credits+=upgradeCost(key,n.upgrades[key]-2); // Partial refund
+        n.upgrades[key]=Math.max(0,n.upgrades[key]-1);
+      }
+    });
+    
+    return true;
   }
+  return false;
 }
 
 function npcProgressionOnKill(n){
