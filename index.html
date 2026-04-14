@@ -2557,7 +2557,12 @@ function createNPC(npcIndex){
   const personality=isMiner?'miner':'pirate';
   const shipType=personality==='pirate'?pick(['corsair','corsair','prospector']):pick(['prospector','hauler','prospector','hauler','sentinel']);
   const name=pick(NPC_NAMES)+pick(NPC_SUFFIXES);
-  const d=rand(CFG.GREEN_R,CFG.RED_R);
+  // Greed stat determines how deep miners venture and how long they stay
+  const greed=isMiner?Math.random():0;
+  // Spawn position varies by greed — greedy miners start deeper
+  const minD=isMiner?(greed<.3?CFG.GREEN_R:greed<.7?CFG.YELLOW_R*.6:CFG.YELLOW_R):CFG.GREEN_R;
+  const maxD=isMiner?(greed<.3?CFG.YELLOW_R*.8:greed<.7?CFG.RED_R*.7:CFG.RED_R):CFG.RED_R;
+  const d=rand(minD,maxD);
   const a=rand(0,Math.PI*2);
   const base=SHIPS[shipType];
   const upgLvl=personality==='pirate'?randInt(1,3):randInt(0,2);
@@ -2571,7 +2576,15 @@ function createNPC(npcIndex){
     personality,state:'idle',target:null,stateTimer:rand(1,3),
     thinkTimer:0,fleeHP:.25,isPlayer:false,isNPC:true,
     color:pick(SHIP_COLORS),stunTimer:0,aggressor:false,
-    totalKills:randInt(0,5),totalMined:randInt(50,500),totalEarned:randInt(100,3000)
+    totalKills:randInt(0,5),totalMined:randInt(50,500),totalEarned:randInt(100,3000),
+    // ── Miner greed personality (0=cautious, 1=reckless) ──
+    greed:greed,
+    // ── NPC Progression tracking ──
+    npcLevel:0,         // Visible level (increments on upgrades/ship swaps)
+    sellAccum:0,        // Accumulated credits from selling (triggers upgrade at 500+)
+    killsSinceSpawn:0,  // Kills since last death (triggers ship swap at 3+)
+    baseShip:shipType,  // Original ship type (for respawn reset)
+    baseUpgLvl:upgLvl   // Original upgrade level (for respawn reset)
   };
 }
 
@@ -3242,11 +3255,19 @@ function updateNPCs(dt){
       if(n.personality==='denPirate')return; // handled by updateDenPirates()
       n.respawnTimer-=dt;
       if(n.respawnTimer<=0){
+        // ── Reset progression on death: NPC loses upgrades earned in life ──
+        if(n.baseShip){n.ship=n.baseShip;}
+        if(n.baseUpgLvl!==undefined){
+          const bl=n.baseUpgLvl;
+          n.upgrades={engine:bl,laser:bl,shields:bl,cargo:bl,scanner:0};
+        }
+        n.npcLevel=0;n.sellAccum=0;n.killsSinceSpawn=0;
+        const base=SHIPS[n.ship];
         const d=rand(CFG.GREEN_R,CFG.RED_R);const a=rand(0,Math.PI*2);
         n.x=Math.cos(a)*d;n.y=Math.sin(a)*d;n.vx=0;n.vy=0;
-        n.hp=SHIPS[n.ship].hull;n.shield=SHIPS[n.ship].shield;
+        n.hp=base.hull;n.maxHp=base.hull;n.shield=base.shield;n.maxShield=base.shield;
         n.dead=false;n.cargo={};n.state='idle';n.bounty=0;n.stunTimer=0;
-        n._respawnedAt=performance.now(); // Timestamp to reject stale server echoes
+        n._respawnedAt=performance.now();
         clearAggressor(n);
         serverRespawnNPC(n);
       }
@@ -3295,7 +3316,9 @@ function npcThink(n){
   }
   
   if(hpPct<n.fleeHP){n.state='flee';n.target=null;return;}
-  if(tc>=mc*.8&&dToEarth>CFG.EARTH_SHIELD_R){
+  // Greed-based return threshold: cautious miners return early, greedy miners push limits
+  const returnPct=n.personality==='miner'?(0.4+((n.greed||0)*0.55)):0.8; // 0.4 (cautious) to 0.95 (greedy)
+  if(tc>=mc*returnPct&&dToEarth>CFG.EARTH_SHIELD_R){
     // NPCs can sell at trade ship if it's closer than Earth
     if(tradeShip&&!tradeShip.dead){
       const dToTS=dist(n.x,n.y,tradeShip.x,tradeShip.y);
@@ -3364,11 +3387,23 @@ function npcThink(n){
   }
 
   if(tc<mc){
-    let bestAst=null,bestD=3000;
+    let bestAst=null,bestScore=-Infinity;
+    const g=n.greed||0;
+    // Greed determines max range NPC will travel to mine
+    const searchRange=1500+g*3000; // 1500 (cautious) to 4500 (greedy)
+    // Greed-based zone limits: cautious stays in green, greedy pushes to red
+    const maxMineR=g<.3?CFG.YELLOW_R*.8:g<.7?CFG.RED_R*.7:CFG.RED_R;
     asteroids.forEach(a=>{
       if(!a.alive)return;
-      const d=dist(n.x,n.y,a.x,a.y);
-      if(d<bestD){bestD=d;bestAst=a;}
+      const ad=dist(n.x,n.y,a.x,a.y);
+      if(ad>searchRange)return;
+      const astR=dist(a.x,a.y,0,0);
+      if(n.personality==='miner'&&astR>maxMineR)return; // Don't go beyond greed limit
+      const oreVal=ORES[a.oreType]?ORES[a.oreType].value:1;
+      // Score: value matters more for greedy miners, distance matters more for cautious
+      const valWeight=0.5+g*2; // 0.5 (cautious) to 2.5 (greedy)
+      const score=oreVal*valWeight - ad*0.01;
+      if(score>bestScore){bestScore=score;bestAst=a;}
     });
     if(bestAst){n.state='mine';n.target=bestAst;return;}
   }
@@ -3488,6 +3523,8 @@ function npcAct(n,dt){
     case 'sell':{
       const val=cargoValue(n.cargo);n.credits+=val;n.totalEarned+=val;n.cargo={};
       n.hp=Math.min(n.maxHp,n.hp+n.maxHp*.5);n.shield=n.maxShield;n.state='idle';
+      // ── NPC Progression: upgrade on accumulated sales ──
+      if(val>0)npcProgressionOnSell(n,val);
       break;
     }
     case 'returnToTradeShip':{
@@ -3499,6 +3536,8 @@ function npcAct(n,dt){
     case 'sellAtTradeShip':{
       const val2=Math.floor(cargoValue(n.cargo)*CFG.TRADE_SHIP_ORE_BONUS);
       n.credits+=val2;n.totalEarned+=val2;n.cargo={};n.state='idle';
+      // ── NPC Progression: upgrade on accumulated sales ──
+      if(val2>0)npcProgressionOnSell(n,val2);
       break;
     }
     // ── Den Pirate states ──
@@ -3555,6 +3594,46 @@ function npcAct(n,dt){
     if(v>5)n.angle=lerp(n.angle,moveAngle,.1);
   }
   if(v>30&&Math.random()<.3)emitThrust(n.x,n.y,n.angle,spd,n.color);
+}
+
+
+// ── NPC Progression System ──
+// Miners upgrade gear when they sell enough ore, pirates upgrade on kills.
+const NPC_MINER_SHIP_TIERS=['prospector','hauler','sentinel'];
+const NPC_PIRATE_SHIP_TIERS=['prospector','corsair','phantom'];
+
+function npcProgressionOnSell(n,saleValue){
+  if(!n.isNPC||n.isPolice||n.isTradeShip||n.personality==='denPirate')return;
+  n.sellAccum=(n.sellAccum||0)+saleValue;
+  while(n.sellAccum>=500){
+    n.sellAccum-=500;
+    const upgKeys=['engine','laser','shields','cargo'];
+    const key=pick(upgKeys);
+    if((n.upgrades[key]||0)<5){
+      n.upgrades[key]++;
+      n.npcLevel=(n.npcLevel||0)+1;
+      n.maxShield=maxShield(n);n.maxHp=maxHull(n);
+      n.shield=Math.min(n.shield,n.maxShield);
+    }
+  }
+}
+
+function npcProgressionOnKill(n){
+  if(!n.isNPC||n.isPolice||n.isTradeShip||n.personality==='denPirate')return;
+  n.killsSinceSpawn=(n.killsSinceSpawn||0)+1;
+  n.totalKills=(n.totalKills||0)+1;
+  if(n.killsSinceSpawn>=3){
+    const tiers=n.personality==='pirate'?NPC_PIRATE_SHIP_TIERS:NPC_MINER_SHIP_TIERS;
+    const curIdx=tiers.indexOf(n.ship);
+    if(curIdx>=0&&curIdx<tiers.length-1){
+      const newShip=tiers[curIdx+1];
+      n.ship=newShip;const base=SHIPS[newShip];
+      n.maxHp=base.hull;n.hp=base.hull;
+      n.maxShield=maxShield(n);n.shield=n.maxShield;
+      n.npcLevel=(n.npcLevel||0)+2;
+    }
+    n.killsSinceSpawn=0;
+  }
 }
 
 function moveToward(n,tx,ty,thrust,dt){
@@ -4158,15 +4237,19 @@ function drawShipEntity(e){
     ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(s.x,s.y,sz+6,0,Math.PI*2);ctx.stroke();
   }
   
-  // Name + bounty
+  // Name + bounty + NPC level
   if(!e.cloaked){
-    ctx.fillStyle=e.isPlayer?'rgba(255,255,255,1)':'rgba(230,230,245,.9)';
+    const _lvl=e.npcLevel||0;
+    const _nameStr=_lvl>0?e.name+' ★'+_lvl:e.name;
+    const _nameCol=_lvl>=6?'rgba(255,200,60,1)':_lvl>=3?'rgba(180,220,255,1)':'rgba(230,230,245,.9)';
+    ctx.fillStyle=e.isPlayer?'rgba(255,255,255,1)':_nameCol;
     ctx.font='bold 11px Courier New';ctx.textAlign='center';
-    ctx.strokeStyle='rgba(0,0,0,.85)';ctx.lineWidth=3;ctx.strokeText(e.name,s.x,s.y-sz-10);
-    ctx.fillText(e.name,s.x,s.y-sz-10);
+    ctx.strokeStyle='rgba(0,0,0,.85)';ctx.lineWidth=3;ctx.strokeText(_nameStr,s.x,s.y-sz-10);
+    ctx.fillText(_nameStr,s.x,s.y-sz-10);
     if(e.isPolice){ctx.fillStyle='rgba(68,136,255,.9)';ctx.font='bold 12px Courier New';ctx.strokeText('⛨ POLICE',s.x,s.y-sz-20);ctx.fillText('⛨ POLICE',s.x,s.y-sz-20);ctx.font='bold 11px Courier New';}
     else if(e.personality==='denPirate'){ctx.fillStyle='rgba(255,60,40,.95)';ctx.font='bold 11px Courier New';ctx.strokeText('☠ DEN PIRATE',s.x,s.y-sz-20);ctx.fillText('☠ DEN PIRATE',s.x,s.y-sz-20);}
     else if(e.bounty>0){ctx.fillStyle='rgba(255,70,70,.85)';ctx.fillText('☠ BOUNTY',s.x,s.y-sz-20);}
+    else if(_lvl>=3&&!e.isPlayer){ctx.fillStyle=_lvl>=6?'rgba(255,180,40,.9)':'rgba(150,200,255,.8)';ctx.fillText(_lvl>=6?'⚔ VETERAN':'✦ SKILLED',s.x,s.y-sz-20);}
     if(isAggressor(e)&&!e.isPolice){ctx.fillStyle='rgba(255,50,50,.85)';ctx.fillText('⚠ AGGRESSOR',s.x,s.y-sz-30);}
     // Cargo indicator bar (visible loot indicator for non-player ships)
     if(totalCargo(e.cargo||{})>0&&!e.isPlayer){
@@ -4542,7 +4625,9 @@ function drawMinimap(){
     if(dist(nx,ny,mx,my)<mr){
       const isDenPirate=n.personality==='denPirate';
       const isHostile=n.bounty>0||n.personality==='pirate'||isDenPirate;
-      const col=isDenPirate?'#ff2222':(n.bounty>0?'#ff4444':(n.personality==='pirate'?'#ff6644':totalCargo(n.cargo)>0?'#44ff88':'#5588ff'));
+      // Miner greed tints radar dot: green(cautious) → yellow(mid) → orange(greedy)
+      const _greedCol=n.personality==='miner'&&n.greed!==undefined?(n.greed<.3?'#44ff88':n.greed<.7?'#ccdd44':'#ffaa33'):null;
+      const col=isDenPirate?'#ff2222':(n.bounty>0?'#ff4444':(n.personality==='pirate'?'#ff6644':(_greedCol||(totalCargo(n.cargo)>0?'#44ff88':'#5588ff'))));
       // Hostile pulsing glow
       if(isHostile){
         const pulse=.3+Math.sin(t*4+n.x)*.2;
@@ -5504,6 +5589,11 @@ function killEntity(target,attackerId){
   target.dead=true;
   // Den pirates use their own longer respawn timer (30-60s instead of 3s)
   target.respawnTimer=target.personality==='denPirate'?rand(CFG.DEN_RESPAWN_MIN,CFG.DEN_RESPAWN_MAX):CFG.RESPAWN_TIME;
+  // ── NPC Progression: credit killer NPC with a kill ──
+  if(attackerId&&attackerId!==player?.id){
+    const killerNPC=npcs.find(nn=>nn.id===attackerId&&!nn.dead);
+    if(killerNPC)npcProgressionOnKill(killerNPC);
+  }
   const near=target.isPlayer||distToPlayer(target.x,target.y)<FX_RANGE;
   if(near){
     killExplosion(target.x,target.y,target.color||'#ff5555',12);
