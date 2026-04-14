@@ -2640,7 +2640,7 @@ function killDrone(w,attackerName){
 function createNPC(npcIndex){
   const isMiner=Math.random()>.35;
   const personality=isMiner?'miner':'pirate';
-  const shipType=personality==='pirate'?pick(['corsair','corsair','prospector']):'prospector';
+  const shipType='prospector'; // Both miners and pirates start as Prospector, earning their way up
   const name=pick(NPC_NAMES)+pick(NPC_SUFFIXES);
   // Greed stat determines how deep miners venture and how long they stay
   const greed=isMiner?Math.random():0;
@@ -2650,18 +2650,18 @@ function createNPC(npcIndex){
   const d=rand(minD,maxD);
   const a=rand(0,Math.PI*2);
   const base=SHIPS[shipType];
-  const upgLvl=personality==='pirate'?randInt(1,3):0;
+  const upgLvl=0; // Both miners and pirates start with 0 upgrades
   return{
     npcId:npcIndex, // Stable server ID (0..NPC_COUNT-1)
     id:uid(),name,x:Math.cos(a)*d,y:Math.sin(a)*d,vx:0,vy:0,angle:rand(0,Math.PI*2),
     hp:base.hull,maxHp:base.hull,shield:base.shield,maxShield:base.shield,
-    ship:shipType,credits:isMiner?0:randInt(0,200),cargo:{},
+    ship:shipType,credits:0,cargo:{},
     upgrades:{engine:upgLvl,laser:upgLvl,shields:upgLvl,cargo:upgLvl,scanner:0},
     shootCD:0,dead:false,respawnTimer:0,cloaked:false,bounty:0,
     personality,state:'idle',target:null,stateTimer:rand(1,3),
     thinkTimer:0,fleeHP:.25,isPlayer:false,isNPC:true,
     color:pick(SHIP_COLORS),stunTimer:0,aggressor:false,
-    totalKills:isMiner?0:randInt(0,5),totalMined:isMiner?0:randInt(50,500),totalEarned:0,
+    totalKills:0,totalMined:0,totalEarned:0,
     // ── Miner greed personality (0=cautious, 1=reckless) ──
     greed:greed,
     // ── NPC Progression tracking ──
@@ -3347,7 +3347,7 @@ function updateNPCs(dt){
           n.upgrades={engine:bl,laser:bl,shields:bl,cargo:bl,scanner:0};
         }
         n.npcLevel=0;n.sellAccum=0;n.killsSinceSpawn=0;
-        if(n.personality==='miner'){n.credits=0;n.ship='prospector';}
+        if(n.personality==='miner'||n.personality==='pirate'){n.credits=0;n.ship='prospector';}
         const base=SHIPS[n.ship];
         // Respawn in greed-appropriate zone (same as createNPC)
         const _g=n.greed||0;const _isMiner=n.personality==='miner';
@@ -3407,16 +3407,24 @@ function npcThink(n){
   
   if(hpPct<n.fleeHP){n.state='flee';n.target=null;return;}
   // Greed-based return threshold: cautious miners return early, greedy miners push limits
-  const returnPct=n.personality==='miner'?(0.4+((n.greed||0)*0.55)):0.8; // 0.4 (cautious) to 0.95 (greedy)
+  // Pirates return at 60% cargo — they loot aggressively
+  const returnPct=n.personality==='miner'?(0.4+((n.greed||0)*0.55)):0.6;
   if(tc>=mc*returnPct&&dToEarth>CFG.EARTH_SHIELD_R){
-    // NPCs can sell at trade ship if it's closer than Earth
-    if(tradeShip&&!tradeShip.dead){
-      const dToTS=dist(n.x,n.y,tradeShip.x,tradeShip.y);
-      if(dToTS<dToEarth&&dToTS<3000){n.state='returnToTradeShip';n.target=null;return;}
+    if(n.personality==='pirate'){
+      // Pirates ONLY sell at trade ship — they wouldn't go to SSPD-patrolled Earth
+      if(tradeShip&&!tradeShip.dead){n.state='returnToTradeShip';n.target=null;return;}
+      // No trade ship available — keep pirating, don't go to Earth
+    } else {
+      // Miners: prefer trade ship if closer, else Earth
+      if(tradeShip&&!tradeShip.dead){
+        const dToTS=dist(n.x,n.y,tradeShip.x,tradeShip.y);
+        if(dToTS<dToEarth&&dToTS<3000){n.state='returnToTradeShip';n.target=null;return;}
+      }
+      n.state='return';n.target=null;return;
     }
-    n.state='return';n.target=null;return;
   }
-  if(tc>0&&dToEarth<CFG.EARTH_SHIELD_R+100){n.state='sell';return;}
+  // Sell at Earth if nearby (miners only — pirates never sell at Earth)
+  if(tc>0&&dToEarth<CFG.EARTH_SHIELD_R+100&&n.personality!=='pirate'){n.state='sell';return;}
   
   // All NPCs flee from the Leviathan when it's nearby
   if(leviathan&&!leviathan.dead){
@@ -3450,21 +3458,23 @@ function npcThink(n){
     if(bestTarget){n.state='attack';n.target=bestTarget;return;}
   }
   
-  // Check for nearby loot to collect (non-pirates only, with 3-second delay)
-  if(tc<mc&&n.personality!=='pirate'&&n.personality!=='denPirate'){
-    let bestLoot=null,bestLD=500; // 500px detection range for loot
+  // Check for nearby loot to collect (all NPCs except denPirates)
+  if(tc<mc&&n.personality!=='denPirate'){
+    const isPirate=n.personality==='pirate';
+    let bestLoot=null,bestLD=isPirate?1000:500; // Pirates detect loot from farther (1000px vs 500px)
     loot.forEach(l=>{
       const d=dist(n.x,n.y,l.x,l.y);
       if(d<bestLD){bestLD=d;bestLoot=l;}
     });
     if(bestLoot){
-      // Very close loot (< 150px) — go collect immediately (no delay)
-      if(bestLD<150){
+      // Pirates loot immediately (no delay) — they're scavengers after kills
+      // Miners: immediate if <150px, else 3-second delay
+      if(isPirate||bestLD<150){
         n.state='collectLoot';n._lootTarget=bestLoot;
         n._lootNoticeTime=null;n._noticedLootId=null;
         return;
       }
-      // Distant loot — 3-second delay before going to collect
+      // Distant loot — 3-second delay before going to collect (miners only)
       if(!n._lootNoticeTime){
         n._lootNoticeTime=performance.now()/1000;
         n._noticedLootId=bestLoot.id;
@@ -3698,32 +3708,16 @@ function npcAct(n,dt){
 }
 
 
-// ── NPC Progression System ──
-// Miners upgrade gear when they sell enough ore, pirates upgrade on kills.
+// ── NPC Progression System (Unified Economy) ──
+// Both miners and pirates earn credits and buy upgrades/ships using real economy costs.
 const NPC_MINER_SHIP_TIERS=['prospector','hauler','sentinel'];
 const NPC_PIRATE_SHIP_TIERS=['prospector','corsair','phantom'];
 
 function npcProgressionOnSell(n,saleValue){
   if(!n.isNPC||n.isPolice||n.isTradeShip||n.personality==='denPirate')return;
-  // Miners use economy-based progression (buy upgrades & ships with credits)
-  if(n.personality==='miner'){
-    npcTryBuyUpgrades(n);
-    npcTryBuyShip(n);
-    return;
-  }
-  // Pirates keep legacy flat-rate progression
-  n.sellAccum=(n.sellAccum||0)+saleValue;
-  while(n.sellAccum>=500){
-    n.sellAccum-=500;
-    const upgKeys=['engine','laser','shields','cargo'];
-    const key=pick(upgKeys);
-    if((n.upgrades[key]||0)<5){
-      n.upgrades[key]++;
-      n.npcLevel=(n.npcLevel||0)+1;
-      n.maxShield=maxShield(n);n.maxHp=maxHull(n);
-      n.shield=Math.min(n.shield,n.maxShield);
-    }
-  }
+  // Both miners and pirates use economy-based progression
+  npcTryBuyUpgrades(n);
+  npcTryBuyShip(n);
 }
 
 // ── Economy-Based Miner Upgrade Purchasing ──
@@ -3733,10 +3727,17 @@ function npcProgressionOnSell(n,saleValue){
 //   Cautious miners (greed < 0.3): shields → engine → laser → cargo (survive longer)
 //   Balanced miners: engine → cargo → laser → shields (general improvement)
 function npcTryBuyUpgrades(n){
-  const g=n.greed||0;
-  const priority=g>.6?['cargo','engine','laser','shields']:
-                 g<.3?['shields','engine','laser','cargo']:
-                      ['engine','cargo','laser','shields'];
+  let priority;
+  if(n.personality==='pirate'){
+    // Pirates prioritize combat: laser → engine (chase) → shields (survive) → cargo (loot)
+    priority=['laser','engine','shields','cargo'];
+  } else {
+    // Miners: greed-based priorities
+    const g=n.greed||0;
+    priority=g>.6?['cargo','engine','laser','shields']:
+             g<.3?['shields','engine','laser','cargo']:
+                  ['engine','cargo','laser','shields'];
+  }
   let bought=true;
   while(bought){
     bought=false;
@@ -3763,7 +3764,7 @@ function npcTryBuyUpgrades(n){
 //   Trade-in value = 70% of current ship cost
 //   Net cost = new ship cost - trade-in value
 function npcTryBuyShip(n){
-  const tiers=NPC_MINER_SHIP_TIERS;
+  const tiers=n.personality==='pirate'?NPC_PIRATE_SHIP_TIERS:NPC_MINER_SHIP_TIERS;
   const curIdx=tiers.indexOf(n.ship);
   if(curIdx<0||curIdx>=tiers.length-1)return;
   const nextShip=tiers[curIdx+1];
@@ -3783,20 +3784,10 @@ function npcTryBuyShip(n){
 function npcProgressionOnKill(n){
   if(!n.isNPC||n.isPolice||n.isTradeShip||n.personality==='denPirate')return;
   n.totalKills=(n.totalKills||0)+1;
-  // Only pirates upgrade ships via kills — miners use economy-based progression
-  if(n.personality!=='pirate')return;
-  n.killsSinceSpawn=(n.killsSinceSpawn||0)+1;
-  if(n.killsSinceSpawn>=3){
-    const tiers=NPC_PIRATE_SHIP_TIERS;
-    const curIdx=tiers.indexOf(n.ship);
-    if(curIdx>=0&&curIdx<tiers.length-1){
-      const newShip=tiers[curIdx+1];
-      n.ship=newShip;const base=SHIPS[newShip];
-      n.maxHp=base.hull;n.hp=base.hull;
-      n.maxShield=maxShield(n);n.shield=n.maxShield;
-      n.npcLevel=(n.npcLevel||0)+2;
-    }
-    n.killsSinceSpawn=0;
+  if(n.personality==='pirate'){
+    n.killsSinceSpawn=(n.killsSinceSpawn||0)+1;
+    // killsSinceSpawn now ONLY drives reputation (NOTORIOUS/FEARED)
+    // No more free ship upgrades — pirates buy ships with credits
   }
 }
 
