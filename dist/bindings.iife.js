@@ -6885,8 +6885,6 @@ ${ty.variants.map(
   }, _handleOnMessage = new WeakSet(), handleOnMessage_fn = function(wsMessage) {
     __privateSet(this, _messageQueue, __privateGet(this, _messageQueue).then(() => {
       return __privateMethod(this, _processMessage, processMessage_fn).call(this, wsMessage.data);
-    }).catch((e) => {
-      stdbLogger("error", () => `Error processing message: ${e}`);
     }));
   }, _a14);
   function tablesToSchema(ctx, tables2) {
