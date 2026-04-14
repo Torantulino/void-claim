@@ -3558,7 +3558,7 @@ function npcThink(n){
       if(dp<bestDist&&pDE>CFG.GREEN_R){bestDist=dp;bestTarget=player;} // skip targets in green/safe
     }
     npcs.forEach(other=>{
-      if(other.id===n.id||other.dead)return;
+      if(other.id===n.id||other.dead||other.personality==='pirate')return;
       if(totalCargo(other.cargo)>2){
         const d=dist(n.x,n.y,other.x,other.y);
         const oDE=dist(other.x,other.y,0,0);
@@ -3619,7 +3619,7 @@ function npcThink(n){
     }
   }
 
-  if(tc<mc){
+  if(tc<mc && n.personality!=='pirate'){
     let bestAst=null,bestScore=-Infinity;
     const g=n.greed||0;
     // Greed determines max range NPC will travel to mine
