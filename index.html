@@ -58,6 +58,7 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 .card-cost{font-size:.82rem;color:#ffcc44}
 .card-desc{font-size:.62rem;color:rgba(190,215,255,.85);margin:4px 0 2px;line-height:1.5}
 .ship-card.active{border-color:rgba(68,255,136,.5);background:rgba(68,255,136,.05)}
+.ship-preview{display:block;margin:4px auto 6px;border-radius:4px}
 .ship-stats{font-size:.65rem;color:rgba(255,255,255,.8);line-height:1.6;margin:6px 0}
 .ship-ability{font-size:.62rem;color:rgba(210,150,255,.9);margin-top:2px}
 #closeMarket{position:absolute;top:12px;right:16px;background:none;border:none;color:rgba(255,255,255,.3);font-size:1.5rem;cursor:pointer;font-family:inherit}
@@ -3686,6 +3687,28 @@ function drawAsteroidEntity(a){
   }
 }
 
+// ── Ship preview renderer for marketplace cards ──
+function renderShipPreview(canvas,shipType,shipColor){
+  const W=100,H=70;
+  canvas.width=W;canvas.height=H;
+  canvas.className='ship-preview';
+  canvas.style.width=W+'px';canvas.style.height=H+'px';
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+  ctx.save();
+  ctx.translate(W/2,H/2);
+  const shipDef=SHIPS[shipType];
+  const szBase=12+(shipDef.hull/30);
+  const scale=shipDef.visualScale||1;
+  // Scale to fit the preview canvas nicely
+  const maxSz=28;
+  let sz=szBase*scale;
+  if(sz>maxSz) sz=maxSz+(sz-maxSz)*0.3; // soft-cap large ships
+  ctx.fillStyle=shipColor||'#5588ff';
+  drawShipHull(ctx,shipType,sz,shipColor);
+  ctx.restore();
+}
+
 function drawShipHull(ctx,shipType,sz,col){
   // Each ship: main hull fill + accent details + outline
   const s=sz; // alias
@@ -6873,7 +6896,10 @@ function renderMarket(){
     const sellValue=canSell?Math.floor(s.cost*.7):0;
     let costLabel=owned?'ACTIVE':(s.cost===0?'FREE':'⬡ '+s.cost);
     if(canSell) costLabel=`ACTIVE · <span style="color:#ff6644;cursor:pointer" class="sell-ship-btn">SELL ⬡ +${sellValue}</span>`;
+    const previewCanvas=document.createElement('canvas');
     card.innerHTML=`<div class="card-name">${s.name}</div><div class="ship-stats">SPD:${'★'.repeat(Math.ceil(s.speed*3))} HP:${s.hull}<br>CARGO:${s.cargo} DMG:${'★'.repeat(Math.ceil(s.dmg*2.5))}</div><div class="ship-ability">${s.ability}: ${s.abilityDesc}</div><div class="card-cost">${costLabel}</div>`;
+    card.insertBefore(previewCanvas,card.querySelector('.ship-stats'));
+    renderShipPreview(previewCanvas,key,owned?(player.color||'#44ff88'):'#5588ff');
     if(canSell){
       const sellBtn=card.querySelector('.sell-ship-btn');
       if(sellBtn) sellBtn.onclick=(()=>{const k=key;return(e)=>{
@@ -6936,6 +6962,7 @@ function renderMarket(){
       const locked=!canHire;
       wmHTML+='<div class="ship-card'+(locked?' locked':'')+'" data-wm-type="'+key+'">';
       wmHTML+='<div class="card-name">'+wt.name+'</div>';
+      wmHTML+='<canvas class="ship-preview" data-ship="drone_'+key+'"></canvas>';
       wmHTML+='<div class="ship-stats">HP:'+wt.hull+' Shield:'+wt.shield+'<br>DMG:'+wt.dmg+'x Speed:'+wt.speed+'x</div>';
       wmHTML+='<div class="card-desc">'+wt.desc+'</div>';
       wmHTML+='<div class="card-cost">⬡ '+wt.cost+'</div>';
@@ -6951,6 +6978,12 @@ function renderMarket(){
       wmHTML+='</div>';
     }
     wmSection.innerHTML=wmHTML;
+    // Render drone ship previews
+    const droneColors={drone_fighter:'#ff6644',drone_guardian:'#44aaff',drone_harvester:'#66cc44'};
+    wmSection.querySelectorAll('canvas.ship-preview[data-ship]').forEach(c=>{
+      const st=c.dataset.ship;
+      if(SHIPS[st]) renderShipPreview(c,st,droneColors[st]||'#5588ff');
+    });
     // Attach click handlers
     wmSection.querySelectorAll('.ship-card:not(.locked)').forEach(card=>{
       card.onclick=()=>{
