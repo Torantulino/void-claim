@@ -8852,11 +8852,11 @@ function init(){
 (function loadChangelog(){
   const list=document.getElementById('changelogList');
   if(!list)return;
-  fetch('https://api.github.com/repos/Torantulino/void-claim/commits?per_page=8&sha=main')
+  fetch('https://api.github.com/repos/Torantulino/void-claim/commits?per_page=20&sha=main')
     .then(r=>{if(!r.ok)throw new Error(r.status);return r.json()})
     .then(commits=>{
       list.innerHTML='';
-      commits.forEach(c=>{
+      commits.filter(c=>!/^Merge pull request/i.test((c.commit.message||'').split('\n')[0])).slice(0,10).forEach(c=>{
         const msg=(c.commit.message||'').split('\n')[0]; // first line only
         const d=new Date(c.commit.committer.date);
         const ago=timeAgoShort(d);
