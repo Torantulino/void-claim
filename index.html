@@ -1075,6 +1075,12 @@ function refreshAggressionTimer(entity){
 function checkAggressionRules(attacker,victim){
   if(!attacker||!victim)return;
   if(attacker.isPolice)return; // Police enforcing law is never aggression
+  // Drone aggression propagates to their owner (the player)
+  // This prevents using drones as a loophole to attack in safe zone
+  if(attacker.isDrone&&player&&!player.dead){
+    checkAggressionRules(player,victim);
+    return;
+  }
   // Rule: attacking a non-aggressor in the safe zone, or attacking the Trade Ship anywhere
   const victimZone=getZone(victim.x,victim.y);
   if((victimZone==='safe'&&!isAggressor(victim))||victim.isTradeShip){
@@ -1128,6 +1134,7 @@ function updateAggressorDecay(dt){
     if(player&&player.id===entityId)entity=player;
     if(!entity)entity=npcs.find(n=>n.id===entityId);
     if(!entity)entity=remotePlayers.find(rp=>rp.id===entityId);
+    if(!entity)entity=drones.find(w=>w.id===entityId);
     if(!entity){aggressorMap.delete(entityId);return;} // Entity gone, clean up
     // Only decay outside safe zone
     const zone=getZone(entity.x,entity.y);
@@ -1316,7 +1323,7 @@ function updateTradeShipTurrets(dt){
       ...npcs.filter(n=>!n.dead&&!n.isTradeShip&&isAggressor(n)),
       ...(player&&!player.dead&&isAggressor(player)?[player]:[]),
       ...remotePlayers.filter(rp=>!rp.dead&&rp.aggressor),
-      ...drones.filter(w=>!w.dead&&player&&isAggressor(player))
+      ...drones.filter(w=>!w.dead&&(isAggressor(w)||(player&&isAggressor(player))))
     ];
     for(const c of candidates){
       if(c.isPolice)continue;
@@ -1369,6 +1376,12 @@ function findNearestAggressor(entity,maxRange){
     if(rp.dead||!isAggressor(rp))return;
     const d=dist(entity.x,entity.y,rp.x,rp.y);
     if(d<bestD){bestD=d;best=rp;}
+  });
+  // Check drones (player's drones can become aggressors)
+  drones.forEach(w=>{
+    if(w.dead||!isAggressor(w))return;
+    const d=dist(entity.x,entity.y,w.x,w.y);
+    if(d<bestD){bestD=d;best=w;}
   });
   return best;
 }
@@ -2429,9 +2442,12 @@ function droneThink(w){
     const dLev=dist(player.x,player.y,leviathan.x,leviathan.y);
     if(dLev<1200){w.state='attack';w.target=leviathan;return;}
   }
+  const playerZone=getZone(player.x,player.y);
   let nearestThreat=null,threatDist=500;
   npcs.forEach(n=>{
     if(n.dead||n.personality!=='pirate')return;
+    // In safe zone: only engage pirates that are aggressors (actively attacking)
+    if(playerZone==='safe'&&!isAggressor(n))return;
     const d=dist(player.x,player.y,n.x,n.y);
     if(d<threatDist){threatDist=d;nearestThreat=n;}
   });
