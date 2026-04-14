@@ -5855,7 +5855,10 @@ function updateProjectiles(dt){
     });
     // vs trade ship (separate larger hitbox, routed through damageNpc)
     if(!hit&&tradeShip&&!tradeShip.dead&&p.ownerId!=='trade_ship'&&!isTSProj){
-      if(dist(p.x,p.y,tradeShip.x,tradeShip.y)<220){
+      // Check elliptical collision (275x87.5 shield dimensions)
+      const dx = p.x - tradeShip.x;
+      const dy = p.y - tradeShip.y;
+      if((dx/275)*(dx/275) + (dy/87.5)*(dy/87.5) < 1){
         const nearPlayer=distToPlayer(p.x,p.y)<FX_RANGE;
         // Find the actual attacker entity — could be player, NPC, or drone
         const attacker=player&&player.id===p.ownerId?player:
@@ -6333,7 +6336,10 @@ function updateMissiles(dt){
     if(hitSomething){missiles.splice(i,1);continue;}
     // vs trade ship (separate larger hitbox, routed through damageNpc)
     if(tradeShip&&!tradeShip.dead&&m.ownerId!=='trade_ship'){
-      if(dist(m.x,m.y,tradeShip.x,tradeShip.y)<220){
+      // Check elliptical collision (275x87.5 shield dimensions)
+      const dx = m.x - tradeShip.x;
+      const dy = m.y - tradeShip.y;
+      if((dx/275)*(dx/275) + (dy/87.5)*(dy/87.5) < 1){
         if(stdbConn&&stdbConnected){
           stdbConn.reducers.damageNpc({
             npcId:tradeShip.npcId,damage:m.dmg,
@@ -6992,7 +6998,7 @@ function drawTradeShip(){
   if(tradeShip.shield>0&&!tradeShip.dead){
     const shieldAlpha=.06+.08*(tradeShip.shield/tradeShip.maxShield);
     ctx.strokeStyle=`rgba(100,200,255,${shieldAlpha+.1})`;ctx.lineWidth=2;
-    ctx.beginPath();ctx.ellipse(0,0,220,70,0,0,Math.PI*2);ctx.stroke();
+    ctx.beginPath();ctx.ellipse(0,0,275,87.5,0,0,Math.PI*2);ctx.stroke();
     ctx.fillStyle=`rgba(100,200,255,${shieldAlpha})`;ctx.fill();
   }
   ctx.restore();
