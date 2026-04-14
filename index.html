@@ -7792,12 +7792,16 @@ function connectSTDB(){
         
         // Listen for kill events
         conn.db.kill_event.onInsert((ctx,ev)=>{
+          // Skip events from initial snapshot replay
+          if(!stdbSubscribed) return;
           notify(`☠ ${ev.killer} destroyed ${ev.victim}`,'#ff6644');
           if(typeof addChatMessage==='function')addChatMessage('','☠ '+ev.killer+' destroyed '+ev.victim,true);
         });
 
         // Listen for sale events (all players and NPCs)
         conn.db.sale_event.onInsert((ctx,sale)=>{
+          // Skip events from initial snapshot replay
+          if(!stdbSubscribed) return;
           // Skip notification for our own sales (we already get feedback)
           if(sale.sellerType === 'player' && sale.sellerId === conn.identity?.toHexString()) {
             return;
@@ -7811,6 +7815,8 @@ function connectSTDB(){
         
         // Listen for chat messages
         conn.db.chat_message.onInsert((ctx,msg)=>{
+          // Skip messages from initial snapshot replay
+          if(!stdbSubscribed) return;
           addChatMessage(msg.sender,msg.text);
           addChatBubble(msg.sender,msg.text);
         });
