@@ -7799,13 +7799,13 @@ function connectSTDB(){
         // Listen for sale events (all players and NPCs)
         conn.db.sale_event.onInsert((ctx,sale)=>{
           // Skip notification for our own sales (we already get feedback)
-          if(sale.seller_type === 'player' && sale.seller_id === conn.identity?.toHexString()) {
+          if(sale.sellerType === 'player' && sale.sellerId === conn.identity?.toHexString()) {
             return;
           }
-          const bonus = sale.sale_type === 'trade_ship' ? ' (1.5x)' : '';
-          const credits = Number(sale.amount_earned).toLocaleString();
-          const color = sale.seller_type === 'npc' ? '#44ff66' : '#66ff44';
-          notify(`💰 ${sale.seller_name} earned $${credits}${bonus}`, color);
+          const bonus = sale.saleType === 'trade_ship' ? ' (1.5x)' : '';
+          const credits = Number(sale.amountEarned).toLocaleString();
+          const color = sale.sellerType === 'npc' ? '#44ff66' : '#66ff44';
+          notify(`💰 ${sale.sellerName} earned $${credits}${bonus}`, color);
           if(soundEnabled) SFX.sell();
         });
         
