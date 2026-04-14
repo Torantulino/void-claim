@@ -2713,6 +2713,7 @@ function updateDenPirates(dt){
       dp.vx=0;dp.vy=0;
       dp.hp=dp.maxHp;dp.shield=dp.maxShield;
       dp.dead=false;dp.cargo={};dp.state='patrol';dp.bounty=0;dp.stunTimer=0;
+      dp.killsSinceSpawn=0; // Reset pirate reputation on death
       dp._respawnedAt=performance.now(); // Timestamp to reject stale server echoes
       dp.denIndex=denIndex;
       clearAggressor(dp);
@@ -3335,13 +3336,19 @@ function npcThink(n){
   }
   
   if(n.personality==='pirate'){
+    // Feared pirates get first pick — lesser pirates defer to their targets
+    const _fearedTargets=new Set();
+    if(!isPirateFeared(n)){
+      npcs.forEach(fp=>{if(fp.id!==n.id&&!fp.dead&&fp.personality==='pirate'&&isPirateFeared(fp)&&fp.target)_fearedTargets.add(fp.target.id);});
+    }
     let bestTarget=null,bestDist=2000;
-    if(player&&!player.dead&&!player.cloaked&&totalCargo(player.cargo)>0){
+    if(player&&!player.dead&&!player.cloaked&&totalCargo(player.cargo)>0&&!_fearedTargets.has(player.id)){
       const dp=dist(n.x,n.y,player.x,player.y);
       if(dp<bestDist){bestDist=dp;bestTarget=player;}
     }
     npcs.forEach(other=>{
       if(other.id===n.id||other.dead)return;
+      if(_fearedTargets.has(other.id))return; // Defer to the feared pirate
       if(totalCargo(other.cargo)>2){
         const d=dist(n.x,n.y,other.x,other.y);
         if(d<bestDist){bestDist=d;bestTarget=other;}
@@ -3350,8 +3357,9 @@ function npcThink(n){
     if(bestTarget){n.state='attack';n.target=bestTarget;return;}
   }
   
-  // Check for nearby loot to collect (non-pirates only, with 3-second delay)
-  if(tc<mc&&n.personality!=='pirate'&&n.personality!=='denPirate'){
+  // Check for nearby loot to collect (non-pirates, OR notorious pirates who earned their kills)
+  const _canLoot=n.personality!=='pirate'&&n.personality!=='denPirate'||isPirateNotorious(n);
+  if(tc<mc&&_canLoot){
     let bestLoot=null,bestLD=500; // 500px detection range for loot
     loot.forEach(l=>{
       const d=dist(n.x,n.y,l.x,l.y);
@@ -3635,6 +3643,14 @@ function npcProgressionOnKill(n){
     n.killsSinceSpawn=0;
   }
 }
+
+// ── Pirate Reputation System ──
+// killsSinceSpawn thresholds: 2+ = NOTORIOUS (skull aura, wanted on radar)
+//                             4+ = FEARED (other pirates defer to them)
+const PIRATE_NOTORIOUS_KILLS=2;
+const PIRATE_FEARED_KILLS=4;
+function isPirateNotorious(n){return(n.personality==='pirate'||n.personality==='denPirate')&&(n.killsSinceSpawn||0)>=PIRATE_NOTORIOUS_KILLS;}
+function isPirateFeared(n){return(n.personality==='pirate'||n.personality==='denPirate')&&(n.killsSinceSpawn||0)>=PIRATE_FEARED_KILLS;}
 
 function moveToward(n,tx,ty,thrust,dt){
   const a=angle(n.x,n.y,tx,ty);
@@ -4192,6 +4208,20 @@ function drawShipEntity(e){
     ctx.restore();
   }
   
+  // Notorious pirate skull aura (pulsing dark red/purple)
+  if(!e.isPlayer&&isPirateNotorious(e)){
+    const feared=isPirateFeared(e);
+    const repPulse=Math.sin(performance.now()*(feared?.006:.004)+e.x)*.2+.2;
+    const repAuraR=sz+(feared?18:14)+Math.sin(performance.now()*.003)*4;
+    ctx.save();ctx.globalAlpha=repPulse;
+    const rg=ctx.createRadialGradient(s.x,s.y,sz*.2,s.x,s.y,repAuraR);
+    rg.addColorStop(0,feared?'rgba(180,30,255,.5)':'rgba(255,50,30,.4)');
+    rg.addColorStop(.5,feared?'rgba(120,0,200,.2)':'rgba(200,30,10,.15)');
+    rg.addColorStop(1,'rgba(100,0,0,0)');
+    ctx.fillStyle=rg;ctx.beginPath();ctx.arc(s.x,s.y,repAuraR,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  }
+  
   // Kill streak aura
   if(e.isPlayer&&killStreak>=3){
     const auraR=sz+10+Math.sin(performance.now()*.005)*3;
@@ -4249,6 +4279,8 @@ function drawShipEntity(e){
     if(e.isPolice){ctx.fillStyle='rgba(68,136,255,.9)';ctx.font='bold 12px Courier New';ctx.strokeText('⛨ POLICE',s.x,s.y-sz-20);ctx.fillText('⛨ POLICE',s.x,s.y-sz-20);ctx.font='bold 11px Courier New';}
     else if(e.personality==='denPirate'){ctx.fillStyle='rgba(255,60,40,.95)';ctx.font='bold 11px Courier New';ctx.strokeText('☠ DEN PIRATE',s.x,s.y-sz-20);ctx.fillText('☠ DEN PIRATE',s.x,s.y-sz-20);}
     else if(e.bounty>0){ctx.fillStyle='rgba(255,70,70,.85)';ctx.fillText('☠ BOUNTY',s.x,s.y-sz-20);}
+    else if(!e.isPlayer&&isPirateFeared(e)){ctx.fillStyle='rgba(180,50,255,.95)';ctx.fillText('☠ FEARED',s.x,s.y-sz-20);}
+    else if(!e.isPlayer&&isPirateNotorious(e)){ctx.fillStyle='rgba(255,80,40,.95)';ctx.fillText('☠ NOTORIOUS',s.x,s.y-sz-20);}
     else if(_lvl>=3&&!e.isPlayer){ctx.fillStyle=_lvl>=6?'rgba(255,180,40,.9)':'rgba(150,200,255,.8)';ctx.fillText(_lvl>=6?'⚔ VETERAN':'✦ SKILLED',s.x,s.y-sz-20);}
     if(isAggressor(e)&&!e.isPolice){ctx.fillStyle='rgba(255,50,50,.85)';ctx.fillText('⚠ AGGRESSOR',s.x,s.y-sz-30);}
     // Cargo indicator bar (visible loot indicator for non-player ships)
@@ -4628,16 +4660,30 @@ function drawMinimap(){
       // Miner greed tints radar dot: green(cautious) → yellow(mid) → orange(greedy)
       const _greedCol=n.personality==='miner'&&n.greed!==undefined?(n.greed<.3?'#44ff88':n.greed<.7?'#ccdd44':'#ffaa33'):null;
       const col=isDenPirate?'#ff2222':(n.bounty>0?'#ff4444':(n.personality==='pirate'?'#ff6644':(_greedCol||(totalCargo(n.cargo)>0?'#44ff88':'#5588ff'))));
+      // Notorious pirate: larger wanted pulse on radar
+      const _notorious=isPirateNotorious(n);
+      const _feared=isPirateFeared(n);
+      if(_notorious){
+        const rpulse=.4+Math.sin(t*5+n.x)*.3;
+        ctx.fillStyle=_feared?'#bb33ff':'#ff4422';
+        ctx.globalAlpha=rpulse;
+        ctx.beginPath();ctx.arc(nx,ny,_feared?8:6,0,Math.PI*2);ctx.fill();
+        ctx.globalAlpha=1;
+        // Skull text on radar
+        ctx.fillStyle=_feared?'#cc66ff':'#ff6644';
+        ctx.font='bold 8px Courier New';ctx.textAlign='center';
+        ctx.fillText('☠',nx,ny-7);
+      }
       // Hostile pulsing glow
-      if(isHostile){
+      else if(isHostile){
         const pulse=.3+Math.sin(t*4+n.x)*.2;
         ctx.fillStyle=col;
         ctx.globalAlpha=pulse;
         ctx.beginPath();ctx.arc(nx,ny,5,0,Math.PI*2);ctx.fill();
         ctx.globalAlpha=1;
       }
-      ctx.fillStyle=col;
-      ctx.beginPath();ctx.arc(nx,ny,2.5,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle=_notorious?(_feared?'#bb33ff':'#ff4422'):col;
+      ctx.beginPath();ctx.arc(nx,ny,_notorious?3.5:2.5,0,Math.PI*2);ctx.fill();
       // Heading indicator for NPCs
       if(n.vx!==undefined&&n.vy!==undefined){
         const speed=Math.sqrt(n.vx*n.vx+n.vy*n.vy);
