@@ -204,7 +204,7 @@ const spacetimedb = schema({
       id:          t.u32().primaryKey(),   // asteroid index 0..AST_COUNT-1
       x:           t.f32(),
       y:           t.f32(),
-      ore_type:    t.u32(),               // index into ORES array (0-5)
+      ore_type:    t.u32(),               // index into ORES array (0-6, see ORE_ZONES)
       size:        t.f32(),               // visual radius
       hp:          t.f32(),
       max_hp:      t.f32(),

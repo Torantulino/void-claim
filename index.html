@@ -2202,6 +2202,7 @@ function destroyAsteroid(ast,destroyerEntity){
     addFloatingText(ast.x,ast.y+20,'RARE FIND!','#ffffff',1.0+rarity*0.5);
   }
   ast.alive=false;ast.respawnTimer=rand(15,35);
+  if(!ast._respawnAt)ast._respawnAt=Date.now()+25000; // Fallback if server update hasn't arrived yet
 }
 
 function spawnAsteroids(){
@@ -3189,6 +3190,7 @@ function handleAsteroidUpdate(oldRow,newRow){
   // Detect asteroid destruction (transition from alive to dead)
   if(!newRow.alive&&oldRow.alive){
     ast.alive=false;ast.hp=0;
+    ast._respawnAt=Date.now()+25000; // Track server respawn time to avoid premature reducer calls
     // Trigger destruction FX and loot drops (client-side visuals)
     destroyAsteroid(ast,null);
   }
@@ -8721,11 +8723,13 @@ function updateAsteroidRespawn(dt){
       // Server-authoritative respawn: NPC host calls respawn_asteroid reducer
       // Dead asteroids just wait for server to mark them alive again
       if(isNpcHost&&stdbConn&&stdbConnected&&a.serverId!==undefined){
-        // Try to respawn via server (server checks its own timer)
-        a.respawnTimer-=dt;
-        if(a.respawnTimer<=0){
-          a.respawnTimer=2; // retry every 2s until server confirms respawn
-          stdbConn.reducers.respawnAsteroid({asteroidId:a.serverId}).catch(()=>{});
+        // Only attempt respawn after the server's respawn timer has likely elapsed
+        if(Date.now()>=(a._respawnAt||0)){
+          a.respawnTimer-=dt;
+          if(a.respawnTimer<=0){
+            a.respawnTimer=2; // retry every 2s until server confirms respawn
+            stdbConn.reducers.respawnAsteroid({asteroidId:a.serverId}).catch(()=>{});
+          }
         }
       }
     }else{a.rotation+=a.rotSpeed*dt;}
