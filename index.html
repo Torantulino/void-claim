@@ -4513,7 +4513,7 @@ function drawShipEntity(e){
       const tc=totalCargo(e.cargo);const mc=maxCargo(e);const cPct=Math.min(tc/Math.max(mc,1),1);
       const bw=32;const bh=4;
       // Position below HP/shield bars (offset depends on whether bars are visible)
-      const hasHpBar=(e.hp<e.maxHp||e.isPlayer);
+      const hasHpBar=(e.hp<e.maxHp||(e.maxShield>0&&e.shield<e.maxShield)||e.isPlayer);
       const hasShieldBar=e.maxShield>0;
       let cargoBarY=s.y+sz+6;
       if(hasHpBar)cargoBarY+=6; // below HP bar
@@ -4545,7 +4545,7 @@ function drawShipEntity(e){
   }
   
   // HP/Shield bars
-  if((e.hp<e.maxHp||e.isPlayer)&&!e.cloaked){
+  if((e.hp<e.maxHp||(e.maxShield>0&&e.shield<e.maxShield)||e.isPlayer)&&!e.cloaked){
     const bw=32;const hpPct=e.hp/e.maxHp;const shPct=e.shield/(e.maxShield||1);
     ctx.fillStyle='rgba(0,0,0,.8)';ctx.fillRect(s.x-bw/2,s.y+sz+6,bw,5);
     ctx.fillStyle=hpPct>.5?'#33ff88':hpPct>.25?'#ffcc00':'#ff3333';
@@ -5777,7 +5777,8 @@ function applyDamageFX(target,dmg,playFX){
   // Shield-hit burst
   if(hadShield){
     emitBurst(target.x,target.y,4,50,'rgba(100,180,255,.8)',2,.2,6);
-    if(target.isPlayer){SFX.shieldHit();haptic(15);flashScreen(80,150,255,0.15,6);}
+    SFX.shieldHit();
+    if(target.isPlayer){haptic(15);flashScreen(80,150,255,0.15,6);}
     // Shield-break shatter: fires when local shield is about to drop
     // (approximate — server is authoritative, but visually close enough)
     if(target.shield-dmg<=0){
@@ -5797,7 +5798,7 @@ function applyDamageFX(target,dmg,playFX){
     const ox=rand(-8,8),oy=rand(-12,-4);
     addFloatingText(target.x+ox,target.y+oy,'-'+Math.round(dmg),hadShield?'#66bbff':'#ff4444',punchScale);
   }
-  if(!target.isPlayer)SFX.hit();
+  if(!hadShield&&!target.isPlayer)SFX.hit();
   if(target.isPlayer&&target.hp>0){haptic(25);flashScreen(255,40,40,0.2+(target.hp/target.maxHp<0.3?0.15:0),5);}
 }
 
@@ -5809,7 +5810,8 @@ function applyDamage(target,dmg,attackerId,playFX){
   if(target.shield>0){
     target.shield=Math.max(0,target.shield-dmg);dmg=0;
     if(playFX)emitBurst(target.x,target.y,4,50,'rgba(100,180,255,.8)',2,.2,6);
-    if(target.isPlayer){SFX.shieldHit();haptic(15);flashScreen(80,150,255,0.15,6);}
+    if(playFX)SFX.shieldHit();
+    if(target.isPlayer){haptic(15);flashScreen(80,150,255,0.15,6);}
     // ── Shield break event: dramatic shatter when shields hit zero ──
     if(hadShield&&target.shield<=0){
       for(let i=0;i<20;i++){
@@ -5830,7 +5832,7 @@ function applyDamage(target,dmg,attackerId,playFX){
     const ox=rand(-8,8),oy=rand(-12,-4);
     addFloatingText(target.x+ox,target.y+oy,'-'+Math.round(dmg),hadShield?'#66bbff':'#ff4444',punchScale);
   }
-  if(playFX&&!target.isPlayer)SFX.hit();
+  if(playFX&&!hadShield&&!target.isPlayer)SFX.hit();
   if(target.isPlayer&&target.hp>0){haptic(25);flashScreen(255,40,40,0.2+(target.hp/target.maxHp<0.3?0.15:0),5);}
   if(target.hp<=0)killEntity(target,attackerId);
 }
@@ -6784,7 +6786,7 @@ function drawTradeShip(){
   }
   ctx.restore();
   // Health bar above ship (when damaged)
-  if(!tradeShip.dead&&tradeShip.hp<tradeShip.maxHp){
+  if(!tradeShip.dead&&(tradeShip.hp<tradeShip.maxHp||(tradeShip.maxShield>0&&tradeShip.shield<tradeShip.maxShield))){
     const barW=80,barH=4;
     const barX=s.x-barW/2,barY=s.y-70;
     ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(barX,barY,barW,barH);
@@ -6957,7 +6959,7 @@ function drawSpaceStations(){
     ctx.restore();
 
     // HP bar (only when damaged)
-    if(st.hp<st.maxHp){
+    if(st.hp<st.maxHp||(st.maxShield>0&&st.shield<st.maxShield)){
       const barW=70,barH=5;
       const bx=s.x-barW/2,by=s.y-R-14;
       // Shield bar
