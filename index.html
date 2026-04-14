@@ -3405,7 +3405,22 @@ function npcThink(n){
     return;
   }
   
-  if(hpPct<n.fleeHP){n.state='flee';n.target=null;return;}
+  if(hpPct<n.fleeHP){
+    if(n.personality==='pirate'){
+      // Pirates flee to wilderness — never toward Earth
+      n.state='fleeToWild';n.target=null;
+      const threat=n.lastAttacker||player;
+      const fleeAngle=threat&&!threat.dead?angle(threat.x,threat.y,n.x,n.y):rand(0,Math.PI*2);
+      const fleeDist=rand(CFG.YELLOW_R*0.6,CFG.RED_R*0.8);
+      n._fleeX=Math.cos(fleeAngle)*fleeDist;
+      n._fleeY=Math.sin(fleeAngle)*fleeDist;
+      // Ensure flee point is outside green zone
+      const fd=dist(n._fleeX,n._fleeY,0,0);
+      if(fd<CFG.GREEN_R+200){n._fleeX*=(CFG.GREEN_R+200)/fd;n._fleeY*=(CFG.GREEN_R+200)/fd;}
+      return;
+    }
+    n.state='flee';n.target=null;return;
+  }
   // Greed-based return threshold: cautious miners return early, greedy miners push limits
   // Pirates return at 60% cargo — they loot aggressively
   const returnPct=n.personality==='miner'?(0.4+((n.greed||0)*0.55)):0.6;
@@ -3436,13 +3451,15 @@ function npcThink(n){
     let bestTarget=null,bestDist=2000;
     if(player&&!player.dead&&!player.cloaked&&totalCargo(player.cargo)>0){
       const dp=dist(n.x,n.y,player.x,player.y);
-      if(dp<bestDist){bestDist=dp;bestTarget=player;}
+      const pDE=dist(player.x,player.y,0,0); // target distance to Earth
+      if(dp<bestDist&&pDE>CFG.GREEN_R){bestDist=dp;bestTarget=player;} // skip targets in green/safe
     }
     npcs.forEach(other=>{
       if(other.id===n.id||other.dead)return;
       if(totalCargo(other.cargo)>2){
         const d=dist(n.x,n.y,other.x,other.y);
-        if(d<bestDist){bestDist=d;bestTarget=other;}
+        const oDE=dist(other.x,other.y,0,0);
+        if(d<bestDist&&oDE>CFG.GREEN_R){bestDist=d;bestTarget=other;} // skip targets in green/safe
       }
     });
     // Hunt remote players too (multiplayer: host AI must target non-host players)
@@ -3451,7 +3468,8 @@ function npcThink(n){
         if(rp.dead||rp.cloaked)return;
         if(totalCargo(rp.cargo)>0){
           const drp=dist(n.x,n.y,rp.x,rp.y);
-          if(drp<bestDist){bestDist=drp;bestTarget=rp;}
+          const rpDE=dist(rp.x,rp.y,0,0);
+          if(drp<bestDist&&rpDE>CFG.GREEN_R){bestDist=drp;bestTarget=rp;} // skip targets in green/safe
         }
       });
     }
@@ -3464,6 +3482,8 @@ function npcThink(n){
     let bestLoot=null,bestLD=isPirate?1000:500; // Pirates detect loot from farther (1000px vs 500px)
     loot.forEach(l=>{
       const d=dist(n.x,n.y,l.x,l.y);
+      // Pirates won't chase loot into green/safe zone
+      if(isPirate&&dist(l.x,l.y,0,0)<CFG.GREEN_R)return;
       if(d<bestLD){bestLD=d;bestLoot=l;}
     });
     if(bestLoot){
@@ -3614,7 +3634,8 @@ function npcAct(n,dt){
     }
     case 'attack':{
       if(!n.target||n.target.dead){n.state='idle';break;}
-      // NPCs can now attack in safe zone (police will enforce law)
+      // Pirates abort chase if target fled into green/safe zone
+      if(n.personality==='pirate'&&dist(n.target.x,n.target.y,0,0)<CFG.GREEN_R){n.state='idle';n.target=null;break;}
       const d=dist(n.x,n.y,n.target.x,n.target.y);
       if(d>200){moveToward(n,n.target.x,n.target.y,thrust,dt);}
       else{
@@ -3635,6 +3656,19 @@ function npcAct(n,dt){
       n.hp=Math.min(n.maxHp,n.hp+n.maxHp*.5);n.shield=n.maxShield;n.state='idle';
       // ── NPC Progression: upgrade on accumulated sales ──
       if(val>0)npcProgressionOnSell(n,val);
+      break;
+    }
+    case 'fleeToWild':{
+      // Pirates flee to wilderness instead of Earth — stay in yellow/red zone
+      moveToward(n,n._fleeX,n._fleeY,thrust*1.2,dt);
+      const dFlee=dist(n.x,n.y,n._fleeX,n._fleeY);
+      if(dFlee<300){
+        // Arrived at safe distance — slow heal and go idle
+        const dmgAge=performance.now()-(n.lastDamageTime||0);
+        if(dmgAge>=5000)n.hp=Math.min(n.maxHp,n.hp+n.maxHp*.08*dt);
+        if(dmgAge>=CFG.SHIELD_REGEN_DELAY*1000)n.shield=Math.min(n.maxShield,n.shield+n.maxShield*.15*dt);
+        n.state='idle';
+      }
       break;
     }
     case 'returnToTradeShip':{
