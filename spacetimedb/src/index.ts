@@ -725,6 +725,7 @@ export const sell_ore = spacetimedb.reducer(
 
     // Emit sale event for all clients to see
     ctx.db.sale_event.insert({
+      id: BigInt(0),  // auto-incremented by SpacetimeDB
       seller_id: ctx.sender.toHexString(),
       seller_name: p.name,
       seller_type: 'player',
@@ -775,6 +776,7 @@ export const npc_sell_ore = spacetimedb.reducer(
 
     // Emit sale event for all clients to see
     ctx.db.sale_event.insert({
+      id: BigInt(0),  // auto-incremented by SpacetimeDB
       seller_id: `npc_${args.npc_id}`,
       seller_name: npc.name,
       seller_type: 'npc',
