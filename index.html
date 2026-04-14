@@ -463,7 +463,7 @@ const SFX={
     const bass=ac.createOscillator(),bassG=ac.createGain();
     bass.type='sine';bass.frequency.setValueAtTime(80*p,t);
     bass.frequency.exponentialRampToValueAtTime(30*p,t+.18);
-    bassG.gain.setValueAtTime(.25,t);bassG.gain.exponentialRampToValueAtTime(.001,t+.18);
+    bassG.gain.setValueAtTime(.55,t);bassG.gain.exponentialRampToValueAtTime(.001,t+.18);
     bass.connect(bassG);bassG.connect(out);bass.start(t);bass.stop(t+.2);
     // Layer 2: metallic crunch noise — filtered noise burst for the "crunch"
     const dur=.15,buf=ac.createBuffer(1,ac.sampleRate*dur|0,ac.sampleRate);
@@ -472,29 +472,29 @@ const SFX={
     const nSrc=ac.createBufferSource(),nG=ac.createGain(),nF=ac.createBiquadFilter();
     nSrc.buffer=buf;nSrc.playbackRate.value=.7*p;
     nF.type='bandpass';nF.frequency.setValueAtTime(800,t);nF.frequency.exponentialRampToValueAtTime(200,t+.12);nF.Q.value=2;
-    nG.gain.setValueAtTime(.18,t);nG.gain.exponentialRampToValueAtTime(.001,t+dur);
+    nG.gain.setValueAtTime(.4,t);nG.gain.exponentialRampToValueAtTime(.001,t+dur);
     nSrc.connect(nF);nF.connect(nG);nG.connect(out);nSrc.start(t);
     // Layer 3: hull stress groan — short low distorted tone
-    const groan=ac.createOscillator(),grG=ac.createGain(),grDist=ac.createWaveShaperFunction?null:null;
+    const groan=ac.createOscillator(),grG=ac.createGain();
     groan.type='sawtooth';groan.frequency.setValueAtTime(120*p,t);
     groan.frequency.exponentialRampToValueAtTime(60*p,t+.12);
-    grG.gain.setValueAtTime(.08,t);grG.gain.exponentialRampToValueAtTime(.001,t+.14);
+    grG.gain.setValueAtTime(.18,t);grG.gain.exponentialRampToValueAtTime(.001,t+.14);
     groan.connect(grG);grG.connect(out);groan.start(t);groan.stop(t+.15);
   }),
   shieldHit:()=>snd((ac,out)=>{
-    // Force-field deflection: bright electric ping + shimmer harmonics + bubble pop
+    // Force-field deflection: bright electric ping + shimmer harmonics + sparkle
     const t=ac.currentTime,p=rPitch(1,.12);
     // Layer 1: bright electric ping — the initial "tink" of energy deflection
     const ping=ac.createOscillator(),pingG=ac.createGain();
     ping.type='sine';ping.frequency.setValueAtTime(2400*p,t);
     ping.frequency.exponentialRampToValueAtTime(1800*p,t+.06);
-    pingG.gain.setValueAtTime(.09,t);pingG.gain.exponentialRampToValueAtTime(.001,t+.08);
+    pingG.gain.setValueAtTime(.22,t);pingG.gain.exponentialRampToValueAtTime(.001,t+.08);
     ping.connect(pingG);pingG.connect(out);ping.start(t);ping.stop(t+.1);
     // Layer 2: harmonic shimmer — two detuned tones that create a "force-field wobble"
     const sh1=ac.createOscillator(),sh2=ac.createOscillator(),shG=ac.createGain();
     sh1.type='sine';sh1.frequency.setValueAtTime(1600*p,t);sh1.frequency.exponentialRampToValueAtTime(900*p,t+.18);
     sh2.type='sine';sh2.frequency.setValueAtTime(1640*p,t);sh2.frequency.exponentialRampToValueAtTime(920*p,t+.18);
-    shG.gain.setValueAtTime(.06,t);shG.gain.exponentialRampToValueAtTime(.001,t+.18);
+    shG.gain.setValueAtTime(.15,t);shG.gain.exponentialRampToValueAtTime(.001,t+.18);
     sh1.connect(shG);sh2.connect(shG);shG.connect(out);
     sh1.start(t);sh2.start(t);sh1.stop(t+.2);sh2.stop(t+.2);
     // Layer 3: filtered noise sparkle — brief high-freq hiss like energy dissipating
@@ -504,9 +504,40 @@ const SFX={
     const sSrc=ac.createBufferSource(),sG=ac.createGain(),sF=ac.createBiquadFilter();
     sSrc.buffer=sBuf;
     sF.type='highpass';sF.frequency.value=4000;sF.Q.value=1;
-    sG.gain.setValueAtTime(.07,t);sG.gain.exponentialRampToValueAtTime(.001,t+sDur);
+    sG.gain.setValueAtTime(.16,t);sG.gain.exponentialRampToValueAtTime(.001,t+sDur);
     sSrc.connect(sF);sF.connect(sG);sG.connect(out);sSrc.start(t);
   }),
+  shieldBreak:()=>{duckMusicForSFX();snd((ac,out)=>{
+    // Shield collapse: dramatic descending electric shatter + bass impact + crackle
+    const t=ac.currentTime,p=rPitch(1,.1);
+    // Layer 1: electric shatter — descending sweep with harsh overtones
+    const sw=ac.createOscillator(),swG=ac.createGain();
+    sw.type='sawtooth';sw.frequency.setValueAtTime(3000*p,t);
+    sw.frequency.exponentialRampToValueAtTime(200*p,t+.3);
+    swG.gain.setValueAtTime(.3,t);swG.gain.exponentialRampToValueAtTime(.001,t+.35);
+    sw.connect(swG);swG.connect(out);sw.start(t);sw.stop(t+.35);
+    // Layer 2: bass impact thud — the shield generator giving out
+    const bass=ac.createOscillator(),bassG=ac.createGain();
+    bass.type='sine';bass.frequency.setValueAtTime(100*p,t+.02);
+    bass.frequency.exponentialRampToValueAtTime(35*p,t+.25);
+    bassG.gain.setValueAtTime(.45,t+.02);bassG.gain.exponentialRampToValueAtTime(.001,t+.25);
+    bass.connect(bassG);bassG.connect(out);bass.start(t+.02);bass.stop(t+.28);
+    // Layer 3: electric crackle — filtered noise burst like sparks flying
+    const cDur=.25,cBuf=ac.createBuffer(1,ac.sampleRate*cDur|0,ac.sampleRate);
+    const cD=cBuf.getChannelData(0);
+    for(let i=0;i<cD.length;i++){cD[i]=(Math.random()*2-1)*(Math.random()>.6?1:.2)*Math.pow(1-i/cD.length,2);}
+    const cSrc=ac.createBufferSource(),cG=ac.createGain(),cF=ac.createBiquadFilter();
+    cSrc.buffer=cBuf;
+    cF.type='bandpass';cF.frequency.setValueAtTime(2000,t);cF.frequency.exponentialRampToValueAtTime(500,t+cDur);cF.Q.value=3;
+    cG.gain.setValueAtTime(.35,t);cG.gain.exponentialRampToValueAtTime(.001,t+cDur);
+    cSrc.connect(cF);cF.connect(cG);cG.connect(out);cSrc.start(t);
+    // Layer 4: descending shimmer ping — the force-field fading out
+    const fade=ac.createOscillator(),fadeG=ac.createGain();
+    fade.type='sine';fade.frequency.setValueAtTime(1800*p,t);
+    fade.frequency.exponentialRampToValueAtTime(300*p,t+.4);
+    fadeG.gain.setValueAtTime(.2,t);fadeG.gain.exponentialRampToValueAtTime(.001,t+.4);
+    fade.connect(fadeG);fadeG.connect(out);fade.start(t);fade.stop(t+.4);
+  });},
   ability:()=>snd((ac,out)=>{
     const o=ac.createOscillator(),o2=ac.createOscillator(),g=ac.createGain();
     o.type='sine';o.frequency.setValueAtTime(200,ac.currentTime);
@@ -5662,7 +5693,7 @@ function applyDamageFX(target,dmg,playFX){
         spawnParticle(target.x,target.y,Math.cos(a)*spd,Math.sin(a)*spd,'rgba(100,180,255,.9)',rand(2,4),rand(.3,.6),12);
       }
       spawnParticle(target.x,target.y,0,0,'rgba(150,200,255,.8)',30,.15,20);
-      SFX.hit();
+      SFX.shieldBreak();
       if(target.isPlayer){flashScreen(80,150,255,0.3,6);shake(6);triggerHitstop(2);haptic(60);}
       else shake(3);
     }
@@ -5693,7 +5724,7 @@ function applyDamage(target,dmg,attackerId,playFX){
         spawnParticle(target.x,target.y,Math.cos(a)*spd,Math.sin(a)*spd,'rgba(100,180,255,.9)',rand(2,4),rand(.3,.6),12);
       }
       spawnParticle(target.x,target.y,0,0,'rgba(150,200,255,.8)',30,.15,20);
-      if(playFX)SFX.hit();
+      if(playFX)SFX.shieldBreak();
       if(target.isPlayer){flashScreen(80,150,255,0.3,6);shake(6);triggerHitstop(2);haptic(60);}
       else if(playFX)shake(3);
     }
@@ -7869,7 +7900,7 @@ function syncSelfFromServer(p){
     if(prevShield>0&&p.shield<=0){
       for(let i=0;i<20;i++){const a=(i/20)*Math.PI*2,spd=150+Math.random()*100;spawnParticle(player.x,player.y,Math.cos(a)*spd,Math.sin(a)*spd,'rgba(100,180,255,.9)',2+Math.random()*2,.3+Math.random()*.3,12);}
       spawnParticle(player.x,player.y,0,0,'rgba(150,200,255,.8)',30,.15,20);
-      flashScreen(80,150,255,0.3,6);shake(6);triggerHitstop(2);haptic(60);SFX.hit();
+      flashScreen(80,150,255,0.3,6);shake(6);triggerHitstop(2);haptic(60);SFX.shieldBreak();
     }
     // Hull damage FX (red flash)
     if(hpLost>0&&p.hp>0){haptic(25);flashScreen(255,40,40,0.2+(p.hp/player.maxHp<0.3?0.15:0),5);}
