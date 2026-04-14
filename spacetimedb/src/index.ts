@@ -406,15 +406,14 @@ export const deal_damage = spacetimedb.reducer(
     // Post-respawn invulnerability is handled client-side (2s invulnTimer).
     // The client won't call dealDamage during that window, so no server check needed.
 
-    // Shield absorption (70% of damage absorbed by shield)
+    // Shield absorption (shields block all damage until depleted)
     let dmg = args.damage;
     let newShield = victim.shield;
     let newHp = victim.hp;
 
     if (newShield > 0) {
-      const shieldAbsorb = Math.min(newShield, dmg * 0.7);
-      newShield -= shieldAbsorb;
-      dmg -= shieldAbsorb;
+      newShield = Math.max(0, newShield - dmg);
+      dmg = 0;
     }
     newHp -= dmg;
 
@@ -883,15 +882,14 @@ export const damage_npc = spacetimedb.reducer(
     const npc = ctx.db.npc.id.find(args.npc_id);
     if (!npc || npc.dead) return;
 
-    // Shield absorption (70% — same as player combat)
+    // Shield absorption (shields block all damage until depleted)
     let dmg = args.damage;
     let newShield = npc.shield;
     let newHp = npc.hp;
 
     if (newShield > 0) {
-      const shieldAbsorb = Math.min(newShield, dmg * 0.7);
-      newShield -= shieldAbsorb;
-      dmg -= shieldAbsorb;
+      newShield = Math.max(0, newShield - dmg);
+      dmg = 0;
     }
     newHp -= dmg;
 
@@ -1051,15 +1049,14 @@ export const damage_wingman = spacetimedb.reducer(
     const wm = ctx.db.wingman.id.find(args.wingman_id);
     if (!wm || wm.dead) return;
 
-    // Shield absorption (70%)
+    // Shield absorption (shields block all damage until depleted)
     let dmg = args.damage;
     let newShield = wm.shield;
     let newHp = wm.hp;
 
     if (newShield > 0) {
-      const shieldAbsorb = Math.min(newShield, dmg * 0.7);
-      newShield -= shieldAbsorb;
-      dmg -= shieldAbsorb;
+      newShield = Math.max(0, newShield - dmg);
+      dmg = 0;
     }
     newHp -= dmg;
 
@@ -1158,15 +1155,14 @@ export const damage_station = spacetimedb.reducer(
     const station = ctx.db.space_station.id.find(args.station_id);
     if (!station || station.dead) return;
 
-    // Shield absorption (70% — same as other combat)
+    // Shield absorption (shields block all damage until depleted)
     let dmg = args.damage;
     let newShield = station.shield;
     let newHp = station.hp;
 
     if (newShield > 0) {
-      const shieldAbsorb = Math.min(newShield, dmg * 0.7);
-      newShield -= shieldAbsorb;
-      dmg -= shieldAbsorb;
+      newShield = Math.max(0, newShield - dmg);
+      dmg = 0;
     }
     newHp -= dmg;
 
