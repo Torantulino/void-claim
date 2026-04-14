@@ -268,7 +268,8 @@ const CFG={
   MISSILE_COST:150,MISSILE_SPEED:350,MISSILE_TURN_RATE:3.5,
   MISSILE_DMG:120,MISSILE_SPLASH_DMG:45,MISSILE_SPLASH_R:80,
   MISSILE_TTL:4.0,MISSILE_LOCK_RANGE:600,MISSILE_LOCK_ANGLE:0.8,
-  MISSILE_CD:1.5,          // Max distance from den before pirate returns
+  MISSILE_CD:1.5,
+  SHIELD_REGEN_DELAY:2,    // Seconds after taking damage before shields start regenerating
   CAM_LERP:.08,SHAKE_DECAY:.9,MINIMAP_R:140,MINIMAP_SCALE:0.02,
   STAR_LAYERS:[{count:200,size:1,speed:.05,alpha:.3},{count:150,size:1.5,speed:.15,alpha:.5},{count:80,size:2,speed:.3,alpha:.8}],
   WS_URL:null, // legacy — kept for backwards compat
@@ -1321,8 +1322,8 @@ function updateTradeShip(dt){
   tradeShip.angle=tradeShip.orbitAngle+Math.PI/2;
   tradeShip.vx=-Math.sin(tradeShip.orbitAngle)*CFG.TRADE_SHIP_ORBIT_R*tradeShip.orbitSpeed;
   tradeShip.vy=Math.cos(tradeShip.orbitAngle)*CFG.TRADE_SHIP_ORBIT_R*tradeShip.orbitSpeed;
-  // Shield & hull regen
-  tradeShip.shield=Math.min(tradeShip.maxShield,tradeShip.shield+CFG.TRADE_SHIP_SHIELD_REGEN*dt);
+  // Shield & hull regen (shield delayed after taking damage)
+  if(tradeShip.shield<tradeShip.maxShield&&performance.now()-(tradeShip.lastDamageTime||0)>=CFG.SHIELD_REGEN_DELAY*1000)tradeShip.shield=Math.min(tradeShip.maxShield,tradeShip.shield+CFG.TRADE_SHIP_SHIELD_REGEN*dt);
   tradeShip.hp=Math.min(tradeShip.maxHp,tradeShip.hp+CFG.TRADE_SHIP_HULL_REGEN*dt);
   // Turret AI (NPC host only)
   if(isNpcHost)updateTradeShipTurrets(dt);
@@ -1562,7 +1563,7 @@ function updatePolice(dt){
     }
     
     p.shootCD-=dt;p.thinkTimer-=dt;p.stateTimer-=dt;
-    if(p.shield<p.maxShield)p.shield=Math.min(p.maxShield,p.shield+4*dt); // Faster shield regen
+    if(p.shield<p.maxShield&&performance.now()-(p.lastDamageTime||0)>=CFG.SHIELD_REGEN_DELAY*1000)p.shield=Math.min(p.maxShield,p.shield+4*dt); // Faster shield regen
     // Police heal hull in safe zone (only if not recently damaged)
     if(p.hp<p.maxHp&&dist(p.x,p.y,0,0)<CFG.EARTH_SHIELD_R&&performance.now()-(p.lastDamageTime||0)>=5000)p.hp=Math.min(p.maxHp,p.hp+40*dt);
     
@@ -2409,7 +2410,7 @@ function updateDrones(dt){
     }
     
     w.shootCD-=dt;w.thinkTimer-=dt;w.stateTimer-=dt;
-    if(w.shield<w.maxShield)w.shield=Math.min(w.maxShield,w.shield+2*dt);
+    if(w.shield<w.maxShield&&performance.now()-(w.lastDamageTime||0)>=CFG.SHIELD_REGEN_DELAY*1000)w.shield=Math.min(w.maxShield,w.shield+2*dt);
     // Drones heal hull in safe zone (only if not recently damaged)
     if(w.hp<w.maxHp&&dist(w.x,w.y,0,0)<CFG.EARTH_SHIELD_R&&performance.now()-(w.lastDamageTime||0)>=5000)w.hp=Math.min(w.maxHp,w.hp+30*dt);
     
@@ -3308,7 +3309,7 @@ function updateNPCs(dt){
     }
     
     n.thinkTimer-=dt;n.stateTimer-=dt;n.shootCD-=dt;n.bounty=Math.max(0,n.bounty-dt);
-    if(n.shield<n.maxShield)n.shield=Math.min(n.maxShield,n.shield+1.5*dt);
+    if(n.shield<n.maxShield&&performance.now()-(n.lastDamageTime||0)>=CFG.SHIELD_REGEN_DELAY*1000)n.shield=Math.min(n.maxShield,n.shield+1.5*dt);
     // NPCs heal hull in safe zone (only if not recently damaged)
     if(n.hp<n.maxHp&&dist(n.x,n.y,0,0)<CFG.EARTH_SHIELD_R&&performance.now()-(n.lastDamageTime||0)>=5000)n.hp=Math.min(n.maxHp,n.hp+30*dt);
     n.maxShield=maxShield(n);n.maxHp=maxHull(n);
@@ -3582,8 +3583,9 @@ function npcAct(n,dt){
         const dToDen=dist(n.x,n.y,den.x,den.y);
         if(dToDen<400){
           // Arrived at den — heal slowly and switch to patrol
-          n.hp=Math.min(n.maxHp,n.hp+n.maxHp*.15*dt);
-          n.shield=Math.min(n.maxShield,n.shield+n.maxShield*.25*dt);
+          const denDmgAge=performance.now()-(n.lastDamageTime||0);
+          if(denDmgAge>=5000)n.hp=Math.min(n.maxHp,n.hp+n.maxHp*.15*dt);
+          if(denDmgAge>=CFG.SHIELD_REGEN_DELAY*1000)n.shield=Math.min(n.maxShield,n.shield+n.maxShield*.25*dt);
           n.state='denPatrol';
         }
       }else{n.state='wander';}
@@ -5291,7 +5293,7 @@ function updatePlayer(dt){
   if(wantsShoot&&player.shootCD<=0&&!miningTarget){
     fireProjectile(player);player.shootCD=CFG.SHOOT_CD;
   }
-  if(player.shield<player.maxShield)player.shield=Math.min(player.maxShield,player.shield+2*dt);
+  if(player.shield<player.maxShield&&performance.now()-(player.lastDamageTime||0)>=CFG.SHIELD_REGEN_DELAY*1000)player.shield=Math.min(player.maxShield,player.shield+2*dt);
   if(player.bounty>0)player.bounty-=dt;
   if(player.bounty<0)player.bounty=0;
   player.maxShield=maxShield(player);player.maxHp=maxHull(player);
@@ -5498,6 +5500,7 @@ function updateProjectiles(dt){
             npcId:tradeShip.npcId,damage:p.dmg,
             attackerName:attackerName
           }).catch(()=>{});
+          tradeShip.lastDamageTime=performance.now();
           if(nearPlayer){
             emitDirectionalSparks(p.x,p.y,p.angle,10,p.color);
             shake(Math.max(0,0.8-distToPlayer(p.x,p.y)/FX_RANGE*0.8));
@@ -5966,6 +5969,7 @@ function updateMissiles(dt){
             npcId:tradeShip.npcId,damage:m.dmg,
             attackerName:player?player.name:'Unknown'
           }).catch(()=>{});
+          tradeShip.lastDamageTime=performance.now();
           applyDamageFX(tradeShip,m.dmg,distToPlayer(tradeShip.x,tradeShip.y)<FX_RANGE);
         }else{
           applyDamage(tradeShip,m.dmg,m.ownerId,distToPlayer(tradeShip.x,tradeShip.y)<FX_RANGE);
