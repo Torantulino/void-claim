@@ -94,6 +94,21 @@ const spacetimedb = schema({
     }
   ),
 
+  sale_event: table(
+    { public: true },
+    {
+      id:            t.u64().primaryKey().autoInc(),
+      seller_id:     t.string(),   // identity hex or NPC name
+      seller_name:   t.string(),
+      seller_type:   t.string(),   // 'player' or 'npc'
+      amount_earned: t.u64(),
+      sale_type:     t.string(),   // 'earth' or 'trade_ship'
+      x:             t.f32(),      // position for notification
+      y:             t.f32(),
+      timestamp:     t.u64(),
+    }
+  ),
+
   leaderboard_entry: table(
     { public: true },
     {
@@ -681,7 +696,10 @@ const MAX_SALE_VALUE = BigInt(20000);
 
 export const sell_ore = spacetimedb.reducer(
   {
-    amount: t.u64(),  // total credit value of the sale
+    amount: t.u64(),     // total credit value of the sale
+    sale_type: t.string(), // 'earth' or 'trade_ship'
+    x: t.f32(),          // player position for notification
+    y: t.f32(),
   },
   (ctx, args) => {
     const p = ctx.db.player.identity.find(ctx.sender);
@@ -696,6 +714,56 @@ export const sell_ore = spacetimedb.reducer(
       earned: p.earned + saleValue,
       last_update: BigInt(Date.now()),
     });
+
+    // Emit sale event for all clients to see
+    ctx.db.sale_event.insert({
+      seller_id: ctx.sender.toHexString(),
+      seller_name: p.name,
+      seller_type: 'player',
+      amount_earned: saleValue,
+      sale_type: args.sale_type,
+      x: args.x,
+      y: args.y,
+      timestamp: BigInt(Date.now()),
+    });
+  }
+);
+
+// NPC sale event - called by NPC host when NPCs sell ore
+export const npc_sell_ore = spacetimedb.reducer(
+  {
+    npc_id: t.u32(),     // NPC ID
+    amount: t.u64(),     // credit value of the sale
+    sale_type: t.string(), // 'earth' or 'trade_ship'
+    x: t.f32(),          // NPC position for notification
+    y: t.f32(),
+  },
+  (ctx, args) => {
+    const npc = ctx.db.npc.id.find(args.npc_id);
+    if (!npc) return;
+
+    // Verify caller is the NPC host
+    const host = ctx.db.npc_host.id.find(0);
+    if (!host || host.identity.toHexString() !== ctx.sender.toHexString()) return;
+
+    // Update NPC earnings
+    ctx.db.npc.id.update({
+      ...npc,
+      total_earned: npc.total_earned + Number(args.amount),
+      last_update: BigInt(Date.now()),
+    });
+
+    // Emit sale event for all clients to see
+    ctx.db.sale_event.insert({
+      seller_id: `npc_${args.npc_id}`,
+      seller_name: npc.name,
+      seller_type: 'npc',
+      amount_earned: args.amount,
+      sale_type: args.sale_type,
+      x: args.x,
+      y: args.y,
+      timestamp: BigInt(Date.now()),
+    });
   }
 );
 
@@ -705,6 +773,14 @@ export const prune_events = spacetimedb.reducer(
     for (const ev of ctx.db.kill_event.iter()) {
       if (ev.timestamp < fiveMinAgo) {
         ctx.db.kill_event.id.delete(ev.id);
+      }
+    }
+
+    // Prune sale events older than 2 minutes (notifications are short-lived)
+    const twoMinAgo = BigInt(Date.now() - 2 * 60 * 1000);
+    for (const sale of ctx.db.sale_event.iter()) {
+      if (sale.timestamp < twoMinAgo) {
+        ctx.db.sale_event.id.delete(sale.id);
       }
     }
 
