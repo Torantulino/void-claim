@@ -5526,7 +5526,7 @@ function updateProjectiles(dt){
             }).catch((e)=>{console.warn('[STDB] damageStation failed:',e);});
           }else{
             // Offline: apply locally
-            if(st.shield>0){const sa=Math.min(st.shield,p.dmg*.7);st.shield-=sa;p.dmg-=sa;}
+            if(st.shield>0){st.shield=Math.max(0,st.shield-p.dmg);p.dmg=0;}
             st.hp-=p.dmg;
             if(st.hp<=0){st.dead=true;st.hp=0;st.shield=0;st.respawnAt=Date.now()+CFG.STATION_RESPAWN*1000;onStationDestroyed(st);}
           }
@@ -5621,8 +5621,7 @@ function applyDamageFX(target,dmg,playFX){
     if(target.isPlayer){SFX.shieldHit();haptic(15);flashScreen(80,150,255,0.15,6);}
     // Shield-break shatter: fires when local shield is about to drop
     // (approximate — server is authoritative, but visually close enough)
-    const approxAbsorb=Math.min(target.shield,dmg*.7);
-    if(target.shield-approxAbsorb<=0){
+    if(target.shield-dmg<=0){
       for(let i=0;i<20;i++){
         const a=(i/20)*Math.PI*2,spd=150+rand(0,100);
         spawnParticle(target.x,target.y,Math.cos(a)*spd,Math.sin(a)*spd,'rgba(100,180,255,.9)',rand(2,4),rand(.3,.6),12);
@@ -5649,8 +5648,7 @@ function applyDamage(target,dmg,attackerId,playFX){
   if(playFX===undefined)playFX=target.isPlayer||distToPlayer(target.x,target.y)<FX_RANGE;
   const hadShield=target.shield>0;
   if(target.shield>0){
-    const sa=Math.min(target.shield,dmg*.7);
-    target.shield-=sa;dmg-=sa;
+    target.shield=Math.max(0,target.shield-dmg);dmg=0;
     if(playFX)emitBurst(target.x,target.y,4,50,'rgba(100,180,255,.8)',2,.2,6);
     if(target.isPlayer){SFX.shieldHit();haptic(15);flashScreen(80,150,255,0.15,6);}
     // ── Shield break event: dramatic shatter when shields hit zero ──
@@ -5991,7 +5989,7 @@ function updateMissiles(dt){
             }).catch(()=>{});
             applyDamageFX(sst,m.dmg,distToPlayer(sst.x,sst.y)<FX_RANGE);
           }else{
-            if(sst.shield>0){const sa=Math.min(sst.shield,m.dmg*.7);sst.shield-=sa;m.dmg-=sa;}
+            if(sst.shield>0){sst.shield=Math.max(0,sst.shield-m.dmg);m.dmg=0;}
             sst.hp-=m.dmg;
             if(sst.hp<=0){sst.dead=true;sst.hp=0;sst.shield=0;sst.respawnAt=Date.now()+CFG.STATION_RESPAWN*1000;onStationDestroyed(sst);}
           }
