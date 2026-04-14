@@ -3690,10 +3690,12 @@ function drawAsteroidEntity(a){
 // ── Ship preview renderer for marketplace cards ──
 function renderShipPreview(canvas,shipType,shipColor){
   const W=100,H=70;
-  canvas.width=W;canvas.height=H;
+  const dpr=window.devicePixelRatio||1;
+  canvas.width=W*dpr;canvas.height=H*dpr;
   canvas.className='ship-preview';
   canvas.style.width=W+'px';canvas.style.height=H+'px';
   const ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
   ctx.clearRect(0,0,W,H);
   ctx.save();
   ctx.translate(W/2,H/2);
@@ -6962,7 +6964,7 @@ function renderMarket(){
       const locked=!canHire;
       wmHTML+='<div class="ship-card'+(locked?' locked':'')+'" data-wm-type="'+key+'">';
       wmHTML+='<div class="card-name">'+wt.name+'</div>';
-      wmHTML+='<canvas class="ship-preview" data-ship="drone_'+key+'"></canvas>';
+      wmHTML+='<canvas class="ship-preview" data-ship="'+wt.ship+'"></canvas>';
       wmHTML+='<div class="ship-stats">HP:'+wt.hull+' Shield:'+wt.shield+'<br>DMG:'+wt.dmg+'x Speed:'+wt.speed+'x</div>';
       wmHTML+='<div class="card-desc">'+wt.desc+'</div>';
       wmHTML+='<div class="card-cost">⬡ '+wt.cost+'</div>';
