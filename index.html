@@ -108,15 +108,17 @@ canvas#game{display:block;width:100%;height:100%;position:fixed;top:0;left:0}
 #chatHint{font-size:.6rem;color:rgba(150,180,255,.35);text-align:center;margin-top:2px;transition:opacity .3s}
 
 /* ═══ Changelog Panel ═══ */
-#changelogPanel{position:absolute;bottom:clamp(12px,3vh,24px);left:clamp(12px,2vw,24px);width:clamp(220px,22vw,320px);max-height:clamp(140px,22vh,260px);overflow-y:auto;background:rgba(6,8,20,.72);border:1px solid rgba(100,150,255,.12);border-radius:6px;padding:10px 12px 8px;z-index:101;backdrop-filter:blur(4px);scrollbar-width:thin;scrollbar-color:rgba(100,150,255,.15) transparent}
+#changelogPanel{position:absolute;bottom:clamp(12px,3vh,24px);left:clamp(12px,2vw,24px);width:clamp(220px,22vw,320px);max-height:clamp(200px,38vh,420px);overflow-y:auto;background:rgba(6,8,20,.72);border:1px solid rgba(100,150,255,.12);border-radius:6px;padding:10px 12px 8px;z-index:101;backdrop-filter:blur(4px);scrollbar-width:thin;scrollbar-color:rgba(100,150,255,.15) transparent}
 #changelogPanel::-webkit-scrollbar{width:3px}
 #changelogPanel::-webkit-scrollbar-thumb{background:rgba(100,150,255,.15);border-radius:2px}
 #changelogPanel .cl-hdr{display:flex;align-items:center;gap:6px;margin-bottom:6px;border-bottom:1px solid rgba(100,150,255,.08);padding-bottom:5px}
 #changelogPanel .cl-hdr span{font-size:.6rem;letter-spacing:.2em;color:rgba(100,150,255,.55);text-transform:uppercase}
 #changelogPanel .cl-hdr .cl-dot{width:5px;height:5px;border-radius:50%;background:rgba(68,255,136,.5);box-shadow:0 0 4px rgba(68,255,136,.3);animation:clPulse 2s ease-in-out infinite}
 @keyframes clPulse{0%,100%{opacity:.5}50%{opacity:1}}
-#changelogPanel .cl-item{padding:3px 0;border-bottom:1px solid rgba(255,255,255,.03)}
+#changelogPanel .cl-item{display:block;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.03);text-decoration:none;border-radius:3px;transition:background .2s;cursor:pointer}
 #changelogPanel .cl-item:last-child{border-bottom:none}
+#changelogPanel .cl-item:hover{background:rgba(100,150,255,.08)}
+#changelogPanel .cl-item:hover .cl-msg{color:rgba(100,180,255,.9)}
 #changelogPanel .cl-msg{font-size:.62rem;color:rgba(220,230,255,.75);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis}
 #changelogPanel .cl-date{font-size:.52rem;color:rgba(100,150,255,.35);letter-spacing:.08em;margin-top:1px}
 #changelogPanel .cl-loading{font-size:.58rem;color:rgba(100,150,255,.3);letter-spacing:.1em;text-align:center;padding:8px 0}
@@ -8858,8 +8860,11 @@ function init(){
         const msg=(c.commit.message||'').split('\n')[0]; // first line only
         const d=new Date(c.commit.committer.date);
         const ago=timeAgoShort(d);
-        const el=document.createElement('div');
+        const el=document.createElement('a');
         el.className='cl-item';
+        el.href=c.html_url;
+        el.target='_blank';
+        el.rel='noopener';
         el.innerHTML='<div class="cl-msg">'+escHtml(msg)+'</div><div class="cl-date">'+ago+'</div>';
         list.appendChild(el);
       });
