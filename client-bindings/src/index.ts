@@ -46,6 +46,7 @@ import HealPlayerReducer from "./heal_player_reducer";
 import HeartbeatNpcHostReducer from "./heartbeat_npc_host_reducer";
 import JoinGameReducer from "./join_game_reducer";
 import LeaveGameReducer from "./leave_game_reducer";
+import NpcSellOreReducer from "./npc_sell_ore_reducer";
 import PruneEventsReducer from "./prune_events_reducer";
 import PruneProjectilesReducer from "./prune_projectiles_reducer";
 import ReportKillReducer from "./report_kill_reducer";
@@ -57,7 +58,6 @@ import SeedAsteroidsReducer from "./seed_asteroids_reducer";
 import SeedWorldReducer from "./seed_world_reducer";
 import SellOreReducer from "./sell_ore_reducer";
 import SendChatReducer from "./send_chat_reducer";
-import NpcSellOreReducer from "./npc_sell_ore_reducer";
 import SpawnNpcReducer from "./spawn_npc_reducer";
 import SpawnStationReducer from "./spawn_station_reducer";
 import SpawnWingmanReducer from "./spawn_wingman_reducer";
@@ -119,17 +119,6 @@ const tablesSchema = __schema({
       { name: 'kill_event_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, KillEventRow),
-  sale_event: __table({
-    name: 'sale_event',
-    indexes: [
-      { accessor: 'id', name: 'sale_event_id_idx_btree', algorithm: 'btree', columns: [
-        'id',
-      ] },
-    ],
-    constraints: [
-      { name: 'sale_event_id_key', constraint: 'unique', columns: ['id'] },
-    ],
-  }, SaleEventRow),
   leaderboard_entry: __table({
     name: 'leaderboard_entry',
     indexes: [
@@ -185,6 +174,17 @@ const tablesSchema = __schema({
       { name: 'projectile_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, ProjectileRow),
+  sale_event: __table({
+    name: 'sale_event',
+    indexes: [
+      { accessor: 'id', name: 'sale_event_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'sale_event_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, SaleEventRow),
   space_station: __table({
     name: 'space_station',
     indexes: [

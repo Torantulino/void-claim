@@ -12,7 +12,7 @@ import {
 
 export default {
   amount: __t.u64(),
-  sale_type: __t.string(),
+  saleType: __t.string(),
   x: __t.f32(),
   y: __t.f32(),
 };

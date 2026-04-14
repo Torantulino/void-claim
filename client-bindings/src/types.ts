@@ -130,6 +130,19 @@ export const Projectile = __t.object("Projectile", {
 });
 export type Projectile = __Infer<typeof Projectile>;
 
+export const SaleEvent = __t.object("SaleEvent", {
+  id: __t.u64(),
+  sellerId: __t.string(),
+  sellerName: __t.string(),
+  sellerType: __t.string(),
+  amountEarned: __t.u64(),
+  saleType: __t.string(),
+  x: __t.f32(),
+  y: __t.f32(),
+  timestamp: __t.u64(),
+});
+export type SaleEvent = __Infer<typeof SaleEvent>;
+
 export const SpaceStation = __t.object("SpaceStation", {
   id: __t.u32(),
   x: __t.f32(),
