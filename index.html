@@ -2573,7 +2573,7 @@ function killDrone(w,attackerName){
 function createNPC(npcIndex){
   const isMiner=Math.random()>.35;
   const personality=isMiner?'miner':'pirate';
-  const shipType=personality==='pirate'?pick(['corsair','corsair','prospector']):pick(['prospector','hauler','prospector','hauler','sentinel']);
+  const shipType=personality==='pirate'?pick(['corsair','corsair','prospector']):'prospector';
   const name=pick(NPC_NAMES)+pick(NPC_SUFFIXES);
   // Greed stat determines how deep miners venture and how long they stay
   const greed=isMiner?Math.random():0;
@@ -2583,18 +2583,18 @@ function createNPC(npcIndex){
   const d=rand(minD,maxD);
   const a=rand(0,Math.PI*2);
   const base=SHIPS[shipType];
-  const upgLvl=personality==='pirate'?randInt(1,3):randInt(0,2);
+  const upgLvl=personality==='pirate'?randInt(1,3):0;
   return{
     npcId:npcIndex, // Stable server ID (0..NPC_COUNT-1)
     id:uid(),name,x:Math.cos(a)*d,y:Math.sin(a)*d,vx:0,vy:0,angle:rand(0,Math.PI*2),
     hp:base.hull,maxHp:base.hull,shield:base.shield,maxShield:base.shield,
-    ship:shipType,credits:randInt(0,200),cargo:{},
+    ship:shipType,credits:isMiner?0:randInt(0,200),cargo:{},
     upgrades:{engine:upgLvl,laser:upgLvl,shields:upgLvl,cargo:upgLvl,scanner:0},
     shootCD:0,dead:false,respawnTimer:0,cloaked:false,bounty:0,
     personality,state:'idle',target:null,stateTimer:rand(1,3),
     thinkTimer:0,fleeHP:.25,isPlayer:false,isNPC:true,
     color:pick(SHIP_COLORS),stunTimer:0,aggressor:false,
-    totalKills:randInt(0,5),totalMined:randInt(50,500),totalEarned:randInt(100,3000),
+    totalKills:isMiner?0:randInt(0,5),totalMined:isMiner?0:randInt(50,500),totalEarned:0,
     // ── Miner greed personality (0=cautious, 1=reckless) ──
     greed:greed,
     // ── NPC Progression tracking ──
@@ -3280,6 +3280,7 @@ function updateNPCs(dt){
           n.upgrades={engine:bl,laser:bl,shields:bl,cargo:bl,scanner:0};
         }
         n.npcLevel=0;n.sellAccum=0;n.killsSinceSpawn=0;
+        if(n.personality==='miner'){n.credits=0;n.ship='prospector';}
         const base=SHIPS[n.ship];
         // Respawn in greed-appropriate zone (same as createNPC)
         const _g=n.greed||0;const _isMiner=n.personality==='miner';
@@ -3636,6 +3637,13 @@ const NPC_PIRATE_SHIP_TIERS=['prospector','corsair','phantom'];
 
 function npcProgressionOnSell(n,saleValue){
   if(!n.isNPC||n.isPolice||n.isTradeShip||n.personality==='denPirate')return;
+  // Miners use economy-based progression (buy upgrades & ships with credits)
+  if(n.personality==='miner'){
+    npcTryBuyUpgrades(n);
+    npcTryBuyShip(n);
+    return;
+  }
+  // Pirates keep legacy flat-rate progression
   n.sellAccum=(n.sellAccum||0)+saleValue;
   while(n.sellAccum>=500){
     n.sellAccum-=500;
@@ -3650,12 +3658,68 @@ function npcProgressionOnSell(n,saleValue){
   }
 }
 
+// ── Economy-Based Miner Upgrade Purchasing ──
+// Miners spend credits on upgrades using the same upgradeCost() curve as players.
+// Greed personality drives purchase priority:
+//   Greedy miners (greed > 0.6): cargo → engine → laser → shields (maximize hauls)
+//   Cautious miners (greed < 0.3): shields → engine → laser → cargo (survive longer)
+//   Balanced miners: engine → cargo → laser → shields (general improvement)
+function npcTryBuyUpgrades(n){
+  const g=n.greed||0;
+  const priority=g>.6?['cargo','engine','laser','shields']:
+                 g<.3?['shields','engine','laser','cargo']:
+                      ['engine','cargo','laser','shields'];
+  let bought=true;
+  while(bought){
+    bought=false;
+    for(const key of priority){
+      const curLvl=n.upgrades[key]||0;
+      if(curLvl>=UPGRADES[key].levels)continue;
+      const cost=upgradeCost(key,curLvl);
+      if(n.credits>=cost){
+        n.credits-=cost;
+        n.upgrades[key]=curLvl+1;
+        n.npcLevel=(n.npcLevel||0)+1;
+        // Refresh derived stats
+        n.maxShield=maxShield(n);n.maxHp=maxHull(n);
+        n.shield=Math.min(n.shield,n.maxShield);
+        bought=true;
+        break; // Re-evaluate priority after each purchase
+      }
+    }
+  }
+}
+
+// ── Economy-Based Miner Ship Purchasing ──
+// Miners buy ships along NPC_MINER_SHIP_TIERS using the same trade-in system as players:
+//   Trade-in value = 70% of current ship cost
+//   Net cost = new ship cost - trade-in value
+function npcTryBuyShip(n){
+  const tiers=NPC_MINER_SHIP_TIERS;
+  const curIdx=tiers.indexOf(n.ship);
+  if(curIdx<0||curIdx>=tiers.length-1)return;
+  const nextShip=tiers[curIdx+1];
+  const nextCost=SHIPS[nextShip].cost;
+  const tradeIn=Math.floor(SHIPS[n.ship].cost*0.7);
+  const netCost=nextCost-tradeIn;
+  if(n.credits>=netCost){
+    n.credits-=netCost;
+    n.ship=nextShip;
+    const base=SHIPS[nextShip];
+    n.maxHp=base.hull;n.hp=base.hull;
+    n.maxShield=maxShield(n);n.shield=n.maxShield;
+    n.npcLevel=(n.npcLevel||0)+2;
+  }
+}
+
 function npcProgressionOnKill(n){
   if(!n.isNPC||n.isPolice||n.isTradeShip||n.personality==='denPirate')return;
-  n.killsSinceSpawn=(n.killsSinceSpawn||0)+1;
   n.totalKills=(n.totalKills||0)+1;
+  // Only pirates upgrade ships via kills — miners use economy-based progression
+  if(n.personality!=='pirate')return;
+  n.killsSinceSpawn=(n.killsSinceSpawn||0)+1;
   if(n.killsSinceSpawn>=3){
-    const tiers=n.personality==='pirate'?NPC_PIRATE_SHIP_TIERS:NPC_MINER_SHIP_TIERS;
+    const tiers=NPC_PIRATE_SHIP_TIERS;
     const curIdx=tiers.indexOf(n.ship);
     if(curIdx>=0&&curIdx<tiers.length-1){
       const newShip=tiers[curIdx+1];
