@@ -3351,6 +3351,16 @@ function npcThink(n){
         if(d<bestDist){bestDist=d;bestTarget=other;}
       }
     });
+    // Hunt remote players too (multiplayer: host AI must target non-host players)
+    if(remotePlayers){
+      remotePlayers.forEach(rp=>{
+        if(rp.dead||rp.cloaked)return;
+        if(totalCargo(rp.cargo)>0){
+          const drp=dist(n.x,n.y,rp.x,rp.y);
+          if(drp<bestDist){bestDist=drp;bestTarget=rp;}
+        }
+      });
+    }
     if(bestTarget){n.state='attack';n.target=bestTarget;return;}
   }
   
