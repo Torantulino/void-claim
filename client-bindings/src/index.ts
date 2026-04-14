@@ -57,6 +57,7 @@ import SeedAsteroidsReducer from "./seed_asteroids_reducer";
 import SeedWorldReducer from "./seed_world_reducer";
 import SellOreReducer from "./sell_ore_reducer";
 import SendChatReducer from "./send_chat_reducer";
+import NpcSellOreReducer from "./npc_sell_ore_reducer";
 import SpawnNpcReducer from "./spawn_npc_reducer";
 import SpawnStationReducer from "./spawn_station_reducer";
 import SpawnWingmanReducer from "./spawn_wingman_reducer";
@@ -76,6 +77,7 @@ import NpcRow from "./npc_table";
 import NpcHostRow from "./npc_host_table";
 import PlayerRow from "./player_table";
 import ProjectileRow from "./projectile_table";
+import SaleEventRow from "./sale_event_table";
 import SpaceStationRow from "./space_station_table";
 import WingmanRow from "./wingman_table";
 import WorldStateRow from "./world_state_table";
@@ -117,6 +119,17 @@ const tablesSchema = __schema({
       { name: 'kill_event_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, KillEventRow),
+  sale_event: __table({
+    name: 'sale_event',
+    indexes: [
+      { accessor: 'id', name: 'sale_event_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'sale_event_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, SaleEventRow),
   leaderboard_entry: __table({
     name: 'leaderboard_entry',
     indexes: [
@@ -221,6 +234,7 @@ const reducersSchema = __reducers(
   __reducerSchema("heartbeat_npc_host", HeartbeatNpcHostReducer),
   __reducerSchema("join_game", JoinGameReducer),
   __reducerSchema("leave_game", LeaveGameReducer),
+  __reducerSchema("npc_sell_ore", NpcSellOreReducer),
   __reducerSchema("prune_events", PruneEventsReducer),
   __reducerSchema("prune_projectiles", PruneProjectilesReducer),
   __reducerSchema("report_kill", ReportKillReducer),
