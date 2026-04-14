@@ -3762,7 +3762,7 @@ function npcAct(n,dt){
       n.hp=Math.min(n.maxHp,n.hp+n.maxHp*.5);n.shield=n.maxShield;n.state='idle';
       // ── Server: emit NPC sale event ──
       if(val>0&&isNpcHost&&stdbConn&&stdbConnected){
-        stdbConn.reducers.npcSellOre({npc_id:n.id, amount:BigInt(val), sale_type:'earth', x:n.x, y:n.y}).catch((e)=>{console.warn('[STDB] npc_sell_ore failed:',e);});
+        stdbConn.reducers.npcSellOre({npcId:n.id, amount:BigInt(val), saleType:'earth', x:n.x, y:n.y}).catch((e)=>{console.warn('[STDB] npc_sell_ore failed:',e);});
       }
       // ── NPC Progression: upgrade on accumulated sales ──
       if(val>0)npcProgressionOnSell(n,val);
@@ -3792,7 +3792,7 @@ function npcAct(n,dt){
       n.credits+=val2;n.totalEarned+=val2;n.cargo={};n.state='idle';
       // ── Server: emit NPC sale event ──
       if(val2>0&&isNpcHost&&stdbConn&&stdbConnected){
-        stdbConn.reducers.npcSellOre({npc_id:n.id, amount:BigInt(val2), sale_type:'trade_ship', x:n.x, y:n.y}).catch((e)=>{console.warn('[STDB] npc_sell_ore failed:',e);});
+        stdbConn.reducers.npcSellOre({npcId:n.id, amount:BigInt(val2), saleType:'trade_ship', x:n.x, y:n.y}).catch((e)=>{console.warn('[STDB] npc_sell_ore failed:',e);});
       }
       // ── NPC Progression: upgrade on accumulated sales ──
       if(val2>0)npcProgressionOnSell(n,val2);
@@ -6600,7 +6600,7 @@ function sellAllOreAtTradeShip(){
   if(val>0){
     player.credits+=val;player.totalEarned+=val;
     // Server-authoritative earnings: notify server of the sale amount
-    if(stdbConn&&stdbConnected){stdbConn.reducers.sellOre({amount:BigInt(val), sale_type:'trade_ship', x:player.x, y:player.y}).catch((e)=>{console.warn('[STDB] sell_ore failed:',e)});}
+    if(stdbConn&&stdbConnected){stdbConn.reducers.sellOre({amount:BigInt(val), saleType:'trade_ship', x:player.x, y:player.y}).catch((e)=>{console.warn('[STDB] sell_ore failed:',e)});}
     addFloatingText(player.x,player.y-30,`+${val} ⬡ (+50%)`,'#44ff88');
     notify(`Sold ore for ${val} credits (+50% bonus)!`,'#44ff88');
     player.cargo={};updateHUD();SFX.sell();saveGame();submitLeaderboard();
@@ -6914,7 +6914,7 @@ function killLeviathan(lev){
   addFloatingText(lev.x,lev.y,'+500 CREDITS','#ff44ff',2.8);
   if(player){player.credits+=500;player.totalEarned+=500;
     // Server-authoritative earnings: notify server of leviathan kill reward
-    if(stdbConn&&stdbConnected){stdbConn.reducers.sellOre({amount:BigInt(500), sale_type:'earth', x:player.x, y:player.y}).catch(()=>{});}}
+    if(stdbConn&&stdbConnected){stdbConn.reducers.sellOre({amount:BigInt(500), saleType:'earth', x:player.x, y:player.y}).catch(()=>{});}}
   // Scatter voidstone as individual loot drops with outward velocity
   const voidTotal=randInt(5,12);
   const voidDrops=Math.min(voidTotal,randInt(4,7));
@@ -7405,7 +7405,7 @@ function sellAllOre(){
   if(val>0){
     player.credits+=val;player.totalEarned+=val;
     // Server-authoritative earnings: notify server of the sale amount
-    if(stdbConn&&stdbConnected){stdbConn.reducers.sellOre({amount:BigInt(val), sale_type:'earth', x:player.x, y:player.y}).catch((e)=>{console.warn('[STDB] sell_ore failed:',e)});}
+    if(stdbConn&&stdbConnected){stdbConn.reducers.sellOre({amount:BigInt(val), saleType:'earth', x:player.x, y:player.y}).catch((e)=>{console.warn('[STDB] sell_ore failed:',e)});}
     addFloatingText(player.x,player.y-30,`+${val} ⬡`,'#ffcc44');
     notify(`Sold ore for ${val} credits!`,'#ffcc44');
     player.cargo={};updateHUD();SFX.sell();

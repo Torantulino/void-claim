@@ -5,6 +5,9 @@ var VoidClaimDB = (() => {
   var __getOwnPropNames = Object.getOwnPropertyNames;
   var __getProtoOf = Object.getPrototypeOf;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __typeError = (msg) => {
+    throw TypeError(msg);
+  };
   var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
   var __commonJS = (cb, mod) => function __require() {
     return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
@@ -30,28 +33,12 @@ var VoidClaimDB = (() => {
     mod
   ));
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-  var __publicField = (obj, key, value) => {
-    __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-    return value;
-  };
-  var __accessCheck = (obj, member, msg) => {
-    if (!member.has(obj))
-      throw TypeError("Cannot " + msg);
-  };
-  var __privateGet = (obj, member, getter) => {
-    __accessCheck(obj, member, "read from private field");
-    return getter ? getter.call(obj) : member.get(obj);
-  };
-  var __privateAdd = (obj, member, value) => {
-    if (member.has(obj))
-      throw TypeError("Cannot add the same private member more than once");
-    member instanceof WeakSet ? member.add(obj) : member.set(obj, value);
-  };
-  var __privateSet = (obj, member, value, setter) => {
-    __accessCheck(obj, member, "write to private field");
-    setter ? setter.call(obj, value) : member.set(obj, value);
-    return value;
-  };
+  var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+  var __accessCheck = (obj, member, msg) => member.has(obj) || __typeError("Cannot " + msg);
+  var __privateGet = (obj, member, getter) => (__accessCheck(obj, member, "read from private field"), getter ? getter.call(obj) : member.get(obj));
+  var __privateAdd = (obj, member, value) => member.has(obj) ? __typeError("Cannot add the same private member more than once") : member instanceof WeakSet ? member.add(obj) : member.set(obj, value);
+  var __privateSet = (obj, member, value, setter) => (__accessCheck(obj, member, "write to private field"), setter ? setter.call(obj, value) : member.set(obj, value), value);
+  var __privateMethod = (obj, member, method) => (__accessCheck(obj, member, "access private method"), method);
   var __privateWrapper = (obj, member, setter, getter) => ({
     set _(value) {
       __privateSet(obj, member, value, setter);
@@ -60,10 +47,6 @@ var VoidClaimDB = (() => {
       return __privateGet(obj, member, getter);
     }
   });
-  var __privateMethod = (obj, member, method) => {
-    __accessCheck(obj, member, "access private method");
-    return method;
-  };
 
   // node_modules/base64-js/index.js
   var require_base64_js = __commonJS({
@@ -90,8 +73,7 @@ var VoidClaimDB = (() => {
           throw new Error("Invalid string. Length must be a multiple of 4");
         }
         var validLen = b64.indexOf("=");
-        if (validLen === -1)
-          validLen = len2;
+        if (validLen === -1) validLen = len2;
         var placeHoldersLen = validLen === len2 ? 0 : 4 - validLen % 4;
         return [validLen, placeHoldersLen];
       }
@@ -303,8 +285,7 @@ var VoidClaimDB = (() => {
           if (value) {
             return (value2) => {
               let message = `Object can not safely be stringified. Received type ${typeof value2}`;
-              if (typeof value2 !== "function")
-                message += ` (${value2.toString()})`;
+              if (typeof value2 !== "function") message += ` (${value2.toString()})`;
               throw new Error(message);
             };
           }
@@ -433,6 +414,7 @@ ${originalIndentation}`;
               if (bigint) {
                 return String(value);
               }
+            // fallthrough
             default:
               return fail ? fail(value) : void 0;
           }
@@ -523,6 +505,7 @@ ${originalIndentation}`;
               if (bigint) {
                 return String(value);
               }
+            // fallthrough
             default:
               return fail ? fail(value) : void 0;
           }
@@ -634,6 +617,7 @@ ${originalIndentation}`;
               if (bigint) {
                 return String(value);
               }
+            // fallthrough
             default:
               return fail ? fail(value) : void 0;
           }
@@ -729,6 +713,7 @@ ${originalIndentation}`;
               if (bigint) {
                 return String(value);
               }
+            // fallthrough
             default:
               return fail ? fail(value) : void 0;
           }
@@ -760,9 +745,9 @@ ${originalIndentation}`;
     }
   });
 
-  // src/index.ts
-  var src_exports = {};
-  __export(src_exports, {
+  // client-bindings/src/index.ts
+  var index_exports = {};
+  __export(index_exports, {
     DbConnection: () => DbConnection,
     DbConnectionBuilder: () => DbConnectionBuilder2,
     SubscriptionBuilder: () => SubscriptionBuilder,
@@ -964,8 +949,7 @@ ${originalIndentation}`;
      * ```
      */
     static fromRandomBytesV4(bytes) {
-      if (bytes.length !== 16)
-        throw new Error("UUID v4 requires 16 bytes");
+      if (bytes.length !== 16) throw new Error("UUID v4 requires 16 bytes");
       const arr = new Uint8Array(bytes);
       arr[6] = arr[6] & 15 | 64;
       arr[8] = arr[8] & 63 | 128;
@@ -1063,8 +1047,7 @@ ${originalIndentation}`;
      */
     static parse(s) {
       const hex = s.replace(/-/g, "");
-      if (hex.length !== 32)
-        throw new Error("Invalid hex UUID");
+      if (hex.length !== 32) throw new Error("Invalid hex UUID");
       let v = 0n;
       for (let i = 0; i < 32; i += 2) {
         v = v << 8n | BigInt(parseInt(hex.slice(i, i + 2), 16));
@@ -1087,8 +1070,7 @@ ${originalIndentation}`;
     }
     static bytesToBigInt(bytes) {
       let result = 0n;
-      for (const b of bytes)
-        result = result << 8n | BigInt(b);
+      for (const b of bytes) result = result << 8n | BigInt(b);
       return result;
     }
     static bigIntToBytes(value) {
@@ -1141,10 +1123,8 @@ ${originalIndentation}`;
       return high << 23 | mid1 << 15 | mid2 << 7 | low | 0;
     }
     compareTo(other) {
-      if (this.__uuid__ < other.__uuid__)
-        return -1;
-      if (this.__uuid__ > other.__uuid__)
-        return 1;
+      if (this.__uuid__ < other.__uuid__) return -1;
+      if (this.__uuid__ > other.__uuid__) return 1;
       return 0;
     }
     static getAlgebraicType() {
@@ -1180,11 +1160,10 @@ ${originalIndentation}`;
    * ```
    */
   __publicField(_a3, "MAX", new _a3(_a3.MAX_UUID_BIGINT)), _a3);
-  var _ensure, ensure_fn, _a4;
+  var _BinaryReader_instances, ensure_fn, _a4;
   var BinaryReader = (_a4 = class {
     constructor(input) {
-      /** Ensure we have at least `n` bytes left to read */
-      __privateAdd(this, _ensure);
+      __privateAdd(this, _BinaryReader_instances);
       /**
        * The DataView used to read values from the binary data.
        *
@@ -1213,7 +1192,7 @@ ${originalIndentation}`;
     }
     readUInt8Array() {
       const length = this.readU32();
-      __privateMethod(this, _ensure, ensure_fn).call(this, length);
+      __privateMethod(this, _BinaryReader_instances, ensure_fn).call(this, length);
       return this.readBytes(length);
     }
     readBool() {
@@ -1315,7 +1294,8 @@ ${originalIndentation}`;
       const uint8Array = this.readUInt8Array();
       return new TextDecoder("utf-8").decode(uint8Array);
     }
-  }, _ensure = new WeakSet(), ensure_fn = function(n) {
+  }, _BinaryReader_instances = new WeakSet(), /** Ensure we have at least `n` bytes left to read */
+  ensure_fn = function(n) {
     if (this.offset + n > this.view.byteLength) {
       throw new RangeError(
         `Tried to read ${n} byte(s) at relative offset ${this.offset}, but only ${this.remaining} byte(s) remain`
@@ -1344,8 +1324,7 @@ ${originalIndentation}`;
       return this.buffer.byteLength;
     }
     grow(newSize) {
-      if (newSize <= this.buffer.byteLength)
-        return;
+      if (newSize <= this.buffer.byteLength) return;
       this.buffer = ArrayBufferPrototypeTransfer.call(this.buffer, newSize);
       this.view = new DataView(this.buffer);
     }
@@ -1365,11 +1344,9 @@ ${originalIndentation}`;
     }
     expandBuffer(additionalCapacity) {
       const minCapacity = this.offset + additionalCapacity + 1;
-      if (minCapacity <= this.buffer.capacity)
-        return;
+      if (minCapacity <= this.buffer.capacity) return;
       let newCapacity = this.buffer.capacity * 2;
-      if (newCapacity < minCapacity)
-        newCapacity = minCapacity;
+      if (newCapacity < minCapacity) newCapacity = minCapacity;
       this.buffer.grow(newCapacity);
     }
     toBase64() {
@@ -1497,15 +1474,13 @@ ${originalIndentation}`;
     }
   };
   function deepEqual(obj1, obj2) {
-    if (obj1 === obj2)
-      return true;
+    if (obj1 === obj2) return true;
     if (typeof obj1 !== "object" || obj1 === null || typeof obj2 !== "object" || obj2 === null) {
       return false;
     }
     const keys1 = Object.keys(obj1);
     const keys2 = Object.keys(obj2);
-    if (keys1.length !== keys2.length)
-      return false;
+    if (keys1.length !== keys2.length) return false;
     for (const key of keys1) {
       if (!keys2.includes(key) || !deepEqual(obj1[key], obj2[key])) {
         return false;
@@ -1664,8 +1639,7 @@ ${originalIndentation}`;
       if (ty.tag === "Ref") {
         if (!typespace)
           throw new Error("cannot serialize refs without a typespace");
-        while (ty.tag === "Ref")
-          ty = typespace.types[ty.value];
+        while (ty.tag === "Ref") ty = typespace.types[ty.value];
       }
       switch (ty.tag) {
         case "Product":
@@ -1696,8 +1670,7 @@ ${originalIndentation}`;
       if (ty.tag === "Ref") {
         if (!typespace)
           throw new Error("cannot deserialize refs without a typespace");
-        while (ty.tag === "Ref")
-          ty = typespace.types[ty.value];
+        while (ty.tag === "Ref") ty = typespace.types[ty.value];
       }
       switch (ty.tag) {
         case "Product":
@@ -1892,8 +1865,7 @@ ${originalIndentation}`;
   var ProductType = {
     makeSerializer(ty, typespace) {
       let serializer = SERIALIZERS.get(ty);
-      if (serializer != null)
-        return serializer;
+      if (serializer != null) return serializer;
       if (isFixedSizeProduct(ty)) {
         const size = productSize(ty);
         const body2 = `"use strict";
@@ -1939,8 +1911,7 @@ writer.offset += ${primitiveSizes[tag]};` : `writer.write${tag}(value.${name});`
         }
       }
       let deserializer = DESERIALIZERS.get(ty);
-      if (deserializer != null)
-        return deserializer;
+      if (deserializer != null) return deserializer;
       if (isFixedSizeProduct(ty)) {
         const body = `"use strict";
 const result = { ${ty.elements.map(getElementInitializer).join(", ")} };
@@ -2028,8 +1999,7 @@ return result;`
         };
       } else {
         let serializer = SERIALIZERS.get(ty);
-        if (serializer != null)
-          return serializer;
+        if (serializer != null) return serializer;
         const serializers = {};
         const body = `switch (value.tag) {
 ${ty.variants.map(
@@ -2098,8 +2068,7 @@ ${ty.variants.map(
         };
       } else {
         let deserializer = DESERIALIZERS.get(ty);
-        if (deserializer != null)
-          return deserializer;
+        if (deserializer != null) return deserializer;
         const deserializers = {};
         deserializer = Function(
           "reader",
@@ -2284,13 +2253,13 @@ ${ty.variants.map(
       });
     }
   };
-  var QueryBrand = Symbol("QueryBrand");
+  var QueryBrand = /* @__PURE__ */ Symbol("QueryBrand");
   var isRowTypedQuery = (val) => !!val && typeof val === "object" && QueryBrand in val;
   function toSql(q) {
     return q.toSql();
   }
   var _a5, _b;
-  var SemijoinImpl = (_b = class {
+  var SemijoinImpl = (_a5 = QueryBrand, _b = class {
     constructor(sourceQuery, filterQuery, joinCondition) {
       __publicField(this, _a5, true);
       __publicField(this, "type", "semijoin");
@@ -2331,9 +2300,9 @@ ${ty.variants.map(
       }
       return sql;
     }
-  }, _a5 = QueryBrand, _b);
+  }, _b);
   var _a6, _b2;
-  var FromBuilder = (_b2 = class {
+  var FromBuilder = (_a6 = QueryBrand, _b2 = class {
     constructor(table2, whereClause) {
       __publicField(this, _a6, true);
       this.table = table2;
@@ -2366,9 +2335,9 @@ ${ty.variants.map(
     build() {
       return this;
     }
-  }, _a6 = QueryBrand, _b2);
-  var _a7, _b3;
-  var TableRefImpl = (_b3 = class {
+  }, _b2);
+  var _a7;
+  var TableRefImpl = (_a7 = QueryBrand, class {
     constructor(tableDef) {
       __publicField(this, _a7, true);
       __publicField(this, "type", "table");
@@ -2415,7 +2384,7 @@ ${ty.variants.map(
     where(predicate) {
       return this.asFrom().where(predicate);
     }
-  }, _a7 = QueryBrand, _b3);
+  });
   function createTableRefFromDef(tableDef) {
     return new TableRefImpl(tableDef);
   }
@@ -2447,11 +2416,9 @@ ${ty.variants.map(
     const quotedTable = quoteIdentifier(table2.sourceName);
     const sql = `SELECT * FROM ${quotedTable}`;
     const clauses = [];
-    if (where)
-      clauses.push(booleanExprToSql(where));
+    if (where) clauses.push(booleanExprToSql(where));
     clauses.push(...extraClauses);
-    if (clauses.length === 0)
-      return sql;
+    if (clauses.length === 0) return sql;
     const whereSql = clauses.length === 1 ? clauses[0] : clauses.map(wrapInParens).join(" AND ");
     return `${sql} WHERE ${whereSql}`;
   }
@@ -2526,8 +2493,7 @@ ${ty.variants.map(
     return literal(val);
   }
   function normalizePredicateExpr(value) {
-    if (value instanceof BooleanExpr)
-      return value;
+    if (value instanceof BooleanExpr) return value;
     if (typeof value === "boolean") {
       return new BooleanExpr({
         type: "eq",
@@ -3339,7 +3305,7 @@ ${ty.variants.map(
             configurable: false
           });
         } else {
-          const fn = (value) => this.create(key, value);
+          const fn = ((value) => this.create(key, value));
           Object.defineProperty(this, key, {
             value: fn,
             writable: false,
@@ -4459,7 +4425,7 @@ ${ty.variants.map(
       this.ref = ref;
     }
   };
-  var enumImpl = (nameOrObj, maybeObj) => {
+  var enumImpl = ((nameOrObj, maybeObj) => {
     let obj = nameOrObj;
     let name = void 0;
     if (typeof nameOrObj === "string") {
@@ -4479,7 +4445,7 @@ ${ty.variants.map(
       return new SimpleSumBuilderImpl(simpleVariantsObj, name);
     }
     return new SumBuilder(obj, name);
-  };
+  });
   var t = {
     /**
      * Creates a new `Bool` {@link AlgebraicType} to be used in table definitions
@@ -4594,7 +4560,7 @@ ${ty.variants.map(
      * values must be {@link TypeBuilder}s.
      * @returns A new {@link ProductBuilder} instance.
      */
-    object: (nameOrObj, maybeObj) => {
+    object: ((nameOrObj, maybeObj) => {
       if (typeof nameOrObj === "string") {
         if (!maybeObj) {
           throw new TypeError(
@@ -4604,7 +4570,7 @@ ${ty.variants.map(
         return new ProductBuilder(maybeObj, nameOrObj);
       }
       return new ProductBuilder(nameOrObj, void 0);
-    },
+    }),
     /**
      * Creates a new `Row` {@link AlgebraicType} to be used in table definitions. Row types in SpacetimeDB
      * are similar to `Product` types, but are specifically used to define the schema of a table row.
@@ -4621,10 +4587,10 @@ ${ty.variants.map(
      * values must be {@link TypeBuilder}s or {@link ColumnBuilder}s.
      * @returns A new {@link RowBuilder} instance
      */
-    row: (nameOrObj, maybeObj) => {
+    row: ((nameOrObj, maybeObj) => {
       const [obj, name] = typeof nameOrObj === "string" ? [maybeObj, nameOrObj] : [nameOrObj, void 0];
       return new RowBuilder(obj, name);
-    },
+    }),
     /**
      * Creates a new `Array` {@link AlgebraicType} to be used in table definitions.
      * Represented as an array in TypeScript.
@@ -5079,11 +5045,10 @@ ${ty.variants.map(
     );
   };
   var scalarCompare = (x, y) => {
-    if (x === y)
-      return 0;
+    if (x === y) return 0;
     return x < y ? -1 : 1;
   };
-  var _makeReadonlyIndex, makeReadonlyIndex_fn, _a9;
+  var _TableCacheImpl_instances, makeReadonlyIndex_fn, _a9;
   var TableCacheImpl = (_a9 = class {
     /**
      * @param name the table name
@@ -5092,8 +5057,7 @@ ${ty.variants.map(
      * @param entityClass the entityClass
      */
     constructor(tableDef) {
-      // TODO: this just scans the whole table; we should build proper index structures
-      __privateAdd(this, _makeReadonlyIndex);
+      __privateAdd(this, _TableCacheImpl_instances);
       __publicField(this, "rows");
       __publicField(this, "tableDef");
       __publicField(this, "emitter");
@@ -5334,7 +5298,7 @@ ${ty.variants.map(
       this.rows = /* @__PURE__ */ new Map();
       this.emitter = new EventEmitter();
       for (const idxDef of this.tableDef.resolvedIndexes) {
-        const index = __privateMethod(this, _makeReadonlyIndex, makeReadonlyIndex_fn).call(this, this.tableDef, idxDef);
+        const index = __privateMethod(this, _TableCacheImpl_instances, makeReadonlyIndex_fn).call(this, this.tableDef, idxDef);
         this[idxDef.name] = index;
       }
     }
@@ -5362,7 +5326,8 @@ ${ty.variants.map(
     [Symbol.iterator]() {
       return this.iter();
     }
-  }, _makeReadonlyIndex = new WeakSet(), makeReadonlyIndex_fn = function(tableDef, idx) {
+  }, _TableCacheImpl_instances = new WeakSet(), // TODO: this just scans the whole table; we should build proper index structures
+  makeReadonlyIndex_fn = function(tableDef, idx) {
     if (idx.algorithm !== "btree") {
       throw new Error("Only btree indexes are supported in TableCacheImpl");
     }
@@ -5373,8 +5338,7 @@ ${ty.variants.map(
       const arr = Array.isArray(rangeArg) ? rangeArg : [rangeArg];
       const prefixLen = Math.max(0, arr.length - 1);
       for (let i = 0; i < prefixLen; i++) {
-        if (!deepEqual(key[i], arr[i]))
-          return false;
+        if (!deepEqual(key[i], arr[i])) return false;
       }
       const lastProvided = arr[arr.length - 1];
       const kLast = key[prefixLen];
@@ -5383,22 +5347,17 @@ ${ty.variants.map(
         const to = lastProvided.to;
         if (from.tag !== "unbounded") {
           const c = scalarCompare(kLast, from.value);
-          if (c < 0)
-            return false;
-          if (c === 0 && from.tag === "excluded")
-            return false;
+          if (c < 0) return false;
+          if (c === 0 && from.tag === "excluded") return false;
         }
         if (to.tag !== "unbounded") {
           const c = scalarCompare(kLast, to.value);
-          if (c > 0)
-            return false;
-          if (c === 0 && to.tag === "excluded")
-            return false;
+          if (c > 0) return false;
+          if (c === 0 && to.tag === "excluded") return false;
         }
         return true;
       } else {
-        if (!deepEqual(kLast, lastProvided))
-          return false;
+        if (!deepEqual(kLast, lastProvided)) return false;
         return true;
       }
     };
@@ -5414,8 +5373,7 @@ ${ty.variants.map(
         find: (colVal) => {
           const expected = Array.isArray(colVal) ? colVal : [colVal];
           for (const row of self.iter()) {
-            if (deepEqual(getKey(row), expected))
-              return row;
+            if (deepEqual(getKey(row), expected)) return row;
           }
           return null;
         }
@@ -5425,8 +5383,7 @@ ${ty.variants.map(
       const impl = {
         *filter(range) {
           for (const row of self.iter()) {
-            if (matchRange(row, range))
-              yield row;
+            if (matchRange(row, range)) yield row;
           }
         }
       };
@@ -5511,8 +5468,7 @@ ${ty.variants.map(
     for (let i = 0; i < len; i++) {
       const aPart = a[i];
       const bPart = b[i];
-      if (aPart === bPart)
-        continue;
+      if (aPart === bPart) continue;
       if (typeof aPart === "number" && typeof bPart === "number") {
         return aPart - bPart;
       }
@@ -5657,11 +5613,11 @@ ${ty.variants.map(
       throw err;
     }
   }
-  var _ws, _decompress, decompress_fn, _a10;
+  var _ws, __WebsocketDecompressAdapter_instances, decompress_fn, _a10;
   var WebsocketDecompressAdapter = (_a10 = class {
     constructor(ws) {
-      __privateAdd(this, _decompress);
-      __privateAdd(this, _ws, void 0);
+      __privateAdd(this, __WebsocketDecompressAdapter_instances);
+      __privateAdd(this, _ws);
       ws.binaryType = "arraybuffer";
       __privateSet(this, _ws, ws);
     }
@@ -5673,7 +5629,7 @@ ${ty.variants.map(
     }
     set onmessage(handler) {
       __privateGet(this, _ws).onmessage = async (msg) => {
-        const data = await __privateMethod(this, _decompress, decompress_fn).call(this, new Uint8Array(msg.data));
+        const data = await __privateMethod(this, __WebsocketDecompressAdapter_instances, decompress_fn).call(this, new Uint8Array(msg.data));
         handler({ data });
       };
     }
@@ -5729,7 +5685,7 @@ ${ty.variants.map(
       const ws = new WS(databaseUrl.toString(), wsProtocol);
       return new _a10(ws);
     }
-  }, _ws = new WeakMap(), _decompress = new WeakSet(), decompress_fn = async function(buffer) {
+  }, _ws = new WeakMap(), __WebsocketDecompressAdapter_instances = new WeakSet(), decompress_fn = async function(buffer) {
     const tag = buffer[0];
     const data = buffer.subarray(1);
     switch (tag) {
@@ -5758,15 +5714,15 @@ ${ty.variants.map(
      * @param dbConnectionConstructor The constructor to use to create a new `DbConnection`.
      */
     constructor(remoteModule, dbConnectionCtor) {
-      __privateAdd(this, _uri, void 0);
-      __privateAdd(this, _nameOrAddress, void 0);
-      __privateAdd(this, _identity, void 0);
-      __privateAdd(this, _token, void 0);
+      __privateAdd(this, _uri);
+      __privateAdd(this, _nameOrAddress);
+      __privateAdd(this, _identity);
+      __privateAdd(this, _token);
       __privateAdd(this, _emitter, new EventEmitter());
       __privateAdd(this, _compression, "gzip");
       __privateAdd(this, _lightMode, false);
-      __privateAdd(this, _confirmedReads, void 0);
-      __privateAdd(this, _createWSFn, void 0);
+      __privateAdd(this, _confirmedReads);
+      __privateAdd(this, _createWSFn);
       this.remoteModule = remoteModule;
       this.dbConnectionCtor = dbConnectionCtor;
       __privateSet(this, _createWSFn, WebsocketDecompressAdapter.createWebSocketFn);
@@ -5971,12 +5927,12 @@ ${ty.variants.map(
       });
     }
   }, _uri = new WeakMap(), _nameOrAddress = new WeakMap(), _identity = new WeakMap(), _token = new WeakMap(), _emitter = new WeakMap(), _compression = new WeakMap(), _lightMode = new WeakMap(), _confirmedReads = new WeakMap(), _createWSFn = new WeakMap(), _a11);
-  var INTERNAL_REMOTE_MODULE = Symbol("INTERNAL_REMOTE_MODULE");
+  var INTERNAL_REMOTE_MODULE = /* @__PURE__ */ Symbol("INTERNAL_REMOTE_MODULE");
   var _onApplied, _onError, _a12;
   var SubscriptionBuilderImpl = (_a12 = class {
     constructor(db) {
-      __privateAdd(this, _onApplied, void 0);
-      __privateAdd(this, _onError, void 0);
+      __privateAdd(this, _onApplied);
+      __privateAdd(this, _onError);
       this.db = db;
     }
     /**
@@ -6035,10 +5991,8 @@ ${ty.variants.map(
         throw new Error("Subscriptions must have at least one query");
       }
       const queryStrings = queries.map((q) => {
-        if (typeof q === "string")
-          return q;
-        if (isRowTypedQuery(q))
-          return toSql(q);
+        if (typeof q === "string") return q;
+        if (isRowTypedQuery(q)) return toSql(q);
         throw new Error("Subscriptions must be SQL strings or typed queries");
       });
       return new SubscriptionHandleImpl(
@@ -6081,7 +6035,7 @@ ${ty.variants.map(
   var _querySetId, _unsubscribeCalled, _endedState, _activeState, _emitter2, _a13;
   var SubscriptionHandleImpl = (_a13 = class {
     constructor(db, querySql, onApplied, onError) {
-      __privateAdd(this, _querySetId, void 0);
+      __privateAdd(this, _querySetId);
       __privateAdd(this, _unsubscribeCalled, false);
       __privateAdd(this, _endedState, false);
       __privateAdd(this, _activeState, false);
@@ -6180,7 +6134,7 @@ ${ty.variants.map(
       return __privateGet(this, _activeState);
     }
   }, _querySetId = new WeakMap(), _unsubscribeCalled = new WeakMap(), _endedState = new WeakMap(), _activeState = new WeakMap(), _emitter2 = new WeakMap(), _a13);
-  var _queryId, _requestId, _eventId, _emitter3, _messageQueue, _outboundQueue, _subscriptionManager, _remoteModule, _reducerCallbacks, _reducerCallInfo, _procedureCallbacks, _rowDeserializers, _reducerArgsSerializers, _procedureSerializers, _sourceNameToTableDef, _getNextQueryId, _getNextRequestId, _makeDbView, makeDbView_fn, _makeReducers, makeReducers_fn, _makeProcedures, makeProcedures_fn, _makeEventContext, makeEventContext_fn, _parseRowList, parseRowList_fn, _mergeTableUpdates, mergeTableUpdates_fn, _queryRowsToTableUpdates, queryRowsToTableUpdates_fn, _tableUpdateRowsToOperations, tableUpdateRowsToOperations_fn, _querySetUpdateToTableUpdates, querySetUpdateToTableUpdates_fn, _flushOutboundQueue, flushOutboundQueue_fn, _clientMessageEncoder, _sendMessage, sendMessage_fn, _nextEventId, nextEventId_fn, _handleOnOpen, handleOnOpen_fn, _applyTableUpdates, applyTableUpdates_fn, _applyTransactionUpdates, applyTransactionUpdates_fn, _processMessage, processMessage_fn, _handleOnMessage, handleOnMessage_fn, _a14;
+  var _queryId, _requestId, _eventId, _emitter3, _messageQueue, _outboundQueue, _subscriptionManager, _remoteModule, _reducerCallbacks, _reducerCallInfo, _procedureCallbacks, _rowDeserializers, _reducerArgsSerializers, _procedureSerializers, _sourceNameToTableDef, _getNextQueryId, _getNextRequestId, _DbConnectionImpl_instances, makeDbView_fn, makeReducers_fn, makeProcedures_fn, makeEventContext_fn, parseRowList_fn, mergeTableUpdates_fn, queryRowsToTableUpdates_fn, tableUpdateRowsToOperations_fn, querySetUpdateToTableUpdates_fn, flushOutboundQueue_fn, _clientMessageEncoder, sendMessage_fn, nextEventId_fn, handleOnOpen_fn, applyTableUpdates_fn, applyTransactionUpdates_fn, processMessage_fn, handleOnMessage_fn, _a14;
   var DbConnectionImpl = (_a14 = class {
     constructor({
       uri,
@@ -6194,31 +6148,7 @@ ${ty.variants.map(
       lightMode,
       confirmedReads
     }) {
-      __privateAdd(this, _makeDbView);
-      __privateAdd(this, _makeReducers);
-      __privateAdd(this, _makeProcedures);
-      __privateAdd(this, _makeEventContext);
-      __privateAdd(this, _parseRowList);
-      // Take a bunch of table updates and ensure that there is at most one update per table.
-      __privateAdd(this, _mergeTableUpdates);
-      __privateAdd(this, _queryRowsToTableUpdates);
-      __privateAdd(this, _tableUpdateRowsToOperations);
-      __privateAdd(this, _querySetUpdateToTableUpdates);
-      __privateAdd(this, _flushOutboundQueue);
-      __privateAdd(this, _sendMessage);
-      __privateAdd(this, _nextEventId);
-      /**
-       * Handles WebSocket onOpen event.
-       */
-      __privateAdd(this, _handleOnOpen);
-      __privateAdd(this, _applyTableUpdates);
-      __privateAdd(this, _applyTransactionUpdates);
-      __privateAdd(this, _processMessage);
-      /**
-       * Handles WebSocket onMessage event.
-       * @param wsMessage MessageEvent object.
-       */
-      __privateAdd(this, _handleOnMessage);
+      __privateAdd(this, _DbConnectionImpl_instances);
       /**
        * Whether or not the connection is active.
        */
@@ -6252,18 +6182,18 @@ ${ty.variants.map(
       __privateAdd(this, _queryId, 0);
       __privateAdd(this, _requestId, 0);
       __privateAdd(this, _eventId, 0);
-      __privateAdd(this, _emitter3, void 0);
+      __privateAdd(this, _emitter3);
       __privateAdd(this, _messageQueue, Promise.resolve());
       __privateAdd(this, _outboundQueue, []);
       __privateAdd(this, _subscriptionManager, new SubscriptionManager());
-      __privateAdd(this, _remoteModule, void 0);
+      __privateAdd(this, _remoteModule);
       __privateAdd(this, _reducerCallbacks, /* @__PURE__ */ new Map());
       __privateAdd(this, _reducerCallInfo, /* @__PURE__ */ new Map());
       __privateAdd(this, _procedureCallbacks, /* @__PURE__ */ new Map());
-      __privateAdd(this, _rowDeserializers, void 0);
-      __privateAdd(this, _reducerArgsSerializers, void 0);
-      __privateAdd(this, _procedureSerializers, void 0);
-      __privateAdd(this, _sourceNameToTableDef, void 0);
+      __privateAdd(this, _rowDeserializers);
+      __privateAdd(this, _reducerArgsSerializers);
+      __privateAdd(this, _procedureSerializers);
+      __privateAdd(this, _sourceNameToTableDef);
       // These fields are not part of the public API, but in a pinch you
       // could use JavaScript to access them by bypassing TypeScript's
       // private fields.
@@ -6326,9 +6256,9 @@ ${ty.variants.map(
       const connectionId = this.connectionId.toHexString();
       url.searchParams.set("connection_id", connectionId);
       this.clientCache = new ClientCache();
-      this.db = __privateMethod(this, _makeDbView, makeDbView_fn).call(this);
-      this.reducers = __privateMethod(this, _makeReducers, makeReducers_fn).call(this, remoteModule);
-      this.procedures = __privateMethod(this, _makeProcedures, makeProcedures_fn).call(this, remoteModule);
+      this.db = __privateMethod(this, _DbConnectionImpl_instances, makeDbView_fn).call(this);
+      this.reducers = __privateMethod(this, _DbConnectionImpl_instances, makeReducers_fn).call(this, remoteModule);
+      this.procedures = __privateMethod(this, _DbConnectionImpl_instances, makeProcedures_fn).call(this, remoteModule);
       this.wsPromise = createWSFn({
         url,
         nameOrAddress,
@@ -6347,8 +6277,8 @@ ${ty.variants.map(
           __privateGet(this, _emitter3).emit("connectError", this, e);
           this.isActive = false;
         };
-        this.ws.onopen = __privateMethod(this, _handleOnOpen, handleOnOpen_fn).bind(this);
-        this.ws.onmessage = __privateMethod(this, _handleOnMessage, handleOnMessage_fn).bind(this);
+        this.ws.onopen = __privateMethod(this, _DbConnectionImpl_instances, handleOnOpen_fn).bind(this);
+        this.ws.onmessage = __privateMethod(this, _DbConnectionImpl_instances, handleOnMessage_fn).bind(this);
         return v;
       }).catch((e) => {
         stdbLogger("error", "Error connecting to SpacetimeDB WS");
@@ -6370,7 +6300,7 @@ ${ty.variants.map(
         emitter: handleEmitter
       });
       const requestId = __privateGet(this, _getNextRequestId).call(this);
-      __privateMethod(this, _sendMessage, sendMessage_fn).call(this, ClientMessage.Subscribe({
+      __privateMethod(this, _DbConnectionImpl_instances, sendMessage_fn).call(this, ClientMessage.Subscribe({
         queryStrings: querySql,
         querySetId: { id: querySetId },
         requestId
@@ -6379,7 +6309,7 @@ ${ty.variants.map(
     }
     unregisterSubscription(querySetId) {
       const requestId = __privateGet(this, _getNextRequestId).call(this);
-      __privateMethod(this, _sendMessage, sendMessage_fn).call(this, ClientMessage.Unsubscribe({
+      __privateMethod(this, _DbConnectionImpl_instances, sendMessage_fn).call(this, ClientMessage.Unsubscribe({
         querySetId: { id: querySetId },
         requestId,
         flags: UnsubscribeFlags.SendDroppedRows
@@ -6400,7 +6330,7 @@ ${ty.variants.map(
         requestId,
         flags: 0
       });
-      __privateMethod(this, _sendMessage, sendMessage_fn).call(this, message);
+      __privateMethod(this, _DbConnectionImpl_instances, sendMessage_fn).call(this, message);
       if (reducerArgs) {
         __privateGet(this, _reducerCallInfo).set(requestId, {
           name: reducerName,
@@ -6452,7 +6382,7 @@ ${ty.variants.map(
         // reserved for future use - 0 is the only valid value
         flags: 0
       });
-      __privateMethod(this, _sendMessage, sendMessage_fn).call(this, message);
+      __privateMethod(this, _DbConnectionImpl_instances, sendMessage_fn).call(this, message);
       __privateGet(this, _procedureCallbacks).set(requestId, (result) => {
         if (result.tag === "Ok") {
           resolve(result.value);
@@ -6514,7 +6444,7 @@ ${ty.variants.map(
     removeOnConnectError(callback) {
       __privateGet(this, _emitter3).off("connectError", callback);
     }
-  }, _queryId = new WeakMap(), _requestId = new WeakMap(), _eventId = new WeakMap(), _emitter3 = new WeakMap(), _messageQueue = new WeakMap(), _outboundQueue = new WeakMap(), _subscriptionManager = new WeakMap(), _remoteModule = new WeakMap(), _reducerCallbacks = new WeakMap(), _reducerCallInfo = new WeakMap(), _procedureCallbacks = new WeakMap(), _rowDeserializers = new WeakMap(), _reducerArgsSerializers = new WeakMap(), _procedureSerializers = new WeakMap(), _sourceNameToTableDef = new WeakMap(), _getNextQueryId = new WeakMap(), _getNextRequestId = new WeakMap(), _makeDbView = new WeakSet(), makeDbView_fn = function() {
+  }, _queryId = new WeakMap(), _requestId = new WeakMap(), _eventId = new WeakMap(), _emitter3 = new WeakMap(), _messageQueue = new WeakMap(), _outboundQueue = new WeakMap(), _subscriptionManager = new WeakMap(), _remoteModule = new WeakMap(), _reducerCallbacks = new WeakMap(), _reducerCallInfo = new WeakMap(), _procedureCallbacks = new WeakMap(), _rowDeserializers = new WeakMap(), _reducerArgsSerializers = new WeakMap(), _procedureSerializers = new WeakMap(), _sourceNameToTableDef = new WeakMap(), _getNextQueryId = new WeakMap(), _getNextRequestId = new WeakMap(), _DbConnectionImpl_instances = new WeakSet(), makeDbView_fn = function() {
     const view = /* @__PURE__ */ Object.create(null);
     for (const tbl of Object.values(__privateGet(this, _sourceNameToTableDef))) {
       const key = tbl.accessorName;
@@ -6525,7 +6455,7 @@ ${ty.variants.map(
       });
     }
     return view;
-  }, _makeReducers = new WeakSet(), makeReducers_fn = function(def) {
+  }, makeReducers_fn = function(def) {
     const out = {};
     const writer = new BinaryWriter(1024);
     for (const reducer of def.reducers) {
@@ -6540,7 +6470,7 @@ ${ty.variants.map(
       };
     }
     return out;
-  }, _makeProcedures = new WeakSet(), makeProcedures_fn = function(def) {
+  }, makeProcedures_fn = function(def) {
     const out = {};
     const writer = new BinaryWriter(1024);
     for (const procedure of def.procedures) {
@@ -6557,7 +6487,7 @@ ${ty.variants.map(
       };
     }
     return out;
-  }, _makeEventContext = new WeakSet(), makeEventContext_fn = function(event) {
+  }, makeEventContext_fn = function(event) {
     return {
       db: this.db,
       reducers: this.reducers,
@@ -6566,7 +6496,7 @@ ${ty.variants.map(
       disconnect: this.disconnect.bind(this),
       event
     };
-  }, _parseRowList = new WeakSet(), parseRowList_fn = function(type, tableName, rowList) {
+  }, parseRowList_fn = function(type, tableName, rowList) {
     const buffer = rowList.rowsData;
     const reader = new BinaryReader(buffer);
     const rows = [];
@@ -6600,13 +6530,13 @@ ${ty.variants.map(
       });
     }
     return rows;
-  }, _mergeTableUpdates = new WeakSet(), mergeTableUpdates_fn = function(updates) {
+  }, // Take a bunch of table updates and ensure that there is at most one update per table.
+  mergeTableUpdates_fn = function(updates) {
     const merged = /* @__PURE__ */ new Map();
     for (const update of updates) {
       const ops = merged.get(update.tableName);
       if (ops) {
-        for (const op of update.operations)
-          ops.push(op);
+        for (const op of update.operations) ops.push(op);
       } else {
         merged.set(update.tableName, update.operations.slice());
       }
@@ -6615,32 +6545,32 @@ ${ty.variants.map(
       tableName,
       operations
     }));
-  }, _queryRowsToTableUpdates = new WeakSet(), queryRowsToTableUpdates_fn = function(rows, opType) {
+  }, queryRowsToTableUpdates_fn = function(rows, opType) {
     const updates = [];
     for (const tableRows of rows.tables) {
       updates.push({
         tableName: tableRows.table,
-        operations: __privateMethod(this, _parseRowList, parseRowList_fn).call(this, opType, tableRows.table, tableRows.rows)
+        operations: __privateMethod(this, _DbConnectionImpl_instances, parseRowList_fn).call(this, opType, tableRows.table, tableRows.rows)
       });
     }
-    return __privateMethod(this, _mergeTableUpdates, mergeTableUpdates_fn).call(this, updates);
-  }, _tableUpdateRowsToOperations = new WeakSet(), tableUpdateRowsToOperations_fn = function(tableName, rows) {
+    return __privateMethod(this, _DbConnectionImpl_instances, mergeTableUpdates_fn).call(this, updates);
+  }, tableUpdateRowsToOperations_fn = function(tableName, rows) {
     if (rows.tag === "PersistentTable") {
-      const inserts = __privateMethod(this, _parseRowList, parseRowList_fn).call(this, "insert", tableName, rows.value.inserts);
-      const deletes = __privateMethod(this, _parseRowList, parseRowList_fn).call(this, "delete", tableName, rows.value.deletes);
+      const inserts = __privateMethod(this, _DbConnectionImpl_instances, parseRowList_fn).call(this, "insert", tableName, rows.value.inserts);
+      const deletes = __privateMethod(this, _DbConnectionImpl_instances, parseRowList_fn).call(this, "delete", tableName, rows.value.deletes);
       return inserts.concat(deletes);
     }
     if (rows.tag === "EventTable") {
-      return __privateMethod(this, _parseRowList, parseRowList_fn).call(this, "insert", tableName, rows.value.events);
+      return __privateMethod(this, _DbConnectionImpl_instances, parseRowList_fn).call(this, "insert", tableName, rows.value.events);
     }
     return [];
-  }, _querySetUpdateToTableUpdates = new WeakSet(), querySetUpdateToTableUpdates_fn = function(querySetUpdate) {
+  }, querySetUpdateToTableUpdates_fn = function(querySetUpdate) {
     const updates = [];
     for (const tableUpdate of querySetUpdate.tables) {
       let operations = [];
       for (const rows of tableUpdate.rows) {
         operations = operations.concat(
-          __privateMethod(this, _tableUpdateRowsToOperations, tableUpdateRowsToOperations_fn).call(this, tableUpdate.tableName, rows)
+          __privateMethod(this, _DbConnectionImpl_instances, tableUpdateRowsToOperations_fn).call(this, tableUpdate.tableName, rows)
         );
       }
       updates.push({
@@ -6648,20 +6578,19 @@ ${ty.variants.map(
         operations
       });
     }
-    return __privateMethod(this, _mergeTableUpdates, mergeTableUpdates_fn).call(this, updates);
-  }, _flushOutboundQueue = new WeakSet(), flushOutboundQueue_fn = function(wsResolved) {
+    return __privateMethod(this, _DbConnectionImpl_instances, mergeTableUpdates_fn).call(this, updates);
+  }, flushOutboundQueue_fn = function(wsResolved) {
     const pending = __privateGet(this, _outboundQueue).splice(0);
     for (const message of pending) {
       wsResolved.send(message);
     }
-  }, _clientMessageEncoder = new WeakMap(), _sendMessage = new WeakSet(), sendMessage_fn = function(message) {
+  }, _clientMessageEncoder = new WeakMap(), sendMessage_fn = function(message) {
     const writer = __privateGet(this, _clientMessageEncoder);
     writer.clear();
     ClientMessage.serialize(writer, message);
     const encoded = writer.getBuffer();
     if (this.ws && this.isActive) {
-      if (__privateGet(this, _outboundQueue).length)
-        __privateMethod(this, _flushOutboundQueue, flushOutboundQueue_fn).call(this, this.ws);
+      if (__privateGet(this, _outboundQueue).length) __privateMethod(this, _DbConnectionImpl_instances, flushOutboundQueue_fn).call(this, this.ws);
       stdbLogger(
         "trace",
         () => `Sending message to server: ${stringify2(message)}`
@@ -6674,15 +6603,18 @@ ${ty.variants.map(
       );
       __privateGet(this, _outboundQueue).push(encoded.slice());
     }
-  }, _nextEventId = new WeakSet(), nextEventId_fn = function() {
+  }, nextEventId_fn = function() {
     __privateSet(this, _eventId, __privateGet(this, _eventId) + 1);
     return `${this.connectionId.toHexString()}:${__privateGet(this, _eventId)}`;
-  }, _handleOnOpen = new WeakSet(), handleOnOpen_fn = function() {
+  }, /**
+   * Handles WebSocket onOpen event.
+   */
+  handleOnOpen_fn = function() {
     this.isActive = true;
     if (this.ws) {
-      __privateMethod(this, _flushOutboundQueue, flushOutboundQueue_fn).call(this, this.ws);
+      __privateMethod(this, _DbConnectionImpl_instances, flushOutboundQueue_fn).call(this, this.ws);
     }
-  }, _applyTableUpdates = new WeakSet(), applyTableUpdates_fn = function(tableUpdates, eventContext) {
+  }, applyTableUpdates_fn = function(tableUpdates, eventContext) {
     const pendingCallbacks = [];
     for (const tableUpdate of tableUpdates) {
       const tableName = tableUpdate.tableName;
@@ -6697,16 +6629,16 @@ ${ty.variants.map(
       }
     }
     return pendingCallbacks;
-  }, _applyTransactionUpdates = new WeakSet(), applyTransactionUpdates_fn = function(eventContext, tu) {
+  }, applyTransactionUpdates_fn = function(eventContext, tu) {
     const allUpdates = [];
     for (const querySetUpdate of tu.querySets) {
-      const tableUpdates = __privateMethod(this, _querySetUpdateToTableUpdates, querySetUpdateToTableUpdates_fn).call(this, querySetUpdate);
+      const tableUpdates = __privateMethod(this, _DbConnectionImpl_instances, querySetUpdateToTableUpdates_fn).call(this, querySetUpdate);
       for (const update of tableUpdates) {
         allUpdates.push(update);
       }
     }
-    return __privateMethod(this, _applyTableUpdates, applyTableUpdates_fn).call(this, __privateMethod(this, _mergeTableUpdates, mergeTableUpdates_fn).call(this, allUpdates), eventContext);
-  }, _processMessage = new WeakSet(), processMessage_fn = async function(data) {
+    return __privateMethod(this, _DbConnectionImpl_instances, applyTableUpdates_fn).call(this, __privateMethod(this, _DbConnectionImpl_instances, mergeTableUpdates_fn).call(this, allUpdates), eventContext);
+  }, processMessage_fn = async function(data) {
     const serverMessage = ServerMessage.deserialize(new BinaryReader(data));
     stdbLogger(
       "trace",
@@ -6733,12 +6665,12 @@ ${ty.variants.map(
           return;
         }
         const event = {
-          id: __privateMethod(this, _nextEventId, nextEventId_fn).call(this),
+          id: __privateMethod(this, _DbConnectionImpl_instances, nextEventId_fn).call(this),
           tag: "SubscribeApplied"
         };
-        const eventContext = __privateMethod(this, _makeEventContext, makeEventContext_fn).call(this, event);
-        const tableUpdates = __privateMethod(this, _queryRowsToTableUpdates, queryRowsToTableUpdates_fn).call(this, serverMessage.value.rows, "insert");
-        const callbacks = __privateMethod(this, _applyTableUpdates, applyTableUpdates_fn).call(this, tableUpdates, eventContext);
+        const eventContext = __privateMethod(this, _DbConnectionImpl_instances, makeEventContext_fn).call(this, event);
+        const tableUpdates = __privateMethod(this, _DbConnectionImpl_instances, queryRowsToTableUpdates_fn).call(this, serverMessage.value.rows, "insert");
+        const callbacks = __privateMethod(this, _DbConnectionImpl_instances, applyTableUpdates_fn).call(this, tableUpdates, eventContext);
         const { event: _, ...subscriptionEventContext } = eventContext;
         subscription.emitter.emit("applied", subscriptionEventContext);
         stdbLogger(
@@ -6761,12 +6693,12 @@ ${ty.variants.map(
           return;
         }
         const event = {
-          id: __privateMethod(this, _nextEventId, nextEventId_fn).call(this),
+          id: __privateMethod(this, _DbConnectionImpl_instances, nextEventId_fn).call(this),
           tag: "UnsubscribeApplied"
         };
-        const eventContext = __privateMethod(this, _makeEventContext, makeEventContext_fn).call(this, event);
-        const tableUpdates = serverMessage.value.rows ? __privateMethod(this, _queryRowsToTableUpdates, queryRowsToTableUpdates_fn).call(this, serverMessage.value.rows, "delete") : [];
-        const callbacks = __privateMethod(this, _applyTableUpdates, applyTableUpdates_fn).call(this, tableUpdates, eventContext);
+        const eventContext = __privateMethod(this, _DbConnectionImpl_instances, makeEventContext_fn).call(this, event);
+        const tableUpdates = serverMessage.value.rows ? __privateMethod(this, _DbConnectionImpl_instances, queryRowsToTableUpdates_fn).call(this, serverMessage.value.rows, "delete") : [];
+        const callbacks = __privateMethod(this, _DbConnectionImpl_instances, applyTableUpdates_fn).call(this, tableUpdates, eventContext);
         const { event: _, ...subscriptionEventContext } = eventContext;
         subscription.emitter.emit("end", subscriptionEventContext);
         __privateGet(this, _subscriptionManager).subscriptions.delete(querySetId);
@@ -6784,11 +6716,11 @@ ${ty.variants.map(
         const requestId = serverMessage.value.requestId;
         const error = Error(serverMessage.value.error);
         const event = {
-          id: __privateMethod(this, _nextEventId, nextEventId_fn).call(this),
+          id: __privateMethod(this, _DbConnectionImpl_instances, nextEventId_fn).call(this),
           tag: "Error",
           value: error
         };
-        const eventContext = __privateMethod(this, _makeEventContext, makeEventContext_fn).call(this, event);
+        const eventContext = __privateMethod(this, _DbConnectionImpl_instances, makeEventContext_fn).call(this, event);
         const errorContext = {
           ...eventContext,
           event: error
@@ -6816,11 +6748,11 @@ ${ty.variants.map(
       }
       case "TransactionUpdate": {
         const event = {
-          id: __privateMethod(this, _nextEventId, nextEventId_fn).call(this),
+          id: __privateMethod(this, _DbConnectionImpl_instances, nextEventId_fn).call(this),
           tag: "Transaction"
         };
-        const eventContext = __privateMethod(this, _makeEventContext, makeEventContext_fn).call(this, event);
-        const callbacks = __privateMethod(this, _applyTransactionUpdates, applyTransactionUpdates_fn).call(this, eventContext, serverMessage.value);
+        const eventContext = __privateMethod(this, _DbConnectionImpl_instances, makeEventContext_fn).call(this, event);
+        const callbacks = __privateMethod(this, _DbConnectionImpl_instances, applyTransactionUpdates_fn).call(this, eventContext, serverMessage.value);
         stdbLogger(
           "trace",
           () => `Calling ${callbacks.length} triggered row callbacks`
@@ -6834,7 +6766,7 @@ ${ty.variants.map(
         const { requestId, result } = serverMessage.value;
         if (result.tag === "Ok") {
           const reducerInfo = __privateGet(this, _reducerCallInfo).get(requestId);
-          const eventId = __privateMethod(this, _nextEventId, nextEventId_fn).call(this);
+          const eventId = __privateMethod(this, _DbConnectionImpl_instances, nextEventId_fn).call(this);
           const event = reducerInfo ? {
             id: eventId,
             tag: "Reducer",
@@ -6850,8 +6782,8 @@ ${ty.variants.map(
             id: eventId,
             tag: "Transaction"
           };
-          const eventContext = __privateMethod(this, _makeEventContext, makeEventContext_fn).call(this, event);
-          const callbacks = __privateMethod(this, _applyTransactionUpdates, applyTransactionUpdates_fn).call(this, eventContext, result.value.transactionUpdate);
+          const eventContext = __privateMethod(this, _DbConnectionImpl_instances, makeEventContext_fn).call(this, event);
+          const callbacks = __privateMethod(this, _DbConnectionImpl_instances, applyTransactionUpdates_fn).call(this, eventContext, result.value.transactionUpdate);
           stdbLogger(
             "trace",
             () => `Calling ${callbacks.length} triggered row callbacks`
@@ -6882,9 +6814,13 @@ ${ty.variants.map(
         break;
       }
     }
-  }, _handleOnMessage = new WeakSet(), handleOnMessage_fn = function(wsMessage) {
+  }, /**
+   * Handles WebSocket onMessage event.
+   * @param wsMessage MessageEvent object.
+   */
+  handleOnMessage_fn = function(wsMessage) {
     __privateSet(this, _messageQueue, __privateGet(this, _messageQueue).then(() => {
-      return __privateMethod(this, _processMessage, processMessage_fn).call(this, wsMessage.data);
+      return __privateMethod(this, _DbConnectionImpl_instances, processMessage_fn).call(this, wsMessage.data);
     }));
   }, _a14);
   function tablesToSchema(ctx, tables2) {
@@ -6950,10 +6886,10 @@ ${ty.variants.map(
       ...tableDef.isEvent ? { isEvent: true } : {}
     };
   }
-  var _compoundTypes, _moduleDef, _registerCompoundTypeRecursively, registerCompoundTypeRecursively_fn, _a15;
+  var _compoundTypes, _moduleDef, _ModuleContext_instances, registerCompoundTypeRecursively_fn, _a15;
   var ModuleContext = (_a15 = class {
     constructor() {
-      __privateAdd(this, _registerCompoundTypeRecursively);
+      __privateAdd(this, _ModuleContext_instances);
       __privateAdd(this, _compoundTypes, /* @__PURE__ */ new Map());
       /**
        * The global module definition that gets populated by calls to `reducer()` and lifecycle hooks.
@@ -6980,8 +6916,7 @@ ${ty.variants.map(
     rawModuleDefV10() {
       const sections = [];
       const push = (s) => {
-        if (s)
-          sections.push(s);
+        if (s) sections.push(s);
       };
       const module = __privateGet(this, _moduleDef);
       push(module.typespace && { tag: "Typespace", value: module.typespace });
@@ -7049,7 +6984,7 @@ ${ty.variants.map(
      */
     registerTypesRecursively(typeBuilder) {
       if (typeBuilder instanceof ProductBuilder && !isUnit(typeBuilder) || typeBuilder instanceof SumBuilder || typeBuilder instanceof RowBuilder) {
-        return __privateMethod(this, _registerCompoundTypeRecursively, registerCompoundTypeRecursively_fn).call(this, typeBuilder);
+        return __privateMethod(this, _ModuleContext_instances, registerCompoundTypeRecursively_fn).call(this, typeBuilder);
       } else if (typeBuilder instanceof OptionBuilder) {
         return new OptionBuilder(
           this.registerTypesRecursively(typeBuilder.value)
@@ -7067,7 +7002,7 @@ ${ty.variants.map(
         return typeBuilder;
       }
     }
-  }, _compoundTypes = new WeakMap(), _moduleDef = new WeakMap(), _registerCompoundTypeRecursively = new WeakSet(), registerCompoundTypeRecursively_fn = function(typeBuilder) {
+  }, _compoundTypes = new WeakMap(), _moduleDef = new WeakMap(), _ModuleContext_instances = new WeakSet(), registerCompoundTypeRecursively_fn = function(typeBuilder) {
     const ty = typeBuilder.algebraicType;
     const name = typeBuilder.typeName;
     if (name === void 0) {
@@ -7900,49 +7835,49 @@ ${ty.variants.map(
     return { procedures: procedures2 };
   }
 
-  // src/claim_npc_host_reducer.ts
+  // client-bindings/src/claim_npc_host_reducer.ts
   var claim_npc_host_reducer_default = {};
 
-  // src/damage_asteroid_reducer.ts
+  // client-bindings/src/damage_asteroid_reducer.ts
   var damage_asteroid_reducer_default = {
     asteroidId: t.u32(),
     damage: t.f32()
   };
 
-  // src/damage_npc_reducer.ts
+  // client-bindings/src/damage_npc_reducer.ts
   var damage_npc_reducer_default = {
     npcId: t.u32(),
     damage: t.f32(),
     attackerName: t.string()
   };
 
-  // src/damage_station_reducer.ts
+  // client-bindings/src/damage_station_reducer.ts
   var damage_station_reducer_default = {
     stationId: t.u32(),
     damage: t.f32(),
     attackerName: t.string()
   };
 
-  // src/damage_wingman_reducer.ts
+  // client-bindings/src/damage_wingman_reducer.ts
   var damage_wingman_reducer_default = {
     wingmanId: t.string(),
     damage: t.f32(),
     attackerName: t.string()
   };
 
-  // src/deal_damage_reducer.ts
+  // client-bindings/src/deal_damage_reducer.ts
   var deal_damage_reducer_default = {
     victimIdentityHex: t.string(),
     damage: t.f32(),
     attackerName: t.string()
   };
 
-  // src/delete_wingman_reducer.ts
+  // client-bindings/src/delete_wingman_reducer.ts
   var delete_wingman_reducer_default = {
     wingmanId: t.string()
   };
 
-  // src/fire_projectile_reducer.ts
+  // client-bindings/src/fire_projectile_reducer.ts
   var fire_projectile_reducer_default = {
     x: t.f32(),
     y: t.f32(),
@@ -7953,16 +7888,16 @@ ${ty.variants.map(
     ttlMs: t.u32()
   };
 
-  // src/heal_player_reducer.ts
+  // client-bindings/src/heal_player_reducer.ts
   var heal_player_reducer_default = {
     healHp: t.f32(),
     healShield: t.f32()
   };
 
-  // src/heartbeat_npc_host_reducer.ts
+  // client-bindings/src/heartbeat_npc_host_reducer.ts
   var heartbeat_npc_host_reducer_default = {};
 
-  // src/join_game_reducer.ts
+  // client-bindings/src/join_game_reducer.ts
   var join_game_reducer_default = {
     name: t.string(),
     ship: t.string(),
@@ -7971,10 +7906,10 @@ ${ty.variants.map(
     maxShield: t.f32()
   };
 
-  // src/leave_game_reducer.ts
+  // client-bindings/src/leave_game_reducer.ts
   var leave_game_reducer_default = {};
 
-  // src/npc_sell_ore_reducer.ts
+  // client-bindings/src/npc_sell_ore_reducer.ts
   var npc_sell_ore_reducer_default = {
     npcId: t.u32(),
     amount: t.u64(),
@@ -7983,24 +7918,24 @@ ${ty.variants.map(
     y: t.f32()
   };
 
-  // src/prune_events_reducer.ts
+  // client-bindings/src/prune_events_reducer.ts
   var prune_events_reducer_default = {};
 
-  // src/prune_projectiles_reducer.ts
+  // client-bindings/src/prune_projectiles_reducer.ts
   var prune_projectiles_reducer_default = {};
 
-  // src/report_kill_reducer.ts
+  // client-bindings/src/report_kill_reducer.ts
   var report_kill_reducer_default = {
     killerName: t.string(),
     victimName: t.string()
   };
 
-  // src/respawn_asteroid_reducer.ts
+  // client-bindings/src/respawn_asteroid_reducer.ts
   var respawn_asteroid_reducer_default = {
     asteroidId: t.u32()
   };
 
-  // src/respawn_npc_reducer.ts
+  // client-bindings/src/respawn_npc_reducer.ts
   var respawn_npc_reducer_default = {
     npcId: t.u32(),
     x: t.f32(),
@@ -8009,21 +7944,21 @@ ${ty.variants.map(
     shield: t.f32()
   };
 
-  // src/respawn_player_reducer.ts
+  // client-bindings/src/respawn_player_reducer.ts
   var respawn_player_reducer_default = {};
 
-  // src/respawn_station_reducer.ts
+  // client-bindings/src/respawn_station_reducer.ts
   var respawn_station_reducer_default = {
     stationId: t.u32()
   };
 
-  // src/seed_asteroids_reducer.ts
+  // client-bindings/src/seed_asteroids_reducer.ts
   var seed_asteroids_reducer_default = {};
 
-  // src/seed_world_reducer.ts
+  // client-bindings/src/seed_world_reducer.ts
   var seed_world_reducer_default = {};
 
-  // src/sell_ore_reducer.ts
+  // client-bindings/src/sell_ore_reducer.ts
   var sell_ore_reducer_default = {
     amount: t.u64(),
     saleType: t.string(),
@@ -8031,13 +7966,13 @@ ${ty.variants.map(
     y: t.f32()
   };
 
-  // src/send_chat_reducer.ts
+  // client-bindings/src/send_chat_reducer.ts
   var send_chat_reducer_default = {
     senderName: t.string(),
     text: t.string()
   };
 
-  // src/spawn_npc_reducer.ts
+  // client-bindings/src/spawn_npc_reducer.ts
   var spawn_npc_reducer_default = {
     npcId: t.u32(),
     name: t.string(),
@@ -8056,7 +7991,7 @@ ${ty.variants.map(
     totalEarned: t.u32()
   };
 
-  // src/spawn_station_reducer.ts
+  // client-bindings/src/spawn_station_reducer.ts
   var spawn_station_reducer_default = {
     stationId: t.u32(),
     x: t.f32(),
@@ -8067,7 +8002,7 @@ ${ty.variants.map(
     maxShield: t.f32()
   };
 
-  // src/spawn_wingman_reducer.ts
+  // client-bindings/src/spawn_wingman_reducer.ts
   var spawn_wingman_reducer_default = {
     wingmanId: t.string(),
     name: t.string(),
@@ -8080,7 +8015,7 @@ ${ty.variants.map(
     maxShield: t.f32()
   };
 
-  // src/submit_score_reducer.ts
+  // client-bindings/src/submit_score_reducer.ts
   var submit_score_reducer_default = {
     name: t.string(),
     mined: t.u64(),
@@ -8088,7 +8023,7 @@ ${ty.variants.map(
     color: t.string()
   };
 
-  // src/update_npc_reducer.ts
+  // client-bindings/src/update_npc_reducer.ts
   var update_npc_reducer_default = {
     npcId: t.u32(),
     x: t.f32(),
@@ -8108,7 +8043,7 @@ ${ty.variants.map(
     miningTargetId: t.i32()
   };
 
-  // src/update_player_reducer.ts
+  // client-bindings/src/update_player_reducer.ts
   var update_player_reducer_default = {
     x: t.f32(),
     y: t.f32(),
@@ -8128,7 +8063,7 @@ ${ty.variants.map(
     miningOre: t.string()
   };
 
-  // src/update_wingman_reducer.ts
+  // client-bindings/src/update_wingman_reducer.ts
   var update_wingman_reducer_default = {
     wingmanId: t.string(),
     x: t.f32(),
@@ -8141,7 +8076,7 @@ ${ty.variants.map(
     shield: t.f32()
   };
 
-  // src/asteroid_table.ts
+  // client-bindings/src/asteroid_table.ts
   var asteroid_table_default = t.row({
     id: t.u32().primaryKey(),
     x: t.f32(),
@@ -8155,7 +8090,7 @@ ${ty.variants.map(
     rotSpeed: t.f32().name("rot_speed")
   });
 
-  // src/chat_message_table.ts
+  // client-bindings/src/chat_message_table.ts
   var chat_message_table_default = t.row({
     id: t.u64().primaryKey(),
     sender: t.string(),
@@ -8163,7 +8098,7 @@ ${ty.variants.map(
     timestamp: t.u64()
   });
 
-  // src/kill_event_table.ts
+  // client-bindings/src/kill_event_table.ts
   var kill_event_table_default = t.row({
     id: t.u64().primaryKey(),
     killer: t.string(),
@@ -8171,7 +8106,7 @@ ${ty.variants.map(
     timestamp: t.u64()
   });
 
-  // src/leaderboard_entry_table.ts
+  // client-bindings/src/leaderboard_entry_table.ts
   var leaderboard_entry_table_default = t.row({
     id: t.u64().primaryKey(),
     name: t.string(),
@@ -8183,7 +8118,7 @@ ${ty.variants.map(
     timestamp: t.u64()
   });
 
-  // src/npc_table.ts
+  // client-bindings/src/npc_table.ts
   var npc_table_default = t.row({
     id: t.u32().primaryKey(),
     name: t.string(),
@@ -8210,14 +8145,14 @@ ${ty.variants.map(
     lastUpdate: t.u64().name("last_update")
   });
 
-  // src/npc_host_table.ts
+  // client-bindings/src/npc_host_table.ts
   var npc_host_table_default = t.row({
     id: t.u32().primaryKey(),
     hostIdentity: t.string().name("host_identity"),
     claimedAt: t.u64().name("claimed_at")
   });
 
-  // src/player_table.ts
+  // client-bindings/src/player_table.ts
   var player_table_default = t.row({
     identity: t.identity().primaryKey(),
     name: t.string(),
@@ -8245,7 +8180,7 @@ ${ty.variants.map(
     lastDamageTime: t.u64().name("last_damage_time")
   });
 
-  // src/projectile_table.ts
+  // client-bindings/src/projectile_table.ts
   var projectile_table_default = t.row({
     id: t.u64().primaryKey(),
     ownerId: t.string().name("owner_id"),
@@ -8261,7 +8196,7 @@ ${ty.variants.map(
     ttlMs: t.u32().name("ttl_ms")
   });
 
-  // src/sale_event_table.ts
+  // client-bindings/src/sale_event_table.ts
   var sale_event_table_default = t.row({
     id: t.u64().primaryKey(),
     sellerId: t.string().name("seller_id"),
@@ -8274,7 +8209,7 @@ ${ty.variants.map(
     timestamp: t.u64()
   });
 
-  // src/space_station_table.ts
+  // client-bindings/src/space_station_table.ts
   var space_station_table_default = t.row({
     id: t.u32().primaryKey(),
     x: t.f32(),
@@ -8288,7 +8223,7 @@ ${ty.variants.map(
     lastUpdate: t.u64().name("last_update")
   });
 
-  // src/wingman_table.ts
+  // client-bindings/src/wingman_table.ts
   var wingman_table_default = t.row({
     id: t.string().primaryKey(),
     ownerIdentityHex: t.string().name("owner_identity_hex"),
@@ -8310,13 +8245,13 @@ ${ty.variants.map(
     lastUpdate: t.u64().name("last_update")
   });
 
-  // src/world_state_table.ts
+  // client-bindings/src/world_state_table.ts
   var world_state_table_default = t.row({
     id: t.u32().primaryKey(),
     worldSeed: t.u64().name("world_seed")
   });
 
-  // src/index.ts
+  // client-bindings/src/index.ts
   var tablesSchema = schema({
     asteroid: table({
       name: "asteroid",
@@ -8513,5 +8448,5 @@ ${ty.variants.map(
     return new DbConnectionBuilder2(REMOTE_MODULE, (config) => new _DbConnection(config));
   });
   var DbConnection = _DbConnection;
-  return __toCommonJS(src_exports);
+  return __toCommonJS(index_exports);
 })();
