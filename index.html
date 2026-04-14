@@ -4085,83 +4085,7 @@ function renderShipPreview(canvas,shipType,shipColor){
   ctx.restore();
 }
 
-// Ship image preloading system
-const shipImages = {};
-const shipImageFiles = {
-  'prospector': 'images/ships/prospector.png',
-  'hauler': 'images/ships/hauler.png',
-  'corsair': 'images/ships/corsair.png',
-  'sentinel': 'images/ships/sentinel.png',
-  'phantom': 'images/ships/phantom.png',
-  'carrier': 'images/ships/drone_carrier.png',
-  'drone_fighter': 'images/ships/strike_drone.png',
-  'drone_guardian': 'images/ships/guardian_drone.png',
-  'drone_harvester': 'images/ships/mining_drone.png'
-};
-
-let shipImagesLoaded = 0;
-const totalShipImages = Object.keys(shipImageFiles).length;
-
-function loadShipImages(callback) {
-  Object.entries(shipImageFiles).forEach(([shipType, imagePath]) => {
-    const img = new Image();
-    img.onload = () => {
-      shipImages[shipType] = img;
-      shipImagesLoaded++;
-      if (shipImagesLoaded === totalShipImages && callback) {
-        callback();
-      }
-    };
-    img.onerror = () => {
-      console.warn(`Failed to load ship image: ${imagePath}`);
-      shipImagesLoaded++;
-      if (shipImagesLoaded === totalShipImages && callback) {
-        callback();
-      }
-    };
-    img.src = imagePath;
-  });
-}
-
 function drawShipHull(ctx,shipType,sz,col){
-  const shipImage = shipImages[shipType];
-  
-  // Use sprite rendering if image is loaded
-  if (shipImage) {
-    const imageSize = sz * 2; // Scale factor to match vector size
-    
-    ctx.save();
-    
-    // Draw the ship image
-    ctx.drawImage(
-      shipImage,
-      -imageSize / 2,
-      -imageSize / 2,
-      imageSize,
-      imageSize
-    );
-    
-    // Apply color tint if not default color
-    if (col && col !== '#5588ff') {
-      ctx.globalCompositeOperation = 'multiply';
-      ctx.fillStyle = col;
-      ctx.fillRect(-imageSize / 2, -imageSize / 2, imageSize, imageSize);
-      
-      ctx.globalCompositeOperation = 'destination-in';
-      ctx.drawImage(
-        shipImage,
-        -imageSize / 2,
-        -imageSize / 2,
-        imageSize,
-        imageSize
-      );
-    }
-    
-    ctx.restore();
-    return;
-  }
-  
-  // Fallback to vector graphics if image not loaded
   // Each ship: main hull fill + accent details + outline
   const s=sz; // alias
   ctx.beginPath();
@@ -9321,12 +9245,6 @@ function init(){
   document.addEventListener('click',_startTitleOnce,{once:false});
   document.addEventListener('touchstart',_startTitleOnce,{once:false});
   document.addEventListener('keydown',_startTitleOnce,{once:false});
-  
-  // Load ship images
-  loadShipImages(() => {
-    console.log('Ship images loaded successfully');
-  });
-  
   requestAnimationFrame(gameLoop);
 }
 
