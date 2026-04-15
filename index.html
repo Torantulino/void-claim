@@ -1264,6 +1264,7 @@ function createPoliceCarrier(patrolIndex){
   return{
     npcId,
     id:'police_carrier_'+patrolIndex,name:'SSPD Carrier '+(patrolIndex+1),
+    patrolIndex, // Add missing patrolIndex for fighter creation
     x:px,y:py,vx:0,vy:0,angle:patrolAngle+Math.PI/2,
     hp:base.hull*2,maxHp:base.hull*2,shield:base.shield*2,maxShield:base.shield*2,
     ship:'carrier',color:POLICE_CARRIER_COLOR,
