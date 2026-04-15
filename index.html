@@ -6817,12 +6817,11 @@ function applyDamage(target,dmg,attackerId,playFX){
   target.lastAttacker = attackerId; // NEW: track who attacked (was missing for miners)
   target.lastAttackTime = performance.now(); // NEW: track when attack happened
 
-  // NEW: Miner threat response — interrupt non-combat states on first hit
+  // NEW: Miner threat response — interrupt non-combat states on each hit
   if (target.isNPC && target.personality === 'miner'
       && !target.dead
       && target.state !== 'minerFlee'
-      && target.state !== 'minerFight'
-      && target.state !== 'threatened') {
+      && target.state !== 'minerFight') {
     target.state = 'threatened';
     target.target = null;
     target.thinkTimer = 0; // Force immediate npcThink on next frame
