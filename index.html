@@ -5750,6 +5750,7 @@ function drawAllMiningBeams(){
   // 2) NPC mining beams
   npcs.forEach(n=>{
     if(n.dead||n.state!=='mine'||!n.target||!n.target.alive)return;
+    if(dist(n.x,n.y,n.target.x,n.target.y)>CFG.MINE_RANGE)return;
     if(!inView(n.x,n.y,300)&&!inView(n.target.x,n.target.y,300))return;
     const ns=worldToScreen(n.x,n.y);
     const as=worldToScreen(n.target.x,n.target.y);
