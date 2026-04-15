@@ -2800,7 +2800,9 @@ function createNPC(npcIndex){
   const personality=isMiner?'miner':'pirate';
   const shipType='prospector'; // Both miners and pirates start as Prospector, earning their way up
   const name=pick(NPC_NAMES)+pick(NPC_SUFFIXES);
-  // Greed stat determines how deep miners venture and how long they stay
+  // Greed stat determines how deep miners venture and how long they stay.
+  // For pirates it doubles as a bravery proxy — high greed (0.85–1.0) means
+  // pirates are aggressive and unlikely to flee through the power-ratio system.
   const greed=isMiner?Math.random():(0.85+Math.random()*0.15);
   // Spawn position varies by greed — greedy miners start deeper
   const minD=isMiner?(greed<.3?CFG.GREEN_R:greed<.7?CFG.YELLOW_R*.6:CFG.YELLOW_R):CFG.GREEN_R;
@@ -3788,16 +3790,24 @@ function npcThink(n){
     const hostilePower = calcPower(attacker);
     const ratio = hostilePower > 0 ? myPower / hostilePower : 999;
 
-    if (ratio > CFG.PIRATE_POWER_FLEE_RATIO) {
-      // Default: fight back — pirates only flee when badly outmatched
+    if (ratio >= CFG.PIRATE_POWER_FIGHT_RATIO) {
+      // Clearly strong enough — fight back unconditionally
+      n.state = 'pirateFight';
+      n.target = attacker;
+      n._fightOriginX = n.x;
+      n._fightOriginY = n.y;
+      addFloatingText(n.x, n.y, '⚔ FIGHT!', '#ff4444', 1.4);
+    } else if (ratio > CFG.PIRATE_POWER_FLEE_RATIO) {
+      // Grey zone — pirates still prefer fighting (aggressive bias)
       n.state = 'pirateFight';
       n.target = attacker;
       n._fightOriginX = n.x;
       n._fightOriginY = n.y;
       addFloatingText(n.x, n.y, '⚔ FIGHT!', '#ff4444', 1.4);
     } else {
-      // Severely outmatched — trigger existing den-flee system
+      // Severely outmatched (ratio < PIRATE_POWER_FLEE_RATIO) — trigger den-flee
       n.fleeHP = 1.0; // Force HP-flee threshold to fire on next npcThink cycle
+      n.state = 'idle';  // Exit threatened so HP-flee block can fire on next cycle
       addFloatingText(n.x, n.y, '✖ FLEE!', '#ffcc00', 1.3);
     }
     return;
@@ -4379,7 +4389,24 @@ function npcAct(n,dt){
         n.state = 'idle';
         n._fightOriginX = undefined;
         n._fightOriginY = undefined;
+        n._strafeDir = undefined;
         break;
+      }
+
+      // ── Re-evaluate: flee if tide has turned badly against us ──
+      {
+        const myPower = calcPower(n);
+        const hostilePower = calcPower(n.target);
+        const ratio = hostilePower > 0 ? myPower / hostilePower : 999;
+        if (ratio < CFG.PIRATE_POWER_FLEE_RATIO) {
+          // Now badly outmatched — bail out
+          n.fleeHP = 1.0;
+          n.state = 'idle';
+          n._fightOriginX = undefined;
+          n._fightOriginY = undefined;
+          addFloatingText(n.x, n.y, '✖ RETREAT!', '#ffcc00', 1.3);
+          break;
+        }
       }
 
       const d = dist(n.x, n.y, n.target.x, n.target.y);
@@ -4394,8 +4421,9 @@ function npcAct(n,dt){
         n.shootCD = shipFireRate(n) * 1.3;
       }
 
-      // Strafe during combat
-      const strafeA = n.angle + Math.PI / 2;
+      // Strafe during combat — direction randomised on state entry to avoid robotic movement
+      if (n._strafeDir === undefined) n._strafeDir = Math.random() < 0.5 ? 1 : -1;
+      const strafeA = n.angle + Math.PI / 2 * n._strafeDir;
       n.vx += Math.cos(strafeA) * thrust * 0.3 * dt;
       n.vy += Math.sin(strafeA) * thrust * 0.3 * dt;
 
@@ -4403,6 +4431,7 @@ function npcAct(n,dt){
       if (n._fightOriginX !== undefined
           && dist(n.x, n.y, n._fightOriginX, n._fightOriginY) > CFG.MINER_FIGHT_LEASH) {
         n.state = 'idle';
+        n._strafeDir = undefined;
         n._fightOriginX = undefined;
         n._fightOriginY = undefined;
       }
