@@ -3084,12 +3084,14 @@ function handleNpcUpdate(oldNpc,newNpc){
           localNpc.dead=true;localNpc.hp=0;localNpc.shield=0;
           localNpc.deathTimer=3;
           localNpc.respawnTimer=CFG.TRADE_SHIP_RESPAWN;
+          clearEntityTimeouts(localNpc); // Clear any pending timeout callbacks
           onTradeShipDeathFX();
           onTradeShipDeathLoot(); // Host only drops loot
         }else{
           localNpc.dead=true;localNpc.hp=0;localNpc.shield=0;
           localNpc.respawnTimer=localNpc.personality==='denPirate'?
             rand(CFG.DEN_RESPAWN_MIN,CFG.DEN_RESPAWN_MAX):CFG.RESPAWN_TIME;
+          clearEntityTimeouts(localNpc); // Clear any pending timeout callbacks
           dropCargoAndSalvage(localNpc);
           const near=distToPlayer(localNpc.x,localNpc.y)<FX_RANGE;
           if(near){emitBurst(localNpc.x,localNpc.y,30,150,localNpc.color||'#ff5555',3,.7,12);emitBurst(localNpc.x,localNpc.y,15,80,'#fff',2,.4,8);SFX.explode();}
@@ -3736,18 +3738,28 @@ function npcThink(n){
       addFloatingText(n.x, n.y, '✖ FLEE!', '#ffcc00', 1.3);
     } else {
       // Contested — greed (bravery proxy) decides
-      const braveryThreshold = 1.0 - ((ratio - CFG.MINER_POWER_FLEE_RATIO) / (CFG.MINER_POWER_FIGHT_RATIO - CFG.MINER_POWER_FLEE_RATIO));
-      if ((n.greed || 0) > braveryThreshold) {
-        n.state = 'minerFight';
-        n.target = attacker;
-        n._fightOriginX = n.x;
-        n._fightOriginY = n.y;
-        addFloatingText(n.x, n.y, '⚔ FIGHT!', '#ff4444', 1.4);
-      } else {
+      const denominator = CFG.MINER_POWER_FIGHT_RATIO - CFG.MINER_POWER_FLEE_RATIO;
+      if (denominator <= 0) {
+        console.warn('Invalid miner power ratios: FIGHT_RATIO must be > FLEE_RATIO');
+        // Default to flee if config is invalid
         n.state = 'minerFlee';
         n.target = null;
         n._jettisoned = false;
         addFloatingText(n.x, n.y, '✖ FLEE!', '#ffcc00', 1.3);
+      } else {
+        const braveryThreshold = 1.0 - ((ratio - CFG.MINER_POWER_FLEE_RATIO) / denominator);
+        if ((n.greed || 0) > braveryThreshold) {
+          n.state = 'minerFight';
+          n.target = attacker;
+          n._fightOriginX = n.x;
+          n._fightOriginY = n.y;
+          addFloatingText(n.x, n.y, '⚔ FIGHT!', '#ff4444', 1.4);
+        } else {
+          n.state = 'minerFlee';
+          n.target = null;
+          n._jettisoned = false;
+          addFloatingText(n.x, n.y, '✖ FLEE!', '#ffcc00', 1.3);
+        }
       }
     }
     broadcastDistress(n);
@@ -3778,7 +3790,14 @@ function npcThink(n){
     });
 
     const ratio = hostilePower > 0 ? friendlyPower / hostilePower : 999;
-    const braveryThreshold = 1.0 - ((Math.min(Math.max(ratio, CFG.MINER_POWER_FLEE_RATIO), CFG.MINER_POWER_FIGHT_RATIO) - CFG.MINER_POWER_FLEE_RATIO) / (CFG.MINER_POWER_FIGHT_RATIO - CFG.MINER_POWER_FLEE_RATIO));
+    const denominator = CFG.MINER_POWER_FIGHT_RATIO - CFG.MINER_POWER_FLEE_RATIO;
+    
+    if (denominator <= 0) {
+      console.warn('Invalid miner power ratios: FIGHT_RATIO must be > FLEE_RATIO');
+      return; // Keep current state if config is invalid
+    }
+    
+    const braveryThreshold = 1.0 - ((Math.min(Math.max(ratio, CFG.MINER_POWER_FLEE_RATIO), CFG.MINER_POWER_FIGHT_RATIO) - CFG.MINER_POWER_FLEE_RATIO) / denominator);
 
     if ((n.greed || 0) < braveryThreshold) {
       // Lost confidence — switch to flee
@@ -4570,6 +4589,19 @@ function calcPower(entity) {
   return effectiveHull + effectiveShield + (dps * 5);
 }
 
+function clearEntityTimeouts(entity) {
+  if (entity._activeTimeouts) {
+    entity._activeTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+    entity._activeTimeouts = [];
+  }
+  // Clear combat state to prevent stale references
+  entity.lastAttacker = null;
+  entity.lastAttackTime = 0;
+  entity._fightOriginX = undefined;
+  entity._fightOriginY = undefined;
+  entity._distressSent = false;
+}
+
 function broadcastDistress(sender) {
   if (sender._distressSent) return;
   sender._distressSent = true;
@@ -4586,10 +4618,12 @@ function broadcastDistress(sender) {
 
     // Stagger response: 0.5-2s delay per responder
     const delay = rand(500, 2000);
-    const otherRef = other; // closure capture
+    const otherId = other.id; // Use ID instead of reference to avoid race condition
 
-    setTimeout(() => {
-      if (otherRef.dead) return;
+    const timeoutId = setTimeout(() => {
+      // Find entity by ID to avoid stale reference
+      const otherRef = npcs.find(npc => npc.id === otherId);
+      if (!otherRef || otherRef.dead) return;
       if (otherRef.state === 'minerFlee' || otherRef.state === 'minerFight') return;
 
       const attacker = findEntityById(attackerId);
@@ -4631,7 +4665,12 @@ function broadcastDistress(sender) {
         // Otherwise: stay put, don't help, don't flee (fight is far away)
       } else {
         // Contested — bravery (greed) decides
-        const braveryThreshold = 1.0 - ((ratio - CFG.MINER_POWER_FLEE_RATIO) / (CFG.MINER_POWER_FIGHT_RATIO - CFG.MINER_POWER_FLEE_RATIO));
+        const denominator = CFG.MINER_POWER_FIGHT_RATIO - CFG.MINER_POWER_FLEE_RATIO;
+        if (denominator <= 0) {
+          console.warn('Invalid miner power ratios: FIGHT_RATIO must be > FLEE_RATIO');
+          return;
+        }
+        const braveryThreshold = 1.0 - ((ratio - CFG.MINER_POWER_FLEE_RATIO) / denominator);
         if ((otherRef.greed || 0) > braveryThreshold) {
           otherRef.state = 'minerFight';
           otherRef.target = attacker;
@@ -4642,6 +4681,10 @@ function broadcastDistress(sender) {
         }
       }
     }, delay);
+
+    // Store timeout ID for cleanup (attach to the entity for cleanup on death/respawn)
+    if (!other._activeTimeouts) other._activeTimeouts = [];
+    other._activeTimeouts.push(timeoutId);
   });
 }
 
