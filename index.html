@@ -3706,7 +3706,6 @@ function npcThink(n){
       // Attacker gone/dead — flee anyway (we were just shot, not sticking around)
       n.state = 'minerFlee';
       n.target = null;
-      n._jettisoned = false;
       broadcastDistress(n);
       return;
     }
@@ -3734,7 +3733,6 @@ function npcThink(n){
       // Clear disadvantage — flee
       n.state = 'minerFlee';
       n.target = null;
-      n._jettisoned = false;
       addFloatingText(n.x, n.y, '✖ FLEE!', '#ffcc00', 1.3);
     } else {
       // Contested — greed (bravery proxy) decides
@@ -3744,7 +3742,6 @@ function npcThink(n){
         // Default to flee if config is invalid
         n.state = 'minerFlee';
         n.target = null;
-        n._jettisoned = false;
         addFloatingText(n.x, n.y, '✖ FLEE!', '#ffcc00', 1.3);
       } else {
         const braveryThreshold = 1.0 - ((ratio - CFG.MINER_POWER_FLEE_RATIO) / denominator);
@@ -3757,7 +3754,6 @@ function npcThink(n){
         } else {
           n.state = 'minerFlee';
           n.target = null;
-          n._jettisoned = false;
           addFloatingText(n.x, n.y, '✖ FLEE!', '#ffcc00', 1.3);
         }
       }
@@ -3803,7 +3799,6 @@ function npcThink(n){
       // Lost confidence — switch to flee
       n.state = 'minerFlee';
       n.target = null;
-      n._jettisoned = false;
       n._fightOriginX = undefined;
       n._fightOriginY = undefined;
       n._distressSent = false;
@@ -4659,7 +4654,6 @@ function broadcastDistress(sender) {
         if (dist(otherRef.x, otherRef.y, attacker.x, attacker.y) < 500) {
           otherRef.state = 'minerFlee';
           otherRef.target = null;
-          otherRef._jettisoned = false;
           otherRef._distressSent = false;
         }
         // Otherwise: stay put, don't help, don't flee (fight is far away)
