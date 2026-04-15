@@ -7806,6 +7806,13 @@ function connectSTDB(){
           if(sale.sellerType === 'player' && sale.sellerId === conn.identity?.toHexString()) {
             return;
           }
+          
+          // Only show notifications for sellers within a certain radius of the player
+          const NOTIFICATION_RADIUS = 1200; // Adjustable radius in game units
+          if(player && dist(sale.x, sale.y, player.x, player.y) > NOTIFICATION_RADIUS) {
+            return;
+          }
+          
           const bonus = sale.saleType === 'trade_ship' ? ' (1.5x)' : '';
           const credits = Number(sale.amountEarned).toLocaleString();
           const color = sale.sellerType === 'npc' ? '#44ff66' : '#66ff44';
