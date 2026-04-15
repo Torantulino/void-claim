@@ -1549,7 +1549,7 @@ function findNearestAggressor(entity,maxRange){
     if(w.dead||!isAggressor(w))continue;
     const d=dist(entity.x,entity.y,w.x,w.y);
     if(d<bestD){bestD=d;best=w;}
-  });
+  }
   return best;
 }
 
