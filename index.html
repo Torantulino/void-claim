@@ -3527,6 +3527,10 @@ function npcThink(n){
   
   if(hpPct<n.fleeHP){
     if(n.personality==='pirate'){
+      // Don't re-target if already fleeing to a den (prevents switching targets mid-flight)
+      if(n.state==='fleeToSecondDen'&&n._fleeX!==undefined&&n._fleeY!==undefined){
+        return; // Keep current flee target
+      }
       // Pirates now flee to 2nd nearest pirate den for strategic healing
       const secondDen = findSecondNearestDen(n.x, n.y);
       if(secondDen){
@@ -3697,6 +3701,10 @@ function denPirateThink(n,hpPct){
   
   // Low HP: flee toward 2nd nearest den (NOT their assigned den for strategic variety)
   if(hpPct<n.fleeHP){
+    // Don't re-target if already fleeing to a den (prevents switching targets mid-flight)
+    if(n.state==='fleeToSecondDen'&&n._fleeX!==undefined&&n._fleeY!==undefined){
+      return; // Keep current flee target
+    }
     const secondDen = findSecondNearestDen(n.x, n.y);
     if(secondDen){
       n.state='fleeToSecondDen';n.target=null;
@@ -3844,9 +3852,11 @@ function npcAct(n,dt){
           n.hp=Math.min(n.maxHp,n.hp+n.maxHp*CFG.DEN_HEAL_HP_RATE*dt); // Use config for HP rate
           if(dmgAge>=CFG.SHIELD_REGEN_DELAY*1000)n.shield=Math.min(n.maxShield,n.shield+n.maxShield*CFG.DEN_HEAL_SHIELD_RATE*dt); // Use config for shield rate
         }
-        // Stay near den and patrol/idle
-        if(n.hp>=n.maxHp*0.8){
+        // Stay committed to this den until fully healed (don't switch back to idle prematurely)
+        if(n.hp>=n.maxHp*0.9){ // Higher threshold to ensure full healing
           n.state='idle'; // Healed enough, return to normal behavior
+          // Clear flee coordinates to prevent confusion
+          n._fleeX=undefined;n._fleeY=undefined;n._fleeDenIndex=undefined;
         }
       }
       break;
