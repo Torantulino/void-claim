@@ -4577,6 +4577,7 @@ function moveToward(n,tx,ty,thrust,dt){
 }
 
 function calcPower(entity) {
+  if (entity.isTradeShip) return 999999; // Trade ship is unkillable authority — NPCs always flee
   const shipDef = SHIPS[entity.ship] || SHIPS.prospector;
   const hpPct = entity.hp / (entity.maxHp || 1);
   const effectiveHull = (entity.maxHp || 100) * hpPct;
