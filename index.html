@@ -5761,6 +5761,7 @@ function drawAllMiningBeams(){
   // 3) Drone mining beams
   drones.forEach(w=>{
     if(w.dead||w.state!=='mine'||!w.target||!w.target.alive)return;
+    if(dist(w.x,w.y,w.target.x,w.target.y)>CFG.MINE_RANGE)return;
     if(!inView(w.x,w.y,300)&&!inView(w.target.x,w.target.y,300))return;
     const ws=worldToScreen(w.x,w.y);
     const as=worldToScreen(w.target.x,w.target.y);
