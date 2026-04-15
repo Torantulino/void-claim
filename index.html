@@ -2705,6 +2705,13 @@ function spawnNPCs(){
   initPirateDens();
 }
 
+// Spawn ALL NPCs (regular, police, trade ship) in the correct order
+function spawnAllNPCs(){
+  spawnNPCs();     // Spawns regular NPCs + den pirates
+  spawnPolice();   // Spawns police carriers and fighters, adds to npcs[]
+  spawnTradeShip(); // Spawns trade ship, adds to npcs[]
+}
+
 // ═══════════════════════════════════════════
 // Pirate Den System — Red Zone hunter pirates
 // ═══════════════════════════════════════════
@@ -2834,7 +2841,12 @@ function updateDenPirates(dt){
 // Host pushes all NPC initial state to SpacetimeDB
 function pushNPCsToServer(){
   if(!stdbConn||!stdbConnected||!isNpcHost)return;
-  console.log('[STDB-NPC] Host pushing',npcs.length,'NPCs to server');
+  // Count different NPC types for verification
+  const regularNPCs = npcs.filter(n => n.npcId < 56 && !n.isTradeShip).length;
+  const denPirates = npcs.filter(n => n.npcId >= 56 && n.npcId < 64).length;
+  const policeUnits = npcs.filter(n => n.npcId >= 64 && n.npcId < 72).length;
+  const tradeShips = npcs.filter(n => n.isTradeShip).length;
+  console.log('[STDB-NPC] Host pushing',npcs.length,'NPCs to server:',regularNPCs,'regular,',denPirates,'den pirates,',policeUnits,'police,',tradeShips,'trade ships');
   npcs.forEach(n=>{
       stdbConn.reducers.spawnNpc({
         npcId:n.npcId,name:n.name,
@@ -8061,7 +8073,7 @@ function connectSTDB(){
             stopNpcStaleCheck(); // We're the host now, stop checking for staleness
             npcHostHeartbeatTimer=0; // send first heartbeat immediately
             if(npcs.length>0)pushNPCsToServer();
-            else{spawnNPCs();pushNPCsToServer();}
+            else{spawnAllNPCs();pushNPCsToServer();}
             pushStationsToServer();
             npcServerMap.clear(); // host doesn't use server map
           }else if(!isNpcHost&&wasHost){
@@ -8088,7 +8100,7 @@ function connectSTDB(){
             stopNpcStaleCheck(); // We're the host now
             npcHostHeartbeatTimer=0; // send first heartbeat immediately
             if(npcs.length>0)pushNPCsToServer();
-            else{spawnNPCs();pushNPCsToServer();}
+            else{spawnAllNPCs();pushNPCsToServer();}
             pushStationsToServer();
             npcServerMap.clear();
           }else if(!isNpcHost&&wasHost){
@@ -8211,7 +8223,7 @@ function connectSTDB(){
                   if(isNpcHost){
                     console.log('[STDB-NPC] ✅ We are the NPC host!');
                     if(npcs.length>0)pushNPCsToServer();
-                    else{spawnNPCs();pushNPCsToServer();}
+                    else{spawnAllNPCs();pushNPCsToServer();}
                     pushStationsToServer();
                   }else{
                     console.log('[STDB-NPC] Another client is NPC host — synced',npcServerMap.size,'NPCs from server');
@@ -9372,7 +9384,8 @@ function startGame(name,color,saved){
     // Spawn return portal near Earth so the traveler can go back
     if(portalParams.ref)returnPortal={x:200,y:-(CFG.EARTH_SHIELD_R-300),size:50,pulse:0};
   }
-  spawnNPCs();spawnPolice();spawnTradeShip();
+  // Only spawn NPCs if not already spawned (e.g., by host election)
+  if(npcs.length===0)spawnAllNPCs();
   // Asteroids are server-authoritative in multiplayer. In offline mode, spawn locally.
   if(!CFG.STDB_ENABLED||window.__STDB_UNAVAILABLE){spawnAsteroids();}
   gameState='playing';
