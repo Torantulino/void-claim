@@ -1,0 +1,17 @@
+#!/bin/sh
+# Pre-commit hook: run ESLint on staged HTML files
+# Install: cp .husky/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+# Or simply: npm run lint
+
+STAGED_HTML=$(git diff --cached --name-only --diff-filter=ACM | grep '\.html$')
+
+if [ -n "$STAGED_HTML" ]; then
+  echo "Running ESLint on staged HTML files..."
+  npx eslint $STAGED_HTML
+  if [ $? -ne 0 ]; then
+    echo ""
+    echo "ESLint found errors. Fix them before committing."
+    echo "Run 'npm run lint:fix' to auto-fix what's possible."
+    exit 1
+  fi
+fi

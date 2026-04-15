@@ -1,6 +1,18 @@
 {
+  "name": "void-claim",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Void Claim - a browser-based space game",
+  "scripts": {
+    "lint": "eslint index.html",
+    "lint:fix": "eslint --fix index.html"
+  },
   "dependencies": {
     "esbuild": "^0.28.0",
     "spacetimedb": "^2.1.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.1",
+    "eslint-plugin-html": "^8.1.4"
   }
 }
