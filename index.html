@@ -3762,7 +3762,7 @@ function npcAct(n,dt){
       n.hp=Math.min(n.maxHp,n.hp+n.maxHp*.5);n.shield=n.maxShield;n.state='idle';
       // ── Server: emit NPC sale event ──
       if(val>0&&isNpcHost&&stdbConn&&stdbConnected){
-        stdbConn.reducers.npcSellOre({npcId:n.id, amount:BigInt(val), saleType:'earth', x:n.x, y:n.y}).catch((e)=>{console.warn('[STDB] npc_sell_ore failed:',e);});
+        stdbConn.reducers.npcSellOre({npcId:n.npcId, amount:BigInt(val), saleType:'earth', x:n.x, y:n.y}).catch((e)=>{console.warn('[STDB] npc_sell_ore failed:',e);});
       }
       // ── NPC Progression: upgrade on accumulated sales ──
       if(val>0)npcProgressionOnSell(n,val);
@@ -3792,7 +3792,7 @@ function npcAct(n,dt){
       n.credits+=val2;n.totalEarned+=val2;n.cargo={};n.state='idle';
       // ── Server: emit NPC sale event ──
       if(val2>0&&isNpcHost&&stdbConn&&stdbConnected){
-        stdbConn.reducers.npcSellOre({npcId:n.id, amount:BigInt(val2), saleType:'trade_ship', x:n.x, y:n.y}).catch((e)=>{console.warn('[STDB] npc_sell_ore failed:',e);});
+        stdbConn.reducers.npcSellOre({npcId:n.npcId, amount:BigInt(val2), saleType:'trade_ship', x:n.x, y:n.y}).catch((e)=>{console.warn('[STDB] npc_sell_ore failed:',e);});
       }
       // ── NPC Progression: upgrade on accumulated sales ──
       if(val2>0)npcProgressionOnSell(n,val2);
