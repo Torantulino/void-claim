@@ -6588,6 +6588,18 @@ function updateProjectiles(dt){
             attackerName:isTSProj?'Trade Ship':(player?player.name:'Unknown')
           }).catch((e)=>{console.warn('[STDB] damage_npc failed:',e);});
           t.lastDamageTime=performance.now(); // Track for safe zone heal cooldown
+          // Set local attacker tracking for miner fight-or-flight system
+          t.lastAttacker = p.ownerId;
+          t.lastAttackTime = performance.now();
+          // Trigger miner threat response (same as in applyDamage function)
+          if (t.personality === 'miner'
+              && !t.dead
+              && t.state !== 'minerFlee'
+              && t.state !== 'minerFight') {
+            t.state = 'threatened';
+            t.target = null;
+            t.thinkTimer = 0; // Force immediate npcThink on next frame
+          }
           // Local FX (HP comes from server via host sync, but we show
           // immediate visual feedback so combat feels responsive)
           if(nearPlayer){
