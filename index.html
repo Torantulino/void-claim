@@ -6595,7 +6595,8 @@ function updateProjectiles(dt){
           if (t.personality === 'miner'
               && !t.dead
               && t.state !== 'minerFlee'
-              && t.state !== 'minerFight') {
+              && t.state !== 'minerFight'
+              && t.state !== 'threatened') {
             t.state = 'threatened';
             t.target = null;
             t.thinkTimer = 0; // Force immediate npcThink on next frame
@@ -6829,11 +6830,12 @@ function applyDamage(target,dmg,attackerId,playFX){
   target.lastAttacker = attackerId; // NEW: track who attacked (was missing for miners)
   target.lastAttackTime = performance.now(); // NEW: track when attack happened
 
-  // NEW: Miner threat response — interrupt non-combat states on each hit
+  // NEW: Miner threat response — interrupt non-combat states on first hit
   if (target.isNPC && target.personality === 'miner'
       && !target.dead
       && target.state !== 'minerFlee'
-      && target.state !== 'minerFight') {
+      && target.state !== 'minerFight'
+      && target.state !== 'threatened') {
     target.state = 'threatened';
     target.target = null;
     target.thinkTimer = 0; // Force immediate npcThink on next frame
