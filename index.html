@@ -270,6 +270,13 @@ const CFG={
   MISSILE_TTL:4.0,MISSILE_LOCK_RANGE:600,MISSILE_LOCK_ANGLE:0.8,
   MISSILE_CD:1.5,
   SHIELD_REGEN_DELAY:2,    // Seconds after taking damage before shields start regenerating
+  // Pirate healing system
+  PIRATE_HEAL_COOLDOWN:10, // Seconds after damage before pirates can heal at dens
+  DEN_HEAL_RANGE:500,      // Pixels from den center where healing is available
+  DEN_HEAL_HP_RATE:0.15,   // 15% HP per second at dens
+  DEN_HEAL_SHIELD_RATE:0.25, // 25% shields per second at dens
+  WILD_HEAL_HP_RATE:0.08,  // 8% HP per second in wilderness (existing)
+  WILD_HEAL_SHIELD_RATE:0.15, // 15% shields per second in wilderness (existing)
   CAM_LERP:.08,SHAKE_DECAY:.9,MINIMAP_R:140,MINIMAP_SCALE:0.02,
   STAR_LAYERS:[{count:200,size:1,speed:.05,alpha:.3},{count:150,size:1.5,speed:.15,alpha:.5},{count:80,size:2,speed:.3,alpha:.8}],
   WS_URL:null, // legacy — kept for backwards compat
@@ -3520,16 +3527,25 @@ function npcThink(n){
   
   if(hpPct<n.fleeHP){
     if(n.personality==='pirate'){
-      // Pirates flee to wilderness — never toward Earth
-      n.state='fleeToWild';n.target=null;
-      const threat=n.lastAttacker||player;
-      const fleeAngle=threat&&!threat.dead?angle(threat.x,threat.y,n.x,n.y):rand(0,Math.PI*2);
-      const fleeDist=rand(CFG.YELLOW_R*0.6,CFG.RED_R*0.8);
-      n._fleeX=Math.cos(fleeAngle)*fleeDist;
-      n._fleeY=Math.sin(fleeAngle)*fleeDist;
-      // Ensure flee point is outside green zone
-      const fd=dist(n._fleeX,n._fleeY,0,0);
-      if(fd<CFG.GREEN_R+200){n._fleeX*=(CFG.GREEN_R+200)/fd;n._fleeY*=(CFG.GREEN_R+200)/fd;}
+      // Pirates now flee to 2nd nearest pirate den for strategic healing
+      const secondDen = findSecondNearestDen(n.x, n.y);
+      if(secondDen){
+        n.state='fleeToSecondDen';n.target=null;
+        n._fleeX=secondDen.den.x;
+        n._fleeY=secondDen.den.y;
+        n._fleeDenIndex=secondDen.index;
+      }else{
+        // Fallback to wilderness if no 2nd den available
+        n.state='fleeToWild';n.target=null;
+        const threat=n.lastAttacker||player;
+        const fleeAngle=threat&&!threat.dead?angle(threat.x,threat.y,n.x,n.y):rand(0,Math.PI*2);
+        const fleeDist=rand(CFG.YELLOW_R*0.6,CFG.RED_R*0.8);
+        n._fleeX=Math.cos(fleeAngle)*fleeDist;
+        n._fleeY=Math.sin(fleeAngle)*fleeDist;
+        // Ensure flee point is outside green zone
+        const fd=dist(n._fleeX,n._fleeY,0,0);
+        if(fd<CFG.GREEN_R+200){n._fleeX*=(CFG.GREEN_R+200)/fd;n._fleeY*=(CFG.GREEN_R+200)/fd;}
+      }
       return;
     }
     n.state='flee';n.target=null;return;
@@ -3653,6 +3669,20 @@ function npcThink(n){
   n.state='wander';
 }
 
+// ── Utility function to find 2nd nearest pirate den for strategic fleeing ──
+function findSecondNearestDen(x, y) {
+  if(pirateDens.length < 2) return null; // Need at least 2 dens
+  
+  const distances = pirateDens.map((den, i) => ({
+    index: i,
+    den: den,
+    distance: dist(x, y, den.x, den.y)
+  }));
+  
+  distances.sort((a, b) => a.distance - b.distance);
+  return distances[1]; // Return 2nd closest
+}
+
 // ── Den Pirate AI: hunt miners near den, never go to Earth, leash back to den ──
 function denPirateThink(n,hpPct){
   const den=pirateDens[n.denIndex];
@@ -3665,8 +3695,20 @@ function denPirateThink(n,hpPct){
     if(dLev<800){n.state='fleeToDen';n.target=null;return;}
   }
   
-  // Low HP: flee back toward den (NOT Earth — den pirates never go to Earth)
-  if(hpPct<n.fleeHP){n.state='fleeToDen';n.target=null;return;}
+  // Low HP: flee toward 2nd nearest den (NOT their assigned den for strategic variety)
+  if(hpPct<n.fleeHP){
+    const secondDen = findSecondNearestDen(n.x, n.y);
+    if(secondDen){
+      n.state='fleeToSecondDen';n.target=null;
+      n._fleeX=secondDen.den.x;
+      n._fleeY=secondDen.den.y;
+      n._fleeDenIndex=secondDen.index;
+    }else{
+      // Fallback to original den if no 2nd den available
+      n.state='fleeToDen';n.target=null;
+    }
+    return;
+  }
   
   // Too far from den: return to leash range
   if(dToDen>CFG.DEN_LEASH_R){n.state='returnToDen';n.target=null;return;}
@@ -3785,9 +3827,27 @@ function npcAct(n,dt){
       if(dFlee<300){
         // Arrived at safe distance — slow heal and go idle
         const dmgAge=performance.now()-(n.lastDamageTime||0);
-        if(dmgAge>=5000)n.hp=Math.min(n.maxHp,n.hp+n.maxHp*.08*dt);
-        if(dmgAge>=CFG.SHIELD_REGEN_DELAY*1000)n.shield=Math.min(n.maxShield,n.shield+n.maxShield*.15*dt);
+        if(dmgAge>=5000)n.hp=Math.min(n.maxHp,n.hp+n.maxHp*CFG.WILD_HEAL_HP_RATE*dt);
+        if(dmgAge>=CFG.SHIELD_REGEN_DELAY*1000)n.shield=Math.min(n.maxShield,n.shield+n.maxShield*CFG.WILD_HEAL_SHIELD_RATE*dt);
         n.state='idle';
+      }
+      break;
+    }
+    case 'fleeToSecondDen':{
+      // Regular pirates flee to 2nd nearest den for healing
+      moveToward(n,n._fleeX,n._fleeY,thrust*1.2,dt);
+      const dToDen=dist(n.x,n.y,n._fleeX,n._fleeY);
+      if(dToDen<500){
+        // Arrived at den — can heal if not recently damaged
+        const dmgAge=performance.now()-(n.lastDamageTime||0);
+        if(dmgAge>=CFG.PIRATE_HEAL_COOLDOWN*1000){ // Use config for cooldown
+          n.hp=Math.min(n.maxHp,n.hp+n.maxHp*CFG.DEN_HEAL_HP_RATE*dt); // Use config for HP rate
+          if(dmgAge>=CFG.SHIELD_REGEN_DELAY*1000)n.shield=Math.min(n.maxShield,n.shield+n.maxShield*CFG.DEN_HEAL_SHIELD_RATE*dt); // Use config for shield rate
+        }
+        // Stay near den and patrol/idle
+        if(n.hp>=n.maxHp*0.8){
+          n.state='idle'; // Healed enough, return to normal behavior
+        }
       }
       break;
     }
@@ -3816,10 +3876,12 @@ function npcAct(n,dt){
         moveToward(n,den.x,den.y,thrust*thrustMult,dt);
         const dToDen=dist(n.x,n.y,den.x,den.y);
         if(dToDen<400){
-          // Arrived at den — heal slowly and switch to patrol
+          // Arrived at den — heal with configurable attack cooldown
           const denDmgAge=performance.now()-(n.lastDamageTime||0);
-          if(denDmgAge>=5000)n.hp=Math.min(n.maxHp,n.hp+n.maxHp*.15*dt);
-          if(denDmgAge>=CFG.SHIELD_REGEN_DELAY*1000)n.shield=Math.min(n.maxShield,n.shield+n.maxShield*.25*dt);
+          if(denDmgAge>=CFG.PIRATE_HEAL_COOLDOWN*1000){ // Use config for cooldown
+            n.hp=Math.min(n.maxHp,n.hp+n.maxHp*CFG.DEN_HEAL_HP_RATE*dt);
+            if(denDmgAge>=CFG.SHIELD_REGEN_DELAY*1000)n.shield=Math.min(n.maxShield,n.shield+n.maxShield*CFG.DEN_HEAL_SHIELD_RATE*dt);
+          }
           n.state='denPatrol';
         }
       }else{n.state='wander';}
@@ -3896,6 +3958,28 @@ function npcAct(n,dt){
     if(v>5)n.angle=lerpAngle(n.angle,moveAngle,.1);
   }
   if(v>30&&Math.random()<.3)emitThrust(n.x,n.y,n.angle,spd,n.color);
+  
+  // ── Universal Pirate Den Healing: ANY pirate can heal at ANY den ──
+  if((n.personality === 'pirate' || n.personality === 'denPirate') && !n.dead) {
+    // Check if pirate is near any den
+    for(let i = 0; i < pirateDens.length; i++) {
+      const den = pirateDens[i];
+      const distToDen = dist(n.x, n.y, den.x, den.y);
+      
+      if(distToDen < CFG.DEN_HEAL_RANGE) {
+        // Pirate is near this den - can heal if not recently damaged
+        const dmgAge = performance.now() - (n.lastDamageTime || 0);
+        if(dmgAge >= CFG.PIRATE_HEAL_COOLDOWN * 1000) {
+          // Heal both HP and shields at enhanced den rates
+          n.hp = Math.min(n.maxHp, n.hp + n.maxHp * CFG.DEN_HEAL_HP_RATE * dt);
+          if(dmgAge >= CFG.SHIELD_REGEN_DELAY * 1000) {
+            n.shield = Math.min(n.maxShield, n.shield + n.maxShield * CFG.DEN_HEAL_SHIELD_RATE * dt);
+          }
+        }
+        break; // Only heal from one den at a time
+      }
+    }
+  }
 }
 
 
