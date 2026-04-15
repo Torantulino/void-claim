@@ -277,6 +277,16 @@ const CFG={
   DEN_HEAL_SHIELD_RATE:0.25, // 25% shields per second at dens
   WILD_HEAL_HP_RATE:0.08,  // 8% HP per second in wilderness (existing)
   WILD_HEAL_SHIELD_RATE:0.15, // 15% shields per second in wilderness (existing)
+  // Miner fight-or-flight system
+  MINER_DISTRESS_RANGE: 800,      // How far distress calls reach (units)
+  MINER_FIGHT_LEASH: 500,         // Max pursuit distance from fight origin (units)
+  MINER_ATTACK_MEMORY: 15000,     // How long a miner remembers being attacked (ms)
+  MINER_JETTISON_HP: 0.5,         // HP threshold for cargo jettison check
+  MINER_JETTISON_CHANCE: 0.65,    // Probability of jettisoning when threshold is hit
+  MINER_JETTISON_PCT_MIN: 0.3,    // Min percentage of cargo dropped
+  MINER_JETTISON_PCT_MAX: 0.6,    // Max percentage of cargo dropped
+  MINER_POWER_FIGHT_RATIO: 1.5,   // Power ratio above which miners always fight
+  MINER_POWER_FLEE_RATIO: 0.7,    // Power ratio below which miners always flee
   CAM_LERP:.08,SHAKE_DECAY:.9,MINIMAP_R:140,MINIMAP_SCALE:0.02,
   STAR_LAYERS:[{count:200,size:1,speed:.05,alpha:.3},{count:150,size:1.5,speed:.15,alpha:.5},{count:80,size:2,speed:.3,alpha:.8}],
   WS_URL:null, // legacy — kept for backwards compat
@@ -2810,6 +2820,13 @@ function createNPC(npcIndex){
     totalKills:0,totalMined:0,totalEarned:0,
     // ── Miner greed personality (0=cautious, 1=reckless) ──
     greed:greed,
+    // ── Miner fight-or-flight state ──
+    lastAttacker: null,       // Entity ID of most recent attacker
+    lastAttackTime: 0,        // performance.now() of most recent hit
+    _distressSent: false,     // Has this miner already broadcast distress?
+    _jettisoned: false,       // Has cargo jettison been rolled?
+    _fightOriginX: undefined, // Where the fight started (for pursuit leash)
+    _fightOriginY: undefined,
     // ── NPC Progression tracking ──
     npcLevel:0,         // Visible level (increments on upgrades/ship swaps)
     sellAccum:0,        // Accumulated credits from selling (triggers upgrade at 500+)
@@ -3613,6 +3630,9 @@ function updateNPCs(dt){
         n.x=Math.cos(a)*d;n.y=Math.sin(a)*d;n.vx=0;n.vy=0;
         n.hp=base.hull;n.maxHp=base.hull;n.shield=base.shield;n.maxShield=base.shield;
         n.dead=false;n.cargo={};n.state='idle';n.bounty=0;n.stunTimer=0;
+        n._distressSent=false;n._jettisoned=false;
+        n._fightOriginX=undefined;n._fightOriginY=undefined;
+        n.lastAttacker=null;n.lastAttackTime=0;
         n._respawnedAt=performance.now();
         clearAggressor(n);
         serverRespawnNPC(n);
@@ -3661,6 +3681,118 @@ function npcThink(n){
     return;
   }
   
+  // ── Miner Threat Assessment: react to attacks immediately ──
+  if (n.personality === 'miner' && n.state === 'threatened') {
+    const recentlyAttacked = n.lastAttackTime
+      && (performance.now() - n.lastAttackTime) < CFG.MINER_ATTACK_MEMORY;
+
+    if (!recentlyAttacked) {
+      n.state = 'idle'; // Threat expired, resume normal behavior
+      n._distressSent = false;
+      return;
+    }
+
+    // Calculate power balance
+    const myPower = calcPower(n);
+    let friendlyPower = myPower;
+    let hostilePower = 0;
+
+    const attacker = findEntityById(n.lastAttacker);
+    if (attacker && !attacker.dead) {
+      hostilePower = calcPower(attacker);
+    } else {
+      // Attacker gone/dead — flee anyway (we were just shot, not sticking around)
+      n.state = 'minerFlee';
+      n.target = null;
+      n._jettisoned = false;
+      broadcastDistress(n);
+      return;
+    }
+
+    // Count non-fleeing friendly miners within distress range
+    npcs.forEach(other => {
+      if (other.id === n.id || other.dead) return;
+      if (other.personality !== 'miner') return;
+      if (other.state === 'minerFlee') return;
+      if (dist(n.x, n.y, other.x, other.y) < CFG.MINER_DISTRESS_RANGE) {
+        friendlyPower += calcPower(other);
+      }
+    });
+
+    const ratio = hostilePower > 0 ? friendlyPower / hostilePower : 999;
+
+    if (ratio > CFG.MINER_POWER_FIGHT_RATIO) {
+      // Clear advantage — fight
+      n.state = 'minerFight';
+      n.target = attacker;
+      n._fightOriginX = n.x;
+      n._fightOriginY = n.y;
+      addFloatingText(n.x, n.y, '⚔ FIGHT!', '#ff4444', 1.4);
+    } else if (ratio < CFG.MINER_POWER_FLEE_RATIO) {
+      // Clear disadvantage — flee
+      n.state = 'minerFlee';
+      n.target = null;
+      n._jettisoned = false;
+      addFloatingText(n.x, n.y, '✖ FLEE!', '#ffcc00', 1.3);
+    } else {
+      // Contested — greed (bravery proxy) decides
+      const braveryThreshold = 1.0 - ((ratio - CFG.MINER_POWER_FLEE_RATIO) / (CFG.MINER_POWER_FIGHT_RATIO - CFG.MINER_POWER_FLEE_RATIO));
+      if ((n.greed || 0) > braveryThreshold) {
+        n.state = 'minerFight';
+        n.target = attacker;
+        n._fightOriginX = n.x;
+        n._fightOriginY = n.y;
+        addFloatingText(n.x, n.y, '⚔ FIGHT!', '#ff4444', 1.4);
+      } else {
+        n.state = 'minerFlee';
+        n.target = null;
+        n._jettisoned = false;
+        addFloatingText(n.x, n.y, '✖ FLEE!', '#ffcc00', 1.3);
+      }
+    }
+    broadcastDistress(n);
+    return;
+  }
+
+  // ── Miner Fight Re-evaluation: check if the tide has turned ──
+  if (n.personality === 'miner' && n.state === 'minerFight') {
+    if (!n.target || n.target.dead) {
+      n.state = 'idle';
+      n._fightOriginX = undefined;
+      n._fightOriginY = undefined;
+      n._distressSent = false;
+      return;
+    }
+
+    const myPower = calcPower(n);
+    let friendlyPower = myPower;
+    const hostilePower = calcPower(n.target);
+
+    npcs.forEach(other => {
+      if (other.id === n.id || other.dead) return;
+      if (other.personality !== 'miner') return;
+      if (other.state === 'minerFlee') return;
+      if (dist(n.x, n.y, other.x, other.y) < CFG.MINER_DISTRESS_RANGE) {
+        friendlyPower += calcPower(other);
+      }
+    });
+
+    const ratio = hostilePower > 0 ? friendlyPower / hostilePower : 999;
+    const braveryThreshold = 1.0 - ((Math.min(Math.max(ratio, CFG.MINER_POWER_FLEE_RATIO), CFG.MINER_POWER_FIGHT_RATIO) - CFG.MINER_POWER_FLEE_RATIO) / (CFG.MINER_POWER_FIGHT_RATIO - CFG.MINER_POWER_FLEE_RATIO));
+
+    if ((n.greed || 0) < braveryThreshold) {
+      // Lost confidence — switch to flee
+      n.state = 'minerFlee';
+      n.target = null;
+      n._jettisoned = false;
+      n._fightOriginX = undefined;
+      n._fightOriginY = undefined;
+      n._distressSent = false;
+      addFloatingText(n.x, n.y, '✖ RETREAT!', '#ffcc00', 1.3);
+    }
+    return;
+  }
+
   if(hpPct<n.fleeHP){
     if(n.personality==='pirate'){
       // Don't re-target if already fleeing to a den (prevents switching targets mid-flight)
@@ -4073,6 +4205,130 @@ function npcAct(n,dt){
       }else{n.state='wander';}
       break;
     }
+    case 'minerFlee': {
+      // Determine flee destination: Earth or trade ship (whichever is closer)
+      let fleeX = 0, fleeY = 0; // Default: Earth
+      if (tradeShip && !tradeShip.dead) {
+        const dToTS = dist(n.x, n.y, tradeShip.x, tradeShip.y);
+        const dToEarth = dist(n.x, n.y, 0, 0);
+        if (dToTS < dToEarth) { fleeX = tradeShip.x; fleeY = tradeShip.y; }
+      }
+
+      // Full speed toward safety (no 1.2x multiplier — ships have fixed max speeds)
+      moveToward(n, fleeX, fleeY, thrust, dt);
+
+      // Panic jitter: random lateral impulses make the miner harder to track
+      if (Math.random() < 0.12) {
+        const jitterAngle = n.angle + (Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2);
+        n.vx += Math.cos(jitterAngle) * thrust * 0.2 * dt;
+        n.vy += Math.sin(jitterAngle) * thrust * 0.2 * dt;
+      }
+
+      // Cargo jettison: one-time random check at 50% HP
+      if (!n._jettisoned && n.hp < n.maxHp * CFG.MINER_JETTISON_HP && totalCargo(n.cargo) > 0) {
+        const willDrop = Math.random(); // ~65% chance to jettison
+        if (willDrop > (1 - CFG.MINER_JETTISON_CHANCE)) {
+          const dropPct = CFG.MINER_JETTISON_PCT_MIN + Math.random() * (CFG.MINER_JETTISON_PCT_MAX - CFG.MINER_JETTISON_PCT_MIN);
+          const items = [];
+          for (const ore in n.cargo) {
+            const amt = Math.floor(n.cargo[ore] * dropPct);
+            if (amt > 0) {
+              items.push({ ore, amount: amt });
+              n.cargo[ore] -= amt;
+              if (n.cargo[ore] <= 0) delete n.cargo[ore];
+            }
+          }
+          if (items.length > 0) {
+            const behindAngle = Math.atan2(n.vy, n.vx) + Math.PI;
+            loot.push({
+              id: uid(),
+              x: n.x + Math.cos(behindAngle) * 30,
+              y: n.y + Math.sin(behindAngle) * 30,
+              vx: Math.cos(behindAngle) * 80 + rand(-30, 30),
+              vy: Math.sin(behindAngle) * 80 + rand(-30, 30),
+              items, ttl: CFG.LOOT_TTL
+            });
+            addFloatingText(n.x, n.y, '📦 CARGO DUMPED!', '#ffcc00', 1.5);
+          }
+        }
+        n._jettisoned = true; // Only roll once, win or lose
+      }
+
+      // Arrive at Earth
+      if (dist(n.x, n.y, 0, 0) < CFG.EARTH_SHIELD_R) {
+        n.state = 'sell';
+        n._distressSent = false;
+        n._jettisoned = false;
+      }
+      // Arrive at trade ship
+      if (tradeShip && !tradeShip.dead
+          && dist(n.x, n.y, tradeShip.x, tradeShip.y) < CFG.TRADE_SHIP_MARKET_R) {
+        n.state = 'sellAtTradeShip';
+        n._distressSent = false;
+        n._jettisoned = false;
+      }
+      break;
+    }
+
+    case 'minerFight': {
+      if (!n.target || n.target.dead) {
+        n.state = 'idle';
+        n._fightOriginX = undefined;
+        n._fightOriginY = undefined;
+        n._distressSent = false;
+        break;
+      }
+
+      const d = dist(n.x, n.y, n.target.x, n.target.y);
+
+      // Engagement distance: bold miners (high greed) close in, cautious ones kite
+      const engageRange = (n.greed || 0) > 0.5 ? 150 : 250;
+
+      if (d > engageRange + 50) {
+        moveToward(n, n.target.x, n.target.y, thrust, dt);
+      } else if (d < engageRange - 30 && (n.greed || 0) < 0.5) {
+        // Cautious miners back off if too close
+        const awayAngle = angle(n.target.x, n.target.y, n.x, n.y);
+        n.vx += Math.cos(awayAngle) * thrust * 0.5 * dt;
+        n.vy += Math.sin(awayAngle) * thrust * 0.5 * dt;
+      }
+
+      // Aim and fire
+      n.angle = angle(n.x, n.y, n.target.x, n.target.y);
+      if (n.shootCD <= 0 && d < 350) {
+        fireProjectile(n);
+        n.shootCD = shipFireRate(n) * 1.3; // Same fire rate as existing pirate AI
+      }
+
+      // Strafe during combat
+      const strafeA = n.angle + Math.PI / 2;
+      n.vx += Math.cos(strafeA) * thrust * 0.3 * dt;
+      n.vy += Math.sin(strafeA) * thrust * 0.3 * dt;
+
+      // Pursuit limit: don't chase beyond 500 units from fight origin
+      if (n._fightOriginX !== undefined) {
+        if (dist(n.x, n.y, n._fightOriginX, n._fightOriginY) > CFG.MINER_FIGHT_LEASH) {
+          n.state = 'idle';
+          n._fightOriginX = undefined;
+          n._fightOriginY = undefined;
+          n._distressSent = false;
+        }
+      }
+      break;
+    }
+
+    case 'threatened': {
+      // Brief pause state — npcThink will resolve this on next cycle
+      // Meanwhile, apply a lateral dodge away from attacker
+      const attacker = findEntityById(n.lastAttacker);
+      if (attacker) {
+        const awayAngle = angle(attacker.x, attacker.y, n.x, n.y);
+        const dodgeAngle = awayAngle + (Math.random() < 0.5 ? 0.5 : -0.5);
+        n.vx += Math.cos(dodgeAngle) * thrust * 0.6 * dt;
+        n.vy += Math.sin(dodgeAngle) * thrust * 0.6 * dt;
+      }
+      break;
+    }
     default:{
       // Intelligent wandering with zone awareness
       if(n.stateTimer<=0){
@@ -4298,6 +4554,95 @@ function npcProgressionOnKill(n){
 function moveToward(n,tx,ty,thrust,dt){
   const a=angle(n.x,n.y,tx,ty);
   n.vx+=Math.cos(a)*thrust*dt;n.vy+=Math.sin(a)*thrust*dt;
+}
+
+function calcPower(entity) {
+  const shipDef = SHIPS[entity.ship] || SHIPS.prospector;
+  const hpPct = entity.hp / (entity.maxHp || 1);
+  const effectiveHull = (entity.maxHp || 100) * hpPct;
+  const effectiveShield = entity.shield || 0;
+  // DPS approximation using existing ship stats
+  const upgMult = 1 + ((entity.upgrades?.laser || 0) * (UPGRADES.laser.pct / 100));
+  const rawDmg = CFG.PROJ_DMG * (shipDef.dmg || 1) * upgMult;
+  const fireCD = CFG.SHOOT_CD * (shipDef.fireRate || 1);
+  const dps = rawDmg / Math.max(fireCD, 0.1);
+  // Weight DPS so combat ships like Sentinel/Phantom score meaningfully higher
+  return effectiveHull + effectiveShield + (dps * 5);
+}
+
+function broadcastDistress(sender) {
+  if (sender._distressSent) return;
+  sender._distressSent = true;
+
+  const attackerId = sender.lastAttacker;
+  if (!attackerId) return;
+
+  npcs.forEach(other => {
+    if (other.id === sender.id || other.dead) return;
+    if (other.personality !== 'miner') return;
+    // Don't interrupt miners already in combat or fleeing
+    if (other.state === 'minerFlee' || other.state === 'minerFight') return;
+    if (dist(sender.x, sender.y, other.x, other.y) > CFG.MINER_DISTRESS_RANGE) return;
+
+    // Stagger response: 0.5-2s delay per responder
+    const delay = rand(500, 2000);
+    const otherRef = other; // closure capture
+
+    setTimeout(() => {
+      if (otherRef.dead) return;
+      if (otherRef.state === 'minerFlee' || otherRef.state === 'minerFight') return;
+
+      const attacker = findEntityById(attackerId);
+      if (!attacker || attacker.dead) return;
+
+      // Responder runs own threat assessment
+      const myPower = calcPower(otherRef);
+      let allyPower = myPower;
+      const hostilePower = calcPower(attacker);
+
+      // Count non-fleeing friendlies near the fight
+      npcs.forEach(ally => {
+        if (ally.id === otherRef.id || ally.dead) return;
+        if (ally.personality !== 'miner') return;
+        if (ally.state === 'minerFlee') return;
+        if (dist(ally.x, ally.y, sender.x, sender.y) < CFG.MINER_DISTRESS_RANGE) {
+          allyPower += calcPower(ally);
+        }
+      });
+
+      const ratio = hostilePower > 0 ? allyPower / hostilePower : 999;
+
+      if (ratio > CFG.MINER_POWER_FIGHT_RATIO) {
+        // Clear advantage — help regardless of personality
+        otherRef.state = 'minerFight';
+        otherRef.target = attacker;
+        otherRef._fightOriginX = otherRef.x;
+        otherRef._fightOriginY = otherRef.y;
+        otherRef._distressSent = false;
+        addFloatingText(otherRef.x, otherRef.y, '⚔ HELP!', '#4488ff', 1.3);
+      } else if (ratio < CFG.MINER_POWER_FLEE_RATIO) {
+        // Hopeless — if fight is close, preemptively flee
+        if (dist(otherRef.x, otherRef.y, attacker.x, attacker.y) < 500) {
+          otherRef.state = 'minerFlee';
+          otherRef.target = null;
+          otherRef._jettisoned = false;
+          otherRef._distressSent = false;
+        }
+        // Otherwise: stay put, don't help, don't flee (fight is far away)
+      } else {
+        // Contested — bravery (greed) decides
+        const braveryThreshold = 1.0 - ((ratio - CFG.MINER_POWER_FLEE_RATIO) / (CFG.MINER_POWER_FIGHT_RATIO - CFG.MINER_POWER_FLEE_RATIO));
+        if ((otherRef.greed || 0) > braveryThreshold) {
+          otherRef.state = 'minerFight';
+          otherRef.target = attacker;
+          otherRef._fightOriginX = otherRef.x;
+          otherRef._fightOriginY = otherRef.y;
+          otherRef._distressSent = false;
+          addFloatingText(otherRef.x, otherRef.y, '⚔ HELP!', '#4488ff', 1.3);
+        }
+      }
+    }, delay);
+  });
 }
 
 function fireProjectile(entity){
@@ -5002,6 +5347,30 @@ function drawShipEntity(e){
     ctx.restore();
   }
   
+  // Fleeing miner panic aura (yellow pulse)
+  if (e.personality === 'miner' && e.state === 'minerFlee') {
+    const pulse = Math.sin(performance.now() * .008 + e.x) * .12 + .12;
+    const auraR = sz + 8;
+    ctx.save(); ctx.globalAlpha = pulse;
+    const pg = ctx.createRadialGradient(s.x, s.y, sz * .3, s.x, s.y, auraR);
+    pg.addColorStop(0, 'rgba(255,200,40,.3)');
+    pg.addColorStop(1, 'rgba(255,150,0,0)');
+    ctx.fillStyle = pg; ctx.beginPath(); ctx.arc(s.x, s.y, auraR, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // Fighting miner red aura
+  if (e.personality === 'miner' && e.state === 'minerFight') {
+    const pulse = Math.sin(performance.now() * .006 + e.x) * .1 + .1;
+    const auraR = sz + 8;
+    ctx.save(); ctx.globalAlpha = pulse;
+    const fg = ctx.createRadialGradient(s.x, s.y, sz * .3, s.x, s.y, auraR);
+    fg.addColorStop(0, 'rgba(255,60,40,.3)');
+    fg.addColorStop(1, 'rgba(255,30,0,0)');
+    ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(s.x, s.y, auraR, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  
   ctx.save();ctx.translate(s.x,s.y);ctx.rotate(e.angle);
   if(e.cloaked){ctx.globalAlpha=e.isPlayer?.2:.05;}
   // Post-respawn invulnerability: flash the ship
@@ -5049,6 +5418,25 @@ function drawShipEntity(e){
     else if(e.bounty>0){ctx.fillStyle='rgba(255,70,70,.85)';ctx.fillText('☠ BOUNTY',s.x,s.y-sz-20);}
     else if(_lvl>=3&&!e.isPlayer){ctx.fillStyle=_lvl>=6?'rgba(255,180,40,.9)':'rgba(150,200,255,.8)';ctx.fillText(_lvl>=6?'⚔ VETERAN':'✦ SKILLED',s.x,s.y-sz-20);}
     if(isAggressor(e)&&!e.isPolice){ctx.fillStyle='rgba(255,50,50,.85)';ctx.fillText('⚠ AGGRESSOR',s.x,s.y-sz-30);}
+    // Miner threat state indicators
+    if (e.personality === 'miner' && !e.isPlayer) {
+      if (e.state === 'minerFight') {
+        ctx.fillStyle = 'rgba(255,80,60,.95)';
+        ctx.font = 'bold 11px Courier New';
+        ctx.strokeText('⚔ FIGHTING', s.x, s.y - sz - 20);
+        ctx.fillText('⚔ FIGHTING', s.x, s.y - sz - 20);
+      } else if (e.state === 'minerFlee') {
+        ctx.fillStyle = 'rgba(255,200,60,.95)';
+        ctx.font = 'bold 11px Courier New';
+        ctx.strokeText('⚠ FLEEING', s.x, s.y - sz - 20);
+        ctx.fillText('⚠ FLEEING', s.x, s.y - sz - 20);
+      } else if (e.state === 'threatened') {
+        ctx.fillStyle = 'rgba(255,255,100,.95)';
+        ctx.font = 'bold 12px Courier New';
+        ctx.strokeText('!', s.x, s.y - sz - 20);
+        ctx.fillText('!', s.x, s.y - sz - 20);
+      }
+    }
     // Cargo indicator bar (visible loot indicator for non-player ships)
     if(totalCargo(e.cargo||{})>0&&!e.isPlayer){
       const tc=totalCargo(e.cargo);const mc=maxCargo(e);const cPct=Math.min(tc/Math.max(mc,1),1);
@@ -6383,6 +6771,18 @@ function applyDamage(target,dmg,attackerId,playFX){
   }
   target.hp-=dmg;
   target.lastDamageTime=performance.now();
+  target.lastAttacker = attackerId; // NEW: track who attacked (was missing for miners)
+
+  // NEW: Miner threat response — interrupt non-combat states on first hit
+  if (target.isNPC && target.personality === 'miner'
+      && !target.dead
+      && target.state !== 'minerFlee'
+      && target.state !== 'minerFight'
+      && target.state !== 'threatened') {
+    target.state = 'threatened';
+    target.target = null;
+    target.thinkTimer = 0; // Force immediate npcThink on next frame
+  }
   // ── Damage numbers with punch scale ──
   if(playFX&&dmg>0){
     const punchScale=1.2+Math.min(dmg/30,1.5);
