@@ -287,6 +287,8 @@ const CFG={
   MINER_JETTISON_PCT_MAX: 0.6,    // Max percentage of cargo dropped
   MINER_POWER_FIGHT_RATIO: 1.5,   // Power ratio above which miners always fight
   MINER_POWER_FLEE_RATIO: 0.7,    // Power ratio below which miners always flee
+  PIRATE_POWER_FIGHT_RATIO: 0.6,  // Pirates fight unless attacker is ~67%+ stronger
+  PIRATE_POWER_FLEE_RATIO: 0.25,  // Pirates only flee if attacker is ~4x stronger
   CAM_LERP:.08,SHAKE_DECAY:.9,MINIMAP_R:140,MINIMAP_SCALE:0.02,
   STAR_LAYERS:[{count:200,size:1,speed:.05,alpha:.3},{count:150,size:1.5,speed:.15,alpha:.5},{count:80,size:2,speed:.3,alpha:.8}],
   WS_URL:null, // legacy — kept for backwards compat
@@ -2799,7 +2801,7 @@ function createNPC(npcIndex){
   const shipType='prospector'; // Both miners and pirates start as Prospector, earning their way up
   const name=pick(NPC_NAMES)+pick(NPC_SUFFIXES);
   // Greed stat determines how deep miners venture and how long they stay
-  const greed=isMiner?Math.random():0;
+  const greed=isMiner?Math.random():(0.85+Math.random()*0.15);
   // Spawn position varies by greed — greedy miners start deeper
   const minD=isMiner?(greed<.3?CFG.GREEN_R:greed<.7?CFG.YELLOW_R*.6:CFG.YELLOW_R):CFG.GREEN_R;
   const maxD=isMiner?(greed<.3?CFG.YELLOW_R*.8:greed<.7?CFG.RED_R*.7:CFG.RED_R):CFG.RED_R;
@@ -3766,6 +3768,41 @@ function npcThink(n){
     return;
   }
 
+  // ── Pirate Threat Assessment: react to attacks, prefer to fight ──
+  if (n.personality === 'pirate' && n.state === 'threatened') {
+    const recentlyAttacked = n.lastAttackTime
+      && (performance.now() - n.lastAttackTime) < CFG.MINER_ATTACK_MEMORY;
+
+    if (!recentlyAttacked) {
+      n.state = 'idle';
+      return;
+    }
+
+    const attacker = findEntityById(n.lastAttacker);
+    if (!attacker || attacker.dead) {
+      n.state = 'idle';
+      return;
+    }
+
+    const myPower = calcPower(n);
+    const hostilePower = calcPower(attacker);
+    const ratio = hostilePower > 0 ? myPower / hostilePower : 999;
+
+    if (ratio > CFG.PIRATE_POWER_FLEE_RATIO) {
+      // Default: fight back — pirates only flee when badly outmatched
+      n.state = 'pirateFight';
+      n.target = attacker;
+      n._fightOriginX = n.x;
+      n._fightOriginY = n.y;
+      addFloatingText(n.x, n.y, '⚔ FIGHT!', '#ff4444', 1.4);
+    } else {
+      // Severely outmatched — trigger existing den-flee system
+      n.fleeHP = 1.0; // Force HP-flee threshold to fire on next npcThink cycle
+      addFloatingText(n.x, n.y, '✖ FLEE!', '#ffcc00', 1.3);
+    }
+    return;
+  }
+
   // ── Miner Fight Re-evaluation: check if the tide has turned ──
   if (n.personality === 'miner' && n.state === 'minerFight') {
     if (!n.target || n.target.dead) {
@@ -4333,6 +4370,41 @@ function npcAct(n,dt){
           n._fightOriginY = undefined;
           n._distressSent = false;
         }
+      }
+      break;
+    }
+
+    case 'pirateFight': {
+      if (!n.target || n.target.dead) {
+        n.state = 'idle';
+        n._fightOriginX = undefined;
+        n._fightOriginY = undefined;
+        break;
+      }
+
+      const d = dist(n.x, n.y, n.target.x, n.target.y);
+
+      // Pirates are aggressive closers — no kiting
+      if (d > 150) moveToward(n, n.target.x, n.target.y, thrust, dt);
+
+      // Aim and fire
+      n.angle = angle(n.x, n.y, n.target.x, n.target.y);
+      if (n.shootCD <= 0 && d < 350) {
+        fireProjectile(n);
+        n.shootCD = shipFireRate(n) * 1.3;
+      }
+
+      // Strafe during combat
+      const strafeA = n.angle + Math.PI / 2;
+      n.vx += Math.cos(strafeA) * thrust * 0.3 * dt;
+      n.vy += Math.sin(strafeA) * thrust * 0.3 * dt;
+
+      // Leash: don't chase beyond fight origin
+      if (n._fightOriginX !== undefined
+          && dist(n.x, n.y, n._fightOriginX, n._fightOriginY) > CFG.MINER_FIGHT_LEASH) {
+        n.state = 'idle';
+        n._fightOriginX = undefined;
+        n._fightOriginY = undefined;
       }
       break;
     }
@@ -6602,6 +6674,17 @@ function updateProjectiles(dt){
             t.target = null;
             t.thinkTimer = 0; // Force immediate npcThink on next frame
           }
+          // Pirate threat response (same logic as applyDamage)
+          if (t.personality === 'pirate'
+              && !t.dead
+              && t.state !== 'pirateFight'
+              && t.state !== 'threatened'
+              && t.state !== 'fleeToSecondDen'
+              && t.state !== 'fleeToWild') {
+            t.state = 'threatened';
+            t.target = null;
+            t.thinkTimer = 0;
+          }
           // Local FX (HP comes from server via host sync, but we show
           // immediate visual feedback so combat feels responsive)
           if(nearPlayer){
@@ -6840,6 +6923,17 @@ function applyDamage(target,dmg,attackerId,playFX){
     target.state = 'threatened';
     target.target = null;
     target.thinkTimer = 0; // Force immediate npcThink on next frame
+  }
+  // Pirate threat response — react to being attacked
+  if (target.isNPC && target.personality === 'pirate'
+      && !target.dead
+      && target.state !== 'pirateFight'
+      && target.state !== 'threatened'
+      && target.state !== 'fleeToSecondDen'
+      && target.state !== 'fleeToWild') {
+    target.state = 'threatened';
+    target.target = null;
+    target.thinkTimer = 0;
   }
   // ── Damage numbers with punch scale ──
   if(playFX&&dmg>0){
