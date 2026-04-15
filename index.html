@@ -4265,7 +4265,8 @@ function npcAct(n,dt){
               y: n.y + Math.sin(behindAngle) * 30,
               vx: Math.cos(behindAngle) * 80 + rand(-30, 30),
               vy: Math.sin(behindAngle) * 80 + rand(-30, 30),
-              items, ttl: CFG.LOOT_TTL
+              items, ttl: CFG.LOOT_TTL,
+              pulse: 0
             });
             addFloatingText(n.x, n.y, '📦 CARGO DUMPED!', '#ffcc00', 1.5);
           }
