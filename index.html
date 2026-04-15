@@ -6772,6 +6772,7 @@ function applyDamage(target,dmg,attackerId,playFX){
   target.hp-=dmg;
   target.lastDamageTime=performance.now();
   target.lastAttacker = attackerId; // NEW: track who attacked (was missing for miners)
+  target.lastAttackTime = performance.now(); // NEW: track when attack happened
 
   // NEW: Miner threat response — interrupt non-combat states on first hit
   if (target.isNPC && target.personality === 'miner'
