@@ -1069,6 +1069,7 @@ let worldSeed=null;
 
 // NPC Host-Authority state
 let isNpcHost=false;        // Are we the client running NPC AI? (set by npc_host callbacks)
+let localNpcsSpawned=false; // True once spawnAllNPCs() completes — guards against snapshot overwrite
 let npcHostCheckDone=false;  // Have we attempted to claim host?
 let npcSyncTimer=0;          // Timer for batching NPC state to server (10Hz)
 const NPC_SYNC_RATE=0.1;     // Send NPC state every 100ms
@@ -1109,7 +1110,7 @@ const POLICE_CHASE_MAX=CFG.GREEN_R+500;
 let tradeShip=null;
 let tradeShipNearby=false;    // Is player within market range?
 let tradeShipMarketOpen=false; // Is market UI showing for trade ship?
-const TRADE_SHIP_NPC_ID=30;   // Singleton NPC ID
+const TRADE_SHIP_NPC_ID=CFG.NPC_COUNT+CFG.DEN_PIRATE_COUNT+8; // After regular(56)+den(8)+police(8)=72
 const TRADE_SHIP_COLOR='#ffaa22';
 const TRADE_SHIP_TURRET_COLOR='#22ddcc';
 
@@ -2711,6 +2712,8 @@ function spawnAllNPCs(){
   spawnNPCs();     // Spawns regular NPCs + den pirates
   spawnPolice();   // Spawns police carriers and fighters, adds to npcs[]
   spawnTradeShip(); // Spawns trade ship, adds to npcs[]
+  localNpcsSpawned=true;
+  console.log("[NPC-SPAWN] spawnAllNPCs complete — localNpcsSpawned=true, npcs.length="+npcs.length);
 }
 
 // ═══════════════════════════════════════════
@@ -2843,9 +2846,10 @@ function updateDenPirates(dt){
 function pushNPCsToServer(){
   if(!stdbConn||!stdbConnected||!isNpcHost)return;
   // Count different NPC types for verification
-  const regularNPCs = npcs.filter(n => n.npcId < 56 && !n.isTradeShip).length;
-  const denPirates = npcs.filter(n => n.npcId >= 56 && n.npcId < 64).length;
-  const policeUnits = npcs.filter(n => n.npcId >= 64 && n.npcId < 72).length;
+  const pBase=policeNpcIdBase(); // 56+8=64
+  const regularNPCs = npcs.filter(n => n.npcId < CFG.NPC_COUNT && !n.isTradeShip).length;
+  const denPirates = npcs.filter(n => n.npcId >= CFG.NPC_COUNT && n.npcId < pBase).length;
+  const policeUnits = npcs.filter(n => n.npcId >= pBase && n.npcId < TRADE_SHIP_NPC_ID).length;
   const tradeShips = npcs.filter(n => n.isTradeShip).length;
   console.log('[STDB-NPC] Host pushing',npcs.length,'NPCs to server:',regularNPCs,'regular,',denPirates,'den pirates,',policeUnits,'police,',tradeShips,'trade ships');
   npcs.forEach(n=>{
@@ -3013,7 +3017,7 @@ function handleNpcDelete(sn){
 
 // Rebuild npcs array from the server map (called only on insert/delete, not update)
 function rebuildNpcsFromServerMap(){
-  if(isNpcHost)return;
+  if(isNpcHost||localNpcsSpawned)return;
   npcs=Array.from(npcServerMap.values());
   // Rebuild denPirates array and assign denIndex from nearest den
   rebuildDenPirateRefs();
@@ -8080,6 +8084,7 @@ function connectSTDB(){
           }else if(!isNpcHost&&wasHost){
             startNpcStaleCheck(); // Monitor new host's liveness
             // Lost host role — switch to server-driven NPCs
+            localNpcsSpawned=false;
             initialSyncNPCs();
           }
         });
@@ -8106,6 +8111,7 @@ function connectSTDB(){
             npcServerMap.clear();
           }else if(!isNpcHost&&wasHost){
             startNpcStaleCheck(); // Monitor new host's liveness
+            localNpcsSpawned=false;
             initialSyncNPCs();
           }
         });
@@ -8245,6 +8251,7 @@ function connectSTDB(){
         myIdentityHex='';
         isNpcHost=false;
         npcHostCheckDone=false;
+        localNpcsSpawned=false;
         npcHostHeartbeatTimer=0;
         lastSeenClaimedAt=0;
         lastSeenClaimedAtLocalTime=0;
@@ -8491,7 +8498,7 @@ function initialSyncPlayers(){
 
 // Initial snapshot sync for NPCs — called ONCE from onApplied
 function initialSyncNPCs(){
-  if(isNpcHost)return;
+  if(isNpcHost||localNpcsSpawned)return;
   npcServerMap.clear();
   if(!stdbConn)return;
   const now=performance.now()/1000;
