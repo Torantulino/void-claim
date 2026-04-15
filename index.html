@@ -277,6 +277,16 @@ const CFG={
   DEN_HEAL_SHIELD_RATE:0.25, // 25% shields per second at dens
   WILD_HEAL_HP_RATE:0.08,  // 8% HP per second in wilderness (existing)
   WILD_HEAL_SHIELD_RATE:0.15, // 15% shields per second in wilderness (existing)
+  // Fight-or-flight system for miners
+  MINER_PANIC_HP_THRESHOLD:0.4,  // Panic when HP drops below 40%
+  MINER_PANIC_SHIELD_THRESHOLD:0.2, // Panic when shields drop below 20%
+  MINER_PANIC_DURATION:8,         // Stay in panic for 8 seconds
+  MINER_CARGO_JETTISON_CHANCE:0.7, // 70% chance to jettison cargo when panicking
+  MINER_BRAVERY_THRESHOLD:0.3,    // 30% chance to fight back instead of fleeing
+  MINER_ATTACK_MEMORY_TIME:15,    // Remember attacker for 15 seconds
+  MINER_FLEE_SPEED_BOOST:1.4,     // 40% speed boost when fleeing
+  MINER_CALL_FOR_HELP_RANGE:800,  // Range to call for backup
+  MINER_HELP_RESPONSE_CHANCE:0.6, // 60% chance nearby miners respond to calls
   CAM_LERP:.08,SHAKE_DECAY:.9,MINIMAP_R:140,MINIMAP_SCALE:0.02,
   STAR_LAYERS:[{count:200,size:1,speed:.05,alpha:.3},{count:150,size:1.5,speed:.15,alpha:.5},{count:80,size:2,speed:.3,alpha:.8}],
   WS_URL:null, // legacy — kept for backwards compat
@@ -2696,7 +2706,14 @@ function createNPC(npcIndex){
     sellAccum:0,        // Accumulated credits from selling (triggers upgrade at 500+)
     killsSinceSpawn:0,  // Kills since last death (triggers ship swap at 3+)
     baseShip:shipType,  // Original ship type (for respawn reset)
-    baseUpgLvl:upgLvl   // Original upgrade level (for respawn reset)
+    baseUpgLvl:upgLvl,  // Original upgrade level (for respawn reset)
+    // ── Fight-or-flight system ──
+    lastAttacker:null,     // ID of last entity that damaged this NPC
+    lastAttackTime:0,      // When the last attack occurred (in seconds)
+    panicTimer:0,          // Time remaining in panic state
+    bravery:Math.random(), // Individual bravery trait (0=coward, 1=brave)
+    hasCalledForHelp:false, // Prevents spam calling for backup
+    respondingToDistress:null // ID of NPC this one is helping (null if not responding)
   };
 }
 
@@ -3512,6 +3529,19 @@ function updateNPCs(dt){
     }
     
     n.thinkTimer-=dt;n.stateTimer-=dt;n.shootCD-=dt;n.bounty=Math.max(0,n.bounty-dt);
+    
+    // Countdown panic timer
+    if(n.panicTimer > 0) {
+      n.panicTimer -= dt;
+      if(n.panicTimer <= 0) {
+        // Panic ended - clear fight-or-flight state
+        n.lastAttacker = null;
+        n.hasCalledForHelp = false;
+        if(n.state === 'panic_flee' || n.state === 'fight') {
+          n.state = 'idle';
+        }
+      }
+    }
     if(n.shield<n.maxShield&&performance.now()-(n.lastDamageTime||0)>=CFG.SHIELD_REGEN_DELAY*1000)n.shield=Math.min(n.maxShield,n.shield+1.5*dt);
     // NPCs heal hull in safe zone (only if not recently damaged)
     if(n.hp<n.maxHp&&dist(n.x,n.y,0,0)<CFG.EARTH_SHIELD_R&&performance.now()-(n.lastDamageTime||0)>=5000)n.hp=Math.min(n.maxHp,n.hp+30*dt);
@@ -3540,6 +3570,93 @@ function npcThink(n){
   if(n.personality==='denPirate'){
     denPirateThink(n,hpPct);
     return;
+  }
+  
+  // ── Fight-or-flight system for miners ──
+  if(n.personality === 'miner') {
+    const currentTime = Date.now() / 1000;
+    const shieldPct = n.shield / n.maxShield;
+    
+    // Check if under attack (recently damaged)
+    const underAttack = n.lastAttacker && (currentTime - n.lastAttackTime) < CFG.MINER_ATTACK_MEMORY_TIME;
+    
+    // Check panic conditions
+    const lowHP = hpPct < CFG.MINER_PANIC_HP_THRESHOLD;
+    const lowShield = shieldPct < CFG.MINER_PANIC_SHIELD_THRESHOLD;
+    const shouldPanic = underAttack && (lowHP || lowShield);
+    
+    // Start panic if conditions met
+    if(shouldPanic && n.panicTimer <= 0) {
+      n.panicTimer = CFG.MINER_PANIC_DURATION;
+      n.hasCalledForHelp = false;
+      
+      // Jettison cargo with chance
+      if(Math.random() < CFG.MINER_CARGO_JETTISON_CHANCE && totalCargo(n.cargo) > 0) {
+        const cargoCount = Math.floor(totalCargo(n.cargo) * 0.3); // Drop 30% of cargo
+        jettisonCargo(n, cargoCount);
+        
+        // Visual effect for cargo jettison
+        const near = distToPlayer(n.x, n.y) < FX_RANGE;
+        if(near) {
+          emitBurst(n.x, n.y, 8, 60, 'rgba(255,200,100,.7)', 2, .4, 8);
+          addFloatingText(n.x, n.y - 20, 'CARGO JETTISONED!', '#ffcc44', 1.1);
+        }
+      }
+    }
+    
+    // Handle panic state
+    if(n.panicTimer > 0) {
+      // Call for help once during panic
+      if(!n.hasCalledForHelp) {
+        callForBackup(n);
+        n.hasCalledForHelp = true;
+      }
+      
+      // Decide: fight or flight based on bravery
+      if(n.bravery > CFG.MINER_BRAVERY_THRESHOLD && n.lastAttacker) {
+        // FIGHT: Attack the aggressor
+        const attacker = findEntityById(n.lastAttacker);
+        if(attacker && !attacker.dead && dist(n.x, n.y, attacker.x, attacker.y) < 600) {
+          n.state = 'fight';
+          n.target = attacker;
+          return;
+        }
+      }
+      
+      // FLIGHT: Flee to safety
+      n.state = 'panic_flee';
+      n.target = null;
+      
+      // Calculate flee direction (away from attacker)
+      if(n.lastAttacker) {
+        const attacker = findEntityById(n.lastAttacker);
+        if(attacker && !attacker.dead) {
+          const fleeAngle = angle(attacker.x, attacker.y, n.x, n.y);
+          const fleeDist = CFG.GREEN_R + 500; // Flee to green zone safety
+          n._fleeX = Math.cos(fleeAngle) * fleeDist;
+          n._fleeY = Math.sin(fleeAngle) * fleeDist;
+        } else {
+          // Attacker gone, flee to nearest safety
+          n._fleeX = 0; n._fleeY = 0; // Earth
+        }
+      }
+      return;
+    }
+    
+    // Check if responding to distress call
+    if(n.respondingToDistress) {
+      const helpTarget = npcs.find(npc => npc.id === n.respondingToDistress);
+      if(!helpTarget || helpTarget.panicTimer <= 0 || dist(n.x, n.y, helpTarget.x, helpTarget.y) > CFG.MINER_CALL_FOR_HELP_RANGE * 1.5) {
+        // Stop responding if target is safe or too far
+        n.respondingToDistress = null;
+        n.state = 'idle';
+      } else {
+        // Move to help the distressed miner
+        n.state = 'help';
+        n.target = helpTarget;
+        return;
+      }
+    }
   }
   
   if(hpPct<n.fleeHP){
@@ -4027,6 +4144,87 @@ function npcAct(n,dt){
       }
     }
   }
+  
+  // ── Fight-or-flight states ──
+  switch(n.state) {
+    case 'fight': {
+      // Aggressive combat against the attacker
+      if(!n.target || n.target.dead) {
+        n.state = 'idle';
+        break;
+      }
+      
+      const targetDist = dist(n.x, n.y, n.target.x, n.target.y);
+      
+      // Move toward target if too far
+      if(targetDist > 400) {
+        moveToward(n, n.target.x, n.target.y, thrust, dt);
+      } else {
+        // Face target and shoot
+        n.angle = lerpAngle(n.angle, angle(n.x, n.y, n.target.x, n.target.y), 0.15);
+        
+        // Fire at target
+        if(n.shootCD <= 0) {
+          fireProjectile(n);
+          n.shootCD = CFG.SHOOT_CD * (1 + Math.random() * 0.5); // Add some variance
+        }
+      }
+      break;
+    }
+    
+    case 'panic_flee': {
+      // Fast escape with speed boost
+      const fleeThrust = thrust * CFG.MINER_FLEE_SPEED_BOOST;
+      
+      if(n._fleeX !== undefined && n._fleeY !== undefined) {
+        moveToward(n, n._fleeX, n._fleeY, fleeThrust, dt);
+        
+        // Check if reached safety
+        const fleeDistance = dist(n.x, n.y, n._fleeX, n._fleeY);
+        if(fleeDistance < 200) {
+          n.state = 'idle';
+          n._fleeX = undefined;
+          n._fleeY = undefined;
+        }
+      } else {
+        // Default flee to Earth
+        moveToward(n, 0, 0, fleeThrust, dt);
+        if(dist(n.x, n.y, 0, 0) < CFG.EARTH_SHIELD_R + 100) {
+          n.state = 'idle';
+        }
+      }
+      break;
+    }
+    
+    case 'help': {
+      // Move to assist another miner in distress
+      if(!n.target || n.target.dead || n.target.panicTimer <= 0) {
+        n.respondingToDistress = null;
+        n.state = 'idle';
+        break;
+      }
+      
+      const helpDist = dist(n.x, n.y, n.target.x, n.target.y);
+      
+      if(helpDist > 300) {
+        // Move toward distressed miner
+        moveToward(n, n.target.x, n.target.y, thrust, dt);
+      } else {
+        // Close enough - look for the attacker to engage
+        if(n.target.lastAttacker) {
+          const attacker = findEntityById(n.target.lastAttacker);
+          if(attacker && !attacker.dead && dist(n.x, n.y, attacker.x, attacker.y) < 500) {
+            // Switch to fighting the attacker
+            n.state = 'fight';
+            n.target = attacker;
+            n.lastAttacker = attacker.id;
+            n.respondingToDistress = null;
+          }
+        }
+      }
+      break;
+    }
+  }
 }
 
 
@@ -4214,6 +4412,93 @@ function fireProjectile(entity){
   }else{
     emitBurst(p.x,p.y,3,60,p.color,2,.2,8);
   }
+}
+
+// ── Fight-or-Flight Helper Functions ──
+function jettisonCargo(entity, count) {
+  const cargoTypes = Object.keys(entity.cargo).filter(ore => entity.cargo[ore] > 0);
+  if (cargoTypes.length === 0) return;
+  
+  let dropped = 0;
+  while (dropped < count && totalCargo(entity.cargo) > 0) {
+    const oreType = pick(cargoTypes);
+    if (entity.cargo[oreType] > 0) {
+      entity.cargo[oreType]--;
+      dropped++;
+      
+      // Create loot drop
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 30 + Math.random() * 40;
+      const lx = entity.x + Math.cos(angle) * dist;
+      const ly = entity.y + Math.sin(angle) * dist;
+      
+      createLoot(lx, ly, oreType, 1);
+    }
+    
+    // Remove empty cargo types
+    if (entity.cargo[oreType] <= 0) {
+      const idx = cargoTypes.indexOf(oreType);
+      if (idx >= 0) cargoTypes.splice(idx, 1);
+    }
+  }
+}
+
+function callForBackup(distressedMiner) {
+  const nearbyMiners = npcs.filter(n => 
+    n.personality === 'miner' && 
+    n.id !== distressedMiner.id &&
+    !n.dead &&
+    n.panicTimer <= 0 &&
+    !n.respondingToDistress &&
+    dist(n.x, n.y, distressedMiner.x, distressedMiner.y) < CFG.MINER_CALL_FOR_HELP_RANGE
+  );
+  
+  // Visual distress signal
+  const near = distToPlayer(distressedMiner.x, distressedMiner.y) < FX_RANGE;
+  if (near) {
+    // Red pulsing distress beacon
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      const dist = 40 + i * 8;
+      spawnParticle(
+        distressedMiner.x + Math.cos(angle) * dist,
+        distressedMiner.y + Math.sin(angle) * dist,
+        0, 0, '#ff3366', 4, 0.8, 15
+      );
+    }
+    addFloatingText(distressedMiner.x, distressedMiner.y - 30, 'SOS!', '#ff3366', 1.2);
+  }
+  
+  // Some nearby miners respond
+  nearbyMiners.forEach(miner => {
+    if (Math.random() < CFG.MINER_HELP_RESPONSE_CHANCE) {
+      miner.respondingToDistress = distressedMiner.id;
+      miner.state = 'help';
+      miner.target = distressedMiner;
+      
+      // Visual response indicator
+      const responseNear = distToPlayer(miner.x, miner.y) < FX_RANGE;
+      if (responseNear) {
+        addFloatingText(miner.x, miner.y - 20, 'RESPONDING', '#44ff88', 1.0);
+        emitBurst(miner.x, miner.y, 4, 30, 'rgba(68,255,136,.6)', 1, .3, 5);
+      }
+    }
+  });
+}
+
+function findEntityById(id) {
+  if (player && player.id === id) return player;
+  
+  let found = npcs.find(n => n.id === id);
+  if (found) return found;
+  
+  found = policeUnits.find(p => p.id === id);
+  if (found) return found;
+  
+  found = drones.find(d => d.id === id);
+  if (found) return found;
+  
+  return null;
 }
 
 
@@ -6205,6 +6490,12 @@ function applyDamage(target,dmg,attackerId,playFX){
   // Guard: don't damage already-dead entities (prevents kill spam)
   if(target.dead)return;
   if(playFX===undefined)playFX=target.isPlayer||distToPlayer(target.x,target.y)<FX_RANGE;
+  
+  // Track last attacker for NPCs (for fight-or-flight behavior)
+  if(target.isNPC && attackerId){
+    target.lastAttacker = attackerId;
+    target.lastAttackTime = Date.now() / 1000; // Convert to seconds to match game time
+  }
   const hadShield=target.shield>0;
   if(target.shield>0){
     target.shield=Math.max(0,target.shield-dmg);dmg=0;
