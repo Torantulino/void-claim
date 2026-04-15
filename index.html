@@ -1684,6 +1684,16 @@ function getZone(x,y){const d=dist(x,y,0,0);if(d<CFG.EARTH_SHIELD_R)return'safe'
 function zoneColor(z){return{safe:'rgba(68,255,136,.12)',green:'rgba(68,200,100,.08)',yellow:'rgba(255,200,68,.08)',red:'rgba(255,80,60,.08)',void:'rgba(160,60,255,.08)'}[z]}
 function zoneName(z){return{safe:'⛨ SAFE ZONE — SSPD Patrolled',green:'GREEN ZONE',yellow:'⚠ YELLOW ZONE',red:'☠ RED ZONE',void:'◈ THE VOID'}[z]}
 function zoneTextColor(z){return{safe:'#44ff88',green:'#66cc88',yellow:'#ffcc44',red:'#ff5544',void:'#bb66ff'}[z]}
+function isValidWanderZone(x,y,npcType){
+  const zone=getZone(x,y);const d=dist(x,y,0,0);
+  // Keep NPCs within world bounds
+  if(d>CFG.WORLD_R-1000)return false;
+  // Pirates: forbidden from safe/green zones (Earth area)
+  if(npcType==='pirate'&&(zone==='safe'||zone==='green'))return false;
+  // Miners: respect greed-based zone limits (assume greed=0.5 for wandering, allows up to yellow)
+  if(npcType==='miner'&&zone==='void')return false;
+  return true;
+}
 
 function totalCargo(cargo){let t=0;for(let k in cargo)t+=cargo[k];return t}
 function maxCargo(p){const base=SHIPS[p.ship].cargo;const upg=1+(p.upgrades?.cargo||0)*(UPGRADES.cargo.pct/100);return Math.floor(base*upg)}
@@ -3836,9 +3846,42 @@ function npcAct(n,dt){
       break;
     }
     default:{
+      // Intelligent wandering with zone awareness
       if(n.stateTimer<=0){
-        n.stateTimer=rand(2,5);const wa=rand(0,Math.PI*2);
-        n.vx+=Math.cos(wa)*50;n.vy+=Math.sin(wa)*50;
+        // Pick new wander waypoint
+        const currentZone = getZone(n.x, n.y);
+        let wanderX, wanderY, attempts = 0;
+        
+        do {
+          // Generate waypoint within reasonable distance (500-2000px)
+          const wanderDist = rand(500, 2000);
+          const wanderAngle = rand(0, Math.PI * 2);
+          wanderX = n.x + Math.cos(wanderAngle) * wanderDist;
+          wanderY = n.y + Math.sin(wanderAngle) * wanderDist;
+          attempts++;
+        } while (attempts < 10 && !isValidWanderZone(wanderX, wanderY, n.type));
+        
+        // If we found a valid waypoint, use it; otherwise stay put
+        if (attempts < 10) {
+          n._wanderX = wanderX;
+          n._wanderY = wanderY;
+          n.stateTimer = rand(3, 8); // Longer wander duration
+        } else {
+          n.stateTimer = rand(1, 3); // Retry sooner if stuck
+        }
+      }
+      
+      // Move toward wander waypoint if we have one
+      if (n._wanderX !== undefined && n._wanderY !== undefined) {
+        const wanderDist = dist(n.x, n.y, n._wanderX, n._wanderY);
+        if (wanderDist > 50) {
+          moveToward(n, n._wanderX, n._wanderY, thrust * 0.4, dt);
+        } else {
+          // Reached waypoint, clear it
+          delete n._wanderX;
+          delete n._wanderY;
+          n.stateTimer = 0; // Pick new waypoint immediately
+        }
       }
     }
   }
