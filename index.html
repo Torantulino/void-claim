@@ -3658,6 +3658,11 @@ function npcThink(n){
     const preferredMaxR=g<.3?CFG.YELLOW_R*.8:g<.7?CFG.RED_R*.7:CFG.RED_R;
     const preferredDistance=(preferredMinR+preferredMaxR)/2;
     
+    // If already mining, stay committed to the task regardless of distance
+    if(n.state==='mine' && n.target && n.target.alive){
+      return; // Don't interrupt active mining
+    }
+    
     // If not at preferred distance, move there first before mining
     if(currentDistFromEarth<preferredMinR*0.9){
       // Move outward to preferred zone
