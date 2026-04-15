@@ -3708,6 +3708,17 @@ function npcThink(n){
 
     const attacker = findEntityById(n.lastAttacker);
     if (attacker && !attacker.dead) {
+      // === POLICE OVERRIDE ===
+      // Miners never fight law enforcement — always flee, no calculation needed.
+      if (attacker.isPolice) {
+        n.state = 'minerFlee';
+        n.target = null;
+        n._jettisoned = false;
+        addFloatingText(n.x, n.y, '✖ FLEE!', '#ffcc00', 1.3);
+        broadcastDistress(n);
+        return;
+      }
+      // === END POLICE OVERRIDE ===
       hostilePower = calcPower(attacker);
     } else {
       // Attacker gone/dead — flee anyway (we were just shot, not sticking around)
