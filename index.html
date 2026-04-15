@@ -3650,10 +3650,26 @@ function npcThink(n){
   }
 
   if(tc<mc && n.personality!=='pirate'){
-    let bestAst=null,bestScore=-Infinity;
     const g=n.greed||0;
-    // Greed determines max range NPC will travel to mine
-    const searchRange=3000+g*1500; // 3000 (cautious, matches original) to 4500 (greedy)
+    const currentDistFromEarth=dist(n.x,n.y,0,0);
+    
+    // Greed-based preferred mining zone - where miners want to operate
+    const preferredMinR=g<.3?CFG.GREEN_R:g<.7?CFG.YELLOW_R*.6:CFG.YELLOW_R;
+    const preferredMaxR=g<.3?CFG.YELLOW_R*.8:g<.7?CFG.RED_R*.7:CFG.RED_R;
+    const preferredDistance=(preferredMinR+preferredMaxR)/2;
+    
+    // If not at preferred distance, move there first before mining
+    if(currentDistFromEarth<preferredMinR*0.9){
+      // Move outward to preferred zone
+      const angle=Math.atan2(n.y,n.x);
+      n.state='travel';
+      n.target={x:Math.cos(angle)*preferredDistance,y:Math.sin(angle)*preferredDistance};
+      return;
+    }
+    
+    let bestAst=null,bestScore=-Infinity;
+    // 3x vision radius: 9000 (cautious) to 13500 (greedy)
+    const searchRange=(3000+g*1500)*3;
     // Greed-based zone limits: cautious stays in green, greedy pushes to red
     const maxMineR=g<.3?CFG.YELLOW_R*.8:g<.7?CFG.RED_R*.7:CFG.RED_R;
     asteroids.forEach(a=>{
@@ -3663,9 +3679,8 @@ function npcThink(n){
       const astR=dist(a.x,a.y,0,0);
       if(n.personality==='miner'&&astR>maxMineR)return; // Don't go beyond greed limit
       const oreVal=ORES[a.oreType]?ORES[a.oreType].value:1;
-      // Score: value matters more for greedy miners, distance matters more for cautious
-      const valWeight=0.5+g*2; // 0.5 (cautious) to 2.5 (greedy)
-      const score=oreVal*valWeight - ad*0.01;
+      // Heavily prioritize ore value over distance - miners should go for the best ore
+      const score=oreVal*10 - ad*0.001; // Much higher value weight, much lower distance penalty
       if(score>bestScore){bestScore=score;bestAst=a;}
     });
     if(bestAst){n.state='mine';n.target=bestAst;return;}
@@ -6327,7 +6342,7 @@ function updateLoot(dt){
     // NPCs always auto-collect loot within range (same as player)
     npcs.forEach(n=>{
       if(n.dead||n.isPolice)return; // Police don't collect loot
-      if(dist(n.x,n.y,l.x,l.y)<CFG.COLLECT_RANGE){
+      if(dist(n.x,n.y,l.x,l.y)<CFG.COLLECT_RANGE*3){ // 3x collection radius for NPCs
         const mc=maxCargo(n);
         l.items.forEach(item=>{
           const space=mc-totalCargo(n.cargo);
