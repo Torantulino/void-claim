@@ -2827,6 +2827,8 @@ function createNPC(npcIndex){
     // ── Miner fight-or-flight state ──
     lastAttacker: null,       // Entity ID of most recent attacker
     lastAttackTime: 0,        // performance.now() of most recent hit
+    firstHitAttacker: null,   // Entity ID of pending first-hit (two-hit gate)
+    firstHitTime: 0,          // performance.now() of that first hit (15s window)
     _distressSent: false,     // Has this miner already broadcast distress?
     _jettisoned: false,       // Has cargo jettison been rolled?
     _fightOriginX: undefined, // Where the fight started (for pursuit leash)
@@ -3639,6 +3641,7 @@ function updateNPCs(dt){
         n._distressSent=false;n._jettisoned=false;
         n._fightOriginX=undefined;n._fightOriginY=undefined;
         n.lastAttacker=null;n.lastAttackTime=0;
+        n.firstHitAttacker=null;n.firstHitTime=0;
         n._respawnedAt=performance.now();
         clearAggressor(n);
         serverRespawnNPC(n);
@@ -4700,6 +4703,8 @@ function clearEntityTimeouts(entity) {
   // Clear combat state to prevent stale references
   entity.lastAttacker = null;
   entity.lastAttackTime = 0;
+  entity.firstHitAttacker = null;
+  entity.firstHitTime = 0;
   entity._fightOriginX = undefined;
   entity._fightOriginY = undefined;
   entity._distressSent = false;
@@ -6694,27 +6699,8 @@ function updateProjectiles(dt){
           // Set local attacker tracking for miner fight-or-flight system
           t.lastAttacker = p.ownerId;
           t.lastAttackTime = performance.now();
-          // Trigger miner threat response (same as in applyDamage function)
-          if (t.personality === 'miner'
-              && !t.dead
-              && t.state !== 'minerFlee'
-              && t.state !== 'minerFight'
-              && t.state !== 'threatened') {
-            t.state = 'threatened';
-            t.target = null;
-            t.thinkTimer = 0; // Force immediate npcThink on next frame
-          }
-          // Pirate threat response (same logic as applyDamage)
-          if (t.personality === 'pirate'
-              && !t.dead
-              && t.state !== 'pirateFight'
-              && t.state !== 'threatened'
-              && t.state !== 'fleeToSecondDen'
-              && t.state !== 'fleeToWild') {
-            t.state = 'threatened';
-            t.target = null;
-            t.thinkTimer = 0;
-          }
+          // Two-hit gate: only trigger fight-or-flight on the second hit from the same attacker within 15s
+          triggerThreatResponse(t, p.ownerId);
           // Local FX (HP comes from server via host sync, but we show
           // immediate visual feedback so combat feels responsive)
           if(nearPlayer){
@@ -6884,6 +6870,40 @@ function dropCargoAndSalvage(target){
 
 // ── Visual-only hit FX (no HP/shield mutation). Used by server-authoritative
 //    paths where HP is owned by the server but we still want juicy feedback. ──
+
+const TWO_HIT_WINDOW = 15000; // 15 seconds — two hits within this window trigger fight-or-flight
+
+function triggerThreatResponse(target, attackerId) {
+  if (!target || !target.isNPC || target.dead) return;
+
+  const isMiner  = target.personality === 'miner';
+  const isPirate = target.personality === 'pirate';
+  if (!isMiner && !isPirate) return;
+
+  // Already in a committed combat/flee state — don't interrupt
+  if (isMiner  && (target.state === 'minerFlee' || target.state === 'minerFight' || target.state === 'threatened')) return;
+  if (isPirate && (target.state === 'pirateFight' || target.state === 'threatened' || target.state === 'fleeToSecondDen' || target.state === 'fleeToWild')) return;
+
+  const now = performance.now();
+  const windowExpired = (now - (target.firstHitTime || 0)) > TWO_HIT_WINDOW;
+
+  if (!target.firstHitAttacker || windowExpired || target.firstHitAttacker !== attackerId) {
+    // First hit (or window expired, or different attacker) — record and wait
+    target.firstHitAttacker = attackerId;
+    target.firstHitTime = now;
+    return; // Do NOT trigger threatened yet — one stray shot is forgiven
+  }
+
+  // Second consecutive hit from same attacker within 15s — commit to fight-or-flight
+  target.lastAttacker   = attackerId;
+  target.lastAttackTime = now;
+  target.firstHitAttacker = null; // Reset so future re-trigger works cleanly
+  target.firstHitTime   = 0;
+  target.state     = 'threatened';
+  target.target    = null;
+  target.thinkTimer = 0; // Force immediate npcThink on next frame
+}
+
 function applyDamageFX(target,dmg,playFX){
   if(target.dead)return;
   if(playFX===undefined)playFX=target.isPlayer||distToPlayer(target.x,target.y)<FX_RANGE;
@@ -6944,27 +6964,8 @@ function applyDamage(target,dmg,attackerId,playFX){
   target.lastAttacker = attackerId; // NEW: track who attacked (was missing for miners)
   target.lastAttackTime = performance.now(); // NEW: track when attack happened
 
-  // NEW: Miner threat response — interrupt non-combat states on first hit
-  if (target.isNPC && target.personality === 'miner'
-      && !target.dead
-      && target.state !== 'minerFlee'
-      && target.state !== 'minerFight'
-      && target.state !== 'threatened') {
-    target.state = 'threatened';
-    target.target = null;
-    target.thinkTimer = 0; // Force immediate npcThink on next frame
-  }
-  // Pirate threat response — react to being attacked
-  if (target.isNPC && target.personality === 'pirate'
-      && !target.dead
-      && target.state !== 'pirateFight'
-      && target.state !== 'threatened'
-      && target.state !== 'fleeToSecondDen'
-      && target.state !== 'fleeToWild') {
-    target.state = 'threatened';
-    target.target = null;
-    target.thinkTimer = 0;
-  }
+  // Two-hit gate: only trigger fight-or-flight on the second hit from the same attacker within 15s
+  triggerThreatResponse(target, attackerId);
   // ── Damage numbers with punch scale ──
   if(playFX&&dmg>0){
     const punchScale=1.2+Math.min(dmg/30,1.5);
