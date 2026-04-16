@@ -736,8 +736,68 @@ const SFX={
     nF.frequency.linearRampToValueAtTime(40,ac.currentTime+dur);
     nG.gain.setValueAtTime(.06,ac.currentTime);
     nG.gain.linearRampToValueAtTime(0,ac.currentTime+dur);
-    ns.buffer=nBuf;ns.connect(nF);nF.connect(nG);nG.connect(out);ns.start();
+    ns.buffer=nBuf;ns.connect(nF);nF.connect(nG);nG.connect(out);ns.start();  }),
+  missileLaunch:()=>{duckMusicForSFX();snd((ac,out)=>{
+    const t=ac.currentTime;
+    // Ignition thump
+    const o=ac.createOscillator(),g=ac.createGain();
+    o.type='sine';o.frequency.setValueAtTime(120,t);o.frequency.exponentialRampToValueAtTime(40,t+0.18);
+    g.gain.setValueAtTime(0.22,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.18);
+    o.connect(g);g.connect(out);o.start();o.stop(t+0.18);
+    // Whoosh
+    const nDur=0.35,buf=ac.createBuffer(1,ac.sampleRate*nDur,ac.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,0.5);
+    const ns=ac.createBufferSource(),ng=ac.createGain(),nf=ac.createBiquadFilter();
+    nf.type='bandpass';nf.frequency.setValueAtTime(3000,t);nf.frequency.exponentialRampToValueAtTime(400,t+nDur);nf.Q.value=1.2;
+    ng.gain.setValueAtTime(0.12,t);ng.gain.exponentialRampToValueAtTime(0.001,t+nDur);
+    ns.buffer=buf;ns.connect(nf);nf.connect(ng);ng.connect(out);ns.start(t);
+  });},
+  missileExplode:()=>{duckMusicForSFX();snd((ac,out)=>{
+    const t=ac.currentTime,dur=0.7;
+    // Sub-bass thump
+    const o1=ac.createOscillator(),g1=ac.createGain();
+    o1.type='sine';o1.frequency.setValueAtTime(80,t);o1.frequency.exponentialRampToValueAtTime(20,t+dur);
+    g1.gain.setValueAtTime(0.4,t);g1.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o1.connect(g1);g1.connect(out);o1.start();o1.stop(t+dur);
+    // Mid crunch
+    const o2=ac.createOscillator(),g2=ac.createGain();
+    o2.type='sawtooth';o2.frequency.setValueAtTime(200,t);o2.frequency.exponentialRampToValueAtTime(50,t+0.3);
+    g2.gain.setValueAtTime(0.15,t);g2.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+    o2.connect(g2);g2.connect(out);o2.start();o2.stop(t+0.3);
+    // Noise blast
+    const nDur=0.5,buf=ac.createBuffer(1,ac.sampleRate*nDur,ac.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,1.2);
+    const ns=ac.createBufferSource(),ng=ac.createGain(),nf=ac.createBiquadFilter();
+    nf.type='lowpass';nf.frequency.setValueAtTime(5000,t);nf.frequency.exponentialRampToValueAtTime(150,t+nDur);
+    ng.gain.setValueAtTime(0.3,t);ng.gain.exponentialRampToValueAtTime(0.001,t+nDur);
+    ns.buffer=buf;ns.playbackRate.value=rPitch(1,0.1);
+    ns.connect(nf);nf.connect(ng);ng.connect(out);ns.start(t);
+  });},
+  missileLockBeep:()=>snd((ac,out)=>{
+    const t=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();
+    o.type='sine';o.frequency.setValueAtTime(880,t);
+    g.gain.setValueAtTime(0.06,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.08);
+    o.connect(g);g.connect(out);o.start();o.stop(t+0.08);
+  }),
+  missileLockAcquired:()=>snd((ac,out)=>{
+    [1200,1600].forEach((f,i)=>{
+      const o=ac.createOscillator(),g=ac.createGain();
+      o.type='square';o.frequency.setValueAtTime(f,ac.currentTime+i*0.07);
+      g.gain.setValueAtTime(0.08,ac.currentTime+i*0.07);
+      g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+i*0.07+0.1);
+      o.connect(g);g.connect(out);o.start(ac.currentTime+i*0.07);o.stop(ac.currentTime+i*0.07+0.1);
+    });
+  }),
+  missilePass:()=>snd((ac,out)=>{
+    const o=ac.createOscillator(),g=ac.createGain();
+    o.type='sine';o.frequency.setValueAtTime(1400,ac.currentTime);
+    o.frequency.exponentialRampToValueAtTime(600,ac.currentTime+0.12);
+    g.gain.setValueAtTime(0.05,ac.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.12);
+    o.connect(g);g.connect(out);o.start();o.stop(ac.currentTime+0.12);
   })
+
 };
 
 // Ambient drone
@@ -1197,6 +1257,7 @@ const TRADE_SHIP_TURRET_COLOR='#22ddcc';
 
 // Missile state
 let missiles=[];              // Active missile projectiles in flight
+let shockwaves=[];             // Active shockwave rings from missile explosions
 let missileLockTarget=null;   // Currently locked target for missile fire
 let missileLockTimer=0;       // Lock-on indicator timer
 let missileCD=0;              // Player missile fire cooldown // How far police will chase into green zone
@@ -7229,10 +7290,34 @@ function updateMissiles(dt){
     m.vx=Math.cos(m.angle)*currentSpeed;m.vy=Math.sin(m.angle)*currentSpeed;
     m.x+=m.vx*dt;m.y+=m.vy*dt;
     // Trail
-    if(Math.random()<0.8)m.trailParticles.push({x:m.x,y:m.y,life:0.4,maxLife:0.4});
+    // New trail: velocity-inherited smoke puffs
+    if(Math.random()<0.9){
+      const spread=(Math.random()-0.5)*40;
+      const pLife=0.55+Math.random()*0.2;
+      m.trailParticles.push({
+        x:m.x,y:m.y,
+        vx:-m.vx*0.15+Math.cos(m.angle+Math.PI/2)*spread,
+        vy:-m.vy*0.15+Math.sin(m.angle+Math.PI/2)*spread,
+        life:pLife,maxLife:pLife,
+        size:1.5+Math.random()*1.5,
+        hot:Math.random()<0.4
+      });
+    }
     for(let j=m.trailParticles.length-1;j>=0;j--){
-      m.trailParticles[j].life-=dt;
-      if(m.trailParticles[j].life<=0)m.trailParticles.splice(j,1);
+      const tp=m.trailParticles[j];
+      tp.life-=dt;
+      if(tp.life<=0){m.trailParticles.splice(j,1);continue;}
+      tp.x+=tp.vx*dt;tp.y+=tp.vy*dt;
+      tp.vx*=0.85;tp.vy*=0.85;
+    }
+    // Wobble during arm phase
+    if(!m.armed)m.angle+=Math.sin(Date.now()*0.04+m.id.charCodeAt(0))*0.03;
+    // Minimap trail
+    if(Math.random()<0.15)minimapEvents.push({x:m.x,y:m.y,color:'rgba(255,100,30,0.4)',t:0,maxT:0.4,type:'shot'});
+    // Pass-by doppler FX
+    if(distToPlayer(m.x,m.y)<150){
+      emitDirectionalSparks(m.x,m.y,m.angle,3,'#ffaa44');
+      if(!m._lastPassSnd||Date.now()-m._lastPassSnd>500){SFX.missilePass();m._lastPassSnd=Date.now();}
     }
     // If target dead and reached last pos, go straight
     if(!targetAlive&&dist(tx,ty,m.x,m.y)<30){
@@ -7324,11 +7409,39 @@ function updateMissiles(dt){
 function missileExplode(m){
   const near=distToPlayer(m.x,m.y)<FX_RANGE;
   if(near){
-    emitBurst(m.x,m.y,20,120,'#ff6622',3,.6,10);
-    emitBurst(m.x,m.y,10,60,'#ffcc44',2,.3,8);
-    SFX.explode();shake(3);
+    flashScreen(255,140,40,0.35,12);
+    triggerHitstop(4);
+    shake(7);
+    emitBurst(m.x,m.y,25,200,'#ffffff',3,0.25,20);
+    emitBurst(m.x,m.y,35,140,'#ff6622',4,0.5,15);
+    emitBurst(m.x,m.y,20,80,'#ffaa33',3,0.8,10);
+    emitBurst(m.x,m.y,15,50,'rgba(80,60,40,0.6)',6,1.2,4);
+    emitBurst(m.x,m.y,40,300,'#ffdd88',1.5,0.35,8);
+    SFX.missileExplode();
+    haptic(80);
+    shockwaves.push({x:m.x,y:m.y,r:0,maxR:120,life:0.45,maxLife:0.45});
   }
-  minimapEvents.push({x:m.x,y:m.y,color:'#ff6622',t:0,maxT:1,type:'explosion'});
+  minimapEvents.push({x:m.x,y:m.y,color:'#ff6622',t:0,maxT:2.0,type:'explosion'});
+}
+
+function updateShockwaves(dt){
+  for(let i=shockwaves.length-1;i>=0;i--){
+    shockwaves[i].life-=dt;
+    if(shockwaves[i].life<=0)shockwaves.splice(i,1);
+  }
+}
+
+function drawShockwaves(){
+  for(const sw of shockwaves){
+    const s=worldToScreen(sw.x,sw.y);
+    const t=sw.life/sw.maxLife;
+    const screenR=(sw.maxR*(1-t))*camera.scale;
+    if(screenR<=0)continue;
+    ctx.beginPath();ctx.arc(s.x,s.y,screenR,0,Math.PI*2);
+    ctx.strokeStyle=`rgba(255,180,60,${t*0.7})`;
+    ctx.lineWidth=3*t;
+    ctx.stroke();
+  }
 }
 
 function findEntityById(id){
@@ -7342,26 +7455,52 @@ function findEntityById(id){
 function drawMissiles(){
   for(const m of missiles){
     const s=worldToScreen(m.x,m.y);
-    if(!inView(m.x,m.y,50))continue;
-    // Trail
+    if(!inView(m.x,m.y,80))continue;
+    // Trail particles
     for(const p of m.trailParticles){
       const ps=worldToScreen(p.x,p.y);
-      const alpha=p.life/p.maxLife*0.5;
-      ctx.fillStyle=`rgba(255,${Math.floor(120+80*(p.life/p.maxLife))},30,${alpha})`;
-      ctx.beginPath();ctx.arc(ps.x,ps.y,2+(1-p.life/p.maxLife)*3,0,Math.PI*2);ctx.fill();
+      const t=p.life/p.maxLife;
+      const expandT=1-t;
+      const radius=(p.size+expandT*7)*camera.scale;
+      const alpha=t*t*0.7;
+      if(p.hot){
+        ctx.fillStyle=`rgba(255,${Math.floor(200*t+55)},30,${alpha})`;
+      }else{
+        ctx.fillStyle=`rgba(${Math.floor(80+60*t)},${Math.floor(60+40*t)},${Math.floor(40+30*t)},${alpha*0.5})`;
+      }
+      ctx.beginPath();ctx.arc(ps.x,ps.y,Math.max(0.5,radius),0,Math.PI*2);ctx.fill();
     }
+    // Engine glow halo at tail
+    const glowS=worldToScreen(m.x-Math.cos(m.angle)*8,m.y-Math.sin(m.angle)*8);
+    const glowR=14*camera.scale;
+    const gg=ctx.createRadialGradient(glowS.x,glowS.y,0,glowS.x,glowS.y,glowR);
+    gg.addColorStop(0,'rgba(255,160,30,0.9)');
+    gg.addColorStop(0.4,'rgba(255,80,0,0.4)');
+    gg.addColorStop(1,'rgba(255,40,0,0)');
+    ctx.fillStyle=gg;ctx.beginPath();ctx.arc(glowS.x,glowS.y,glowR,0,Math.PI*2);ctx.fill();
     // Missile body
-    ctx.save();ctx.translate(s.x,s.y);ctx.rotate(m.angle);
-    // Exhaust
-    const fl=8+Math.random()*4;
-    const eg=ctx.createLinearGradient(-fl-6,0,-2,0);
-    eg.addColorStop(0,'transparent');eg.addColorStop(0.3,'rgba(255,100,20,.6)');eg.addColorStop(1,'rgba(255,200,50,.9)');
-    ctx.fillStyle=eg;ctx.fillRect(-fl-6,-3,fl+4,6);
+    ctx.save();ctx.translate(s.x,s.y);ctx.rotate(m.angle);ctx.scale(camera.scale,camera.scale);
+    // Exhaust plume
+    const plumeLen=12+Math.random()*8;
+    const pg=ctx.createLinearGradient(-plumeLen-8,0,0,0);
+    pg.addColorStop(0,'rgba(255,80,0,0)');
+    pg.addColorStop(0.4,'rgba(255,140,20,0.7)');
+    pg.addColorStop(1,'rgba(255,240,80,1)');
+    ctx.fillStyle=pg;
+    ctx.beginPath();ctx.moveTo(-2,-2.5);ctx.lineTo(-plumeLen-8,0);ctx.lineTo(-2,2.5);ctx.closePath();ctx.fill();
     // Body
-    ctx.fillStyle='#ddd';ctx.beginPath();
-    ctx.moveTo(8,0);ctx.lineTo(-4,-3);ctx.lineTo(-6,0);ctx.lineTo(-4,3);ctx.closePath();ctx.fill();
-    // Warhead
-    ctx.fillStyle='#f44';ctx.beginPath();ctx.arc(6,0,2,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ccd8e0';
+    ctx.beginPath();
+    ctx.moveTo(10,0);ctx.lineTo(2,-3.5);ctx.lineTo(-7,-3);ctx.lineTo(-9,0);ctx.lineTo(-7,3);ctx.lineTo(2,3.5);
+    ctx.closePath();ctx.fill();
+    // Fins
+    ctx.fillStyle='#8899aa';
+    ctx.beginPath();ctx.moveTo(-4,-3);ctx.lineTo(-9,-8);ctx.lineTo(-9,-3);ctx.closePath();ctx.fill();
+    ctx.beginPath();ctx.moveTo(-4,3);ctx.lineTo(-9,8);ctx.lineTo(-9,3);ctx.closePath();ctx.fill();
+    // Nose cone glow
+    const ng=ctx.createRadialGradient(10,0,0,10,0,4);
+    ng.addColorStop(0,'#ffffff');ng.addColorStop(0.4,'#ff8833');ng.addColorStop(1,'rgba(255,60,0,0)');
+    ctx.fillStyle=ng;ctx.beginPath();ctx.arc(10,0,4,0,Math.PI*2);ctx.fill();
     ctx.restore();
   }
 }
@@ -7369,19 +7508,26 @@ function drawMissiles(){
 function updateMissileLock(dt){
   if(!player||player.dead){missileLockTarget=null;return;}
   if(!player.missiles||player.missiles<=0){missileLockTarget=null;return;}
+  const hadLock=!!missileLockTarget;
   missileLockTimer+=dt;
   // Find best lockable target
   let best=null,bestDist=CFG.MISSILE_LOCK_RANGE;
   const candidates=[...npcs.filter(n=>!n.dead&&!n.isPolice&&!n.isTradeShip),...remotePlayers.filter(rp=>!rp.dead)];
+  let nearbyEnemyInCone=false;
   for(const c of candidates){
     const d=dist(player.x,player.y,c.x,c.y);
     if(d>CFG.MISSILE_LOCK_RANGE)continue;
     const angleToTarget=Math.atan2(c.y-player.y,c.x-player.x);
     const angleDiff2=Math.abs(normalizeAngle(angleToTarget-player.angle));
     if(angleDiff2>CFG.MISSILE_LOCK_ANGLE)continue;
+    nearbyEnemyInCone=true;
     if(d<bestDist){bestDist=d;best=c;}
   }
   missileLockTarget=best;
+  if(!hadLock&&missileLockTarget)SFX.missileLockAcquired();
+  if(!missileLockTarget&&nearbyEnemyInCone){
+    if(Math.floor(missileLockTimer/0.4)>Math.floor((missileLockTimer-dt)/0.4))SFX.missileLockBeep();
+  }
 }
 
 function drawMissileLock(){
@@ -7398,9 +7544,22 @@ function drawMissileLock(){
   const sz2=18;
   ctx.beginPath();ctx.moveTo(0,-sz2);ctx.lineTo(sz2,0);ctx.lineTo(0,sz2);ctx.lineTo(-sz2,0);ctx.closePath();ctx.stroke();
   ctx.restore();
+  // Pulsing ring
+  const pulsePhase=(Date.now()%600)/600;
+  const ringR=sz2+10+Math.sin(pulsePhase*Math.PI*2)*4;
+  ctx.beginPath();ctx.arc(s.x,s.y,ringR,0,Math.PI*2);
+  ctx.strokeStyle=`rgba(255,60,30,${0.4+0.4*Math.sin(pulsePhase*Math.PI*2)})`;
+  ctx.lineWidth=1.5;ctx.stroke();
   // LOCKED text
   ctx.fillStyle=`rgba(255,50,30,${pulse})`;ctx.font='bold 9px Courier New';ctx.textAlign='center';
   ctx.fillText('LOCKED',s.x,s.y-25);
+  // Leading indicator dot
+  if(t2.vx!==undefined){
+    const iTTI=dist(player.x,player.y,t2.x,t2.y)/CFG.MISSILE_SPEED;
+    const predS=worldToScreen(t2.x+t2.vx*iTTI,t2.y+t2.vy*iTTI);
+    ctx.beginPath();ctx.arc(predS.x,predS.y,3,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,100,40,0.7)';ctx.fill();
+  }
 }
 
 function fireMissile(){
@@ -7411,7 +7570,9 @@ function fireMissile(){
   missiles.push(m);
   player.missiles--;
   missileCD=CFG.MISSILE_CD;
-  SFX.shoot();shake(2);
+  emitBurst(player.x+Math.cos(player.angle)*20,player.y+Math.sin(player.angle)*20,8,120,'#ffcc44',2,0.2,12);
+  shake(2);
+  SFX.missileLaunch();
   updateMissileHUD();
 }
 
@@ -9949,7 +10110,7 @@ function gameLoop(timestamp){
     }
     if(gameState==='dead'&&player)player.respawnTimer-=dt;
     
-    updateNPCs(dt);updateDenPirates(dt);updateDrones(dt);updatePolice(dt);updateTradeShip(dt);updateStationRespawns();updateProjectiles(dt);updateMissiles(dt);updateMissileLock(dt);updateLeviathan(dt);updateRemotePlayers(dt);updateRemoteProjectiles(dt);
+    updateNPCs(dt);updateDenPirates(dt);updateDrones(dt);updatePolice(dt);updateTradeShip(dt);updateStationRespawns();updateProjectiles(dt);updateMissiles(dt);updateShockwaves(dt);updateMissileLock(dt);updateLeviathan(dt);updateRemotePlayers(dt);updateRemoteProjectiles(dt);
     // Decay minimap events
     for(let i=minimapEvents.length-1;i>=0;i--){minimapEvents[i].t+=dt;if(minimapEvents[i].t>=minimapEvents[i].maxT)minimapEvents.splice(i,1);}updateLoot(dt);
     updateAggressorDecay(dt);updateAsteroidRespawn(dt);updateParticles(dt);updateTrails(dt);updateCamera(dt);
@@ -10001,7 +10162,7 @@ function gameLoop(timestamp){
         ctx.fillText('◆ WING',ws.x,ws.y-(SHIPS[w.ship].hull/30+12)-18);
       });
     }
-    drawLeviathan();drawMissiles();drawMissileLock();
+    drawLeviathan();drawMissiles();drawShockwaves();drawMissileLock();
     drawRemotePlayers();
     if(player&&!player.dead)drawShipEntity(player);
     projectiles.forEach(p=>drawProjectileEntity(p));
@@ -10155,6 +10316,7 @@ function startGame(name,color,saved){
   // Asteroids are server-authoritative in multiplayer. In offline mode, spawn locally.
   if(!CFG.STDB_ENABLED||window.__STDB_UNAVAILABLE){spawnAsteroids();}
   gameState='playing';
+  missiles=[];shockwaves=[];
   document.getElementById('startScreen').style.display='none';
   document.getElementById('hud').style.display='block';
   if(isMobile||mobileFallbackActivated)document.getElementById('mobileControls').style.display='block';
