@@ -7457,6 +7457,7 @@ function drawMissiles(){
   for(const m of missiles){
     const s=worldToScreen(m.x,m.y);
     if(!inView(m.x,m.y,80))continue;
+    if(!isFinite(m.x)||!isFinite(m.y)||!isFinite(m.angle))continue;
     // Trail particles
     for(const p of m.trailParticles){
       const ps=worldToScreen(p.x,p.y);
