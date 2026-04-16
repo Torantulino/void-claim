@@ -736,7 +736,8 @@ const SFX={
     nF.frequency.linearRampToValueAtTime(40,ac.currentTime+dur);
     nG.gain.setValueAtTime(.06,ac.currentTime);
     nG.gain.linearRampToValueAtTime(0,ac.currentTime+dur);
-    ns.buffer=nBuf;ns.connect(nF);nF.connect(nG);nG.connect(out);ns.start();  }),
+    ns.buffer=nBuf;ns.connect(nF);nF.connect(nG);nG.connect(out);ns.start();
+  }),
   missileLaunch:()=>{duckMusicForSFX();snd((ac,out)=>{
     const t=ac.currentTime;
     // Ignition thump
@@ -7311,7 +7312,7 @@ function updateMissiles(dt){
       tp.vx*=0.85;tp.vy*=0.85;
     }
     // Wobble during arm phase
-    if(!m.armed)m.angle+=Math.sin(Date.now()*0.04+m.id.charCodeAt(0))*0.03;
+    if(!m.armed)m.angle+=Math.sin(Date.now()*0.04+String(m.id).charCodeAt(0))*0.03;
     // Minimap trail
     if(Math.random()<0.15)minimapEvents.push({x:m.x,y:m.y,color:'rgba(255,100,30,0.4)',t:0,maxT:0.4,type:'shot'});
     // Pass-by doppler FX
@@ -7556,9 +7557,11 @@ function drawMissileLock(){
   // Leading indicator dot
   if(t2.vx!==undefined){
     const iTTI=dist(player.x,player.y,t2.x,t2.y)/CFG.MISSILE_SPEED;
-    const predS=worldToScreen(t2.x+t2.vx*iTTI,t2.y+t2.vy*iTTI);
-    ctx.beginPath();ctx.arc(predS.x,predS.y,3,0,Math.PI*2);
-    ctx.fillStyle='rgba(255,100,40,0.7)';ctx.fill();
+    if(iTTI>0&&iTTI<10){
+      const predS=worldToScreen(t2.x+t2.vx*iTTI,t2.y+t2.vy*iTTI);
+      ctx.beginPath();ctx.arc(predS.x,predS.y,3,0,Math.PI*2);
+      ctx.fillStyle='rgba(255,100,40,0.7)';ctx.fill();
+    }
   }
 }
 
