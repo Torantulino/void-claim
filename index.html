@@ -7475,6 +7475,7 @@ function drawMissiles(){
     // Engine glow halo at tail
     const glowS=worldToScreen(m.x-Math.cos(m.angle)*8,m.y-Math.sin(m.angle)*8);
     const glowR=14*camera.scale;
+    if(!isFinite(glowS.x)||!isFinite(glowS.y)||!isFinite(glowR)||glowR<=0)continue;
     const gg=ctx.createRadialGradient(glowS.x,glowS.y,0,glowS.x,glowS.y,glowR);
     gg.addColorStop(0,'rgba(255,160,30,0.9)');
     gg.addColorStop(0.4,'rgba(255,80,0,0.4)');
