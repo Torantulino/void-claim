@@ -285,6 +285,7 @@ const CFG={
   MINER_JETTISON_CHANCE: 0.65,    // Probability of jettisoning when threshold is hit
   MINER_JETTISON_PCT_MIN: 0.3,    // Min percentage of cargo dropped
   MINER_JETTISON_PCT_MAX: 0.6,    // Max percentage of cargo dropped
+  MINER_JETTISON_COLLECT_COOLDOWN: 3.0, // Seconds before dropper can recollect own cargo
   MINER_POWER_FIGHT_RATIO: 1.5,   // Power ratio above which miners always fight
   MINER_POWER_FLEE_RATIO: 0.7,    // Power ratio below which miners always flee
   PIRATE_POWER_FIGHT_RATIO: 0.6,  // Pirates fight unless attacker is ~67%+ stronger
@@ -4397,7 +4398,9 @@ function npcAct(n,dt){
               vx: Math.cos(behindAngle) * 80 + rand(-30, 30),
               vy: Math.sin(behindAngle) * 80 + rand(-30, 30),
               items, ttl: CFG.LOOT_TTL,
-              pulse: 0
+              pulse: 0,
+              droppedById: n.id,
+              collectImmunityUntil: performance.now() / 1000 + CFG.MINER_JETTISON_COLLECT_COOLDOWN
             });
             addFloatingText(n.x, n.y, '📦 CARGO DUMPED!', '#ffcc00', 1.5);
           }
@@ -7209,6 +7212,8 @@ function updateLoot(dt){
     // NPCs always auto-collect loot within range (same as player)
     npcs.forEach(n=>{
       if(n.dead||n.isPolice)return; // Police don't collect loot
+      // Don't let the dropper recollect their own jettisoned cargo during cooldown
+      if(l.droppedById&&l.droppedById===n.id&&(performance.now()/1000)<(l.collectImmunityUntil||0))return;
       if(dist(n.x,n.y,l.x,l.y)<CFG.COLLECT_RANGE*3){ // 3x collection radius for NPCs
         const mc=maxCargo(n);
         l.items.forEach(item=>{
