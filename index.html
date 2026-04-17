@@ -7027,13 +7027,18 @@ function applyDamage(target,dmg,attackerId,playFX){
   if(target.dead)return;
   if(playFX===undefined)playFX=target.isPlayer||distToPlayer(target.x,target.y)<FX_RANGE;
   const hadShield=target.shield>0;
+  const totalDmg=dmg;   // capture original for punchScale
+  let shieldAbsorb=0;    // hoisted so floating-text block can read it
+
   if(target.shield>0){
-    target.shield=Math.max(0,target.shield-dmg);dmg=0;
+    shieldAbsorb=Math.min(target.shield,dmg);
+    dmg-=shieldAbsorb;
+    target.shield=Math.max(0,target.shield-shieldAbsorb);
     if(playFX)emitBurst(target.x,target.y,4,50,'rgba(100,180,255,.8)',2,.2,6);
     if(playFX)SFX.shieldHit();
     if(target.isPlayer){haptic(15);flashScreen(80,150,255,0.15,6);}
     // ── Shield break event: dramatic shatter when shields hit zero ──
-    if(hadShield&&target.shield<=0){
+    if(target.shield<=0){
       for(let i=0;i<20;i++){
         const a=(i/20)*Math.PI*2,spd=150+rand(0,100);
         spawnParticle(target.x,target.y,Math.cos(a)*spd,Math.sin(a)*spd,'rgba(100,180,255,.9)',rand(2,4),rand(.3,.6),12);
@@ -7044,21 +7049,35 @@ function applyDamage(target,dmg,attackerId,playFX){
       else if(playFX)shake(3);
     }
   }
+
   target.hp-=dmg;
   target.lastDamageTime=performance.now();
-  target.lastAttacker = attackerId; // NEW: track who attacked (was missing for miners)
-  target.lastAttackTime = performance.now(); // NEW: track when attack happened
+  target.lastAttacker=attackerId;
+  target.lastAttackTime=performance.now();
+  triggerThreatResponse(target,attackerId);
 
-  // Two-hit gate: only trigger fight-or-flight on the second hit from the same attacker within 15s
-  triggerThreatResponse(target, attackerId);
-  // ── Damage numbers with punch scale ──
-  if(playFX&&dmg>0){
-    const punchScale=1.2+Math.min(dmg/30,1.5);
-    const ox=rand(-8,8),oy=rand(-12,-4);
-    addFloatingText(target.x+ox,target.y+oy,'-'+Math.round(dmg),hadShield?'#66bbff':'#ff4444',punchScale);
+  // ── Damage numbers: split blue/red on bleed-through, single number otherwise ──
+  if(playFX){
+    const punchScale=1.2+Math.min(totalDmg/30,1.5);
+    if(shieldAbsorb>0&&dmg>0){
+      // Bleed-through: blue shield number above, red hull number below
+      addFloatingText(target.x+rand(-8,8),target.y-16,'-'+Math.round(shieldAbsorb),'#66bbff',1.0);
+      addFloatingText(target.x+rand(-8,8),target.y-4,'-'+Math.round(dmg),'#ff4444',punchScale);
+    }else if(shieldAbsorb>0){
+      // Pure shield hit
+      addFloatingText(target.x+rand(-8,8),target.y+rand(-12,-4),'-'+Math.round(shieldAbsorb),'#66bbff',punchScale);
+    }else if(dmg>0){
+      // Pure hull hit — shields already down
+      addFloatingText(target.x+rand(-8,8),target.y+rand(-12,-4),'-'+Math.round(dmg),'#ff4444',punchScale);
+    }
   }
+
+  // SFX.hit() only when shield was already down — avoids triple-sound stack on bleed-through
   if(playFX&&!hadShield&&!target.isPlayer)SFX.hit();
-  if(target.isPlayer&&target.hp>0){haptic(25);flashScreen(255,40,40,0.2+(target.hp/target.maxHp<0.3?0.15:0),5);}
+  if(target.isPlayer&&target.hp>0){
+    if(shieldAbsorb===0)haptic(25);         // skip hull haptic if shield FX already fired this call
+    if(dmg>0)flashScreen(255,40,40,0.2+(target.hp/target.maxHp<0.3?0.15:0),5); // only on hull damage
+  }
   if(target.hp<=0)killEntity(target,attackerId);
 }
 
