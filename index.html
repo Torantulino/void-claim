@@ -3800,6 +3800,14 @@ function npcThink(n){
       return;
     }
 
+    // Never fight the trade ship — always flee (matches miner's police override pattern)
+    if (attacker.isTradeShip) {
+      n.fleeHP = 1.0;
+      n.state = 'idle';
+      addFloatingText(n.x, n.y, '✖ FLEE!', '#ffcc00', 1.3);
+      return;
+    }
+
     const myPower = calcPower(n);
     const hostilePower = calcPower(attacker);
     const ratio = hostilePower > 0 ? myPower / hostilePower : 999;
@@ -4747,6 +4755,7 @@ function broadcastDistress(sender) {
 
       const attacker = findEntityById(attackerId);
       if (!attacker || attacker.dead) return;
+      if (attacker.isTradeShip) return; // Never rally miners to fight the trade ship
 
       // Responder runs own threat assessment
       const myPower = calcPower(otherRef);
@@ -6888,6 +6897,7 @@ const TWO_HIT_WINDOW = 15000; // 15 seconds — two hits within this window trig
 
 function triggerThreatResponse(target, attackerId) {
   if (!target || !target.isNPC || target.dead) return;
+  if (attackerId === 'trade_ship') return; // Never retaliate against trade ship turrets
 
   const isMiner  = target.personality === 'miner';
   const isPirate = target.personality === 'pirate';
