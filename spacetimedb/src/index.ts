@@ -448,9 +448,10 @@ export const deal_damage = spacetimedb.reducer(
     let newShield = victim.shield;
     let newHp = victim.hp;
 
-    if (newShield > 0) {
-      newShield = Math.max(0, newShield - dmg);
-      dmg = 0;
+    if (newShield > 0 && dmg > 0) {
+      const absorbed = Math.min(newShield, dmg);
+      newShield -= absorbed;
+      dmg -= absorbed;
     }
     newHp -= dmg;
 
@@ -1010,9 +1011,10 @@ export const damage_npc = spacetimedb.reducer(
     let newShield = npc.shield;
     let newHp = npc.hp;
 
-    if (newShield > 0) {
-      newShield = Math.max(0, newShield - dmg);
-      dmg = 0;
+    if (newShield > 0 && dmg > 0) {
+      const absorbed = Math.min(newShield, dmg);
+      newShield -= absorbed;
+      dmg -= absorbed;
     }
     newHp -= dmg;
 
@@ -1178,9 +1180,10 @@ export const damage_wingman = spacetimedb.reducer(
     let newShield = wm.shield;
     let newHp = wm.hp;
 
-    if (newShield > 0) {
-      newShield = Math.max(0, newShield - dmg);
-      dmg = 0;
+    if (newShield > 0 && dmg > 0) {
+      const absorbed = Math.min(newShield, dmg);
+      newShield -= absorbed;
+      dmg -= absorbed;
     }
     newHp -= dmg;
 
@@ -1284,9 +1287,10 @@ export const damage_station = spacetimedb.reducer(
     let newShield = station.shield;
     let newHp = station.hp;
 
-    if (newShield > 0) {
-      newShield = Math.max(0, newShield - dmg);
-      dmg = 0;
+    if (newShield > 0 && dmg > 0) {
+      const absorbed = Math.min(newShield, dmg);
+      newShield -= absorbed;
+      dmg -= absorbed;
     }
     newHp -= dmg;
 
