@@ -1217,7 +1217,7 @@ let isNpcHost=false;        // Are we the client running NPC AI? (set by npc_hos
 let localNpcsSpawned=false; // True once spawnAllNPCs() completes — guards against snapshot overwrite
 let npcHostCheckDone=false;  // Have we attempted to claim host?
 let npcSyncTimer=0;          // Timer for batching NPC state to server (10Hz)
-const NPC_SYNC_RATE=0.1;     // Send NPC state every 100ms
+const NPC_SYNC_RATE=0.2;     // Send NPC state every 200ms (5Hz — halved to cut SpacetimeDB energy; interpolation covers the gap)
 let npcHostRecheckTimer=5;   // Re-check host claim periodically
 let npcHostHeartbeatTimer=0; // Heartbeat timer for NPC host liveness
 const NPC_HOST_HEARTBEAT_RATE=2; // Send heartbeat every 2 seconds
@@ -2714,7 +2714,7 @@ function updateDrones(dt){
   if(stdbConn&&stdbConnected&&drones.length>0){
     wmSyncTimer-=dt;
     if(wmSyncTimer<=0){
-      wmSyncTimer=0.1; // 10Hz
+      wmSyncTimer=0.2; // 5Hz (halved to cut SpacetimeDB energy)
       syncDronesToServer();
     }
   }
@@ -9336,7 +9336,7 @@ function handlePlayerUpdate(oldP,newP){
   existing.startX=existing.x;existing.startY=existing.y;existing.startAngle=existing.angle;
   existing.targetX=newP.x;existing.targetY=newP.y;existing.targetAngle=newP.angle;
   existing.vx=newP.vx||0;existing.vy=newP.vy||0;
-  existing.interpStart=now;existing.interpDur=0.08;
+  existing.interpStart=now;existing.interpDur=0.1; // matches 10Hz player send rate
   // Update non-interpolated fields directly
   existing.name=newP.name;existing.ship=newP.ship;existing.color=newP.color;
   existing.hp=newP.hp;existing.maxHp=newP.maxHp;
@@ -10165,7 +10165,7 @@ function gameLoop(timestamp){
     updateMusicState();
     
     hudTimer-=dt;if(hudTimer<=0){updateHUD();updateChatFade();if(isMobile||mobileFallbackActivated)updateMobileHUD();hudTimer=.15;}
-    wsTimer-=dt;if(wsTimer<=0){sendState();wsTimer=.05;} // 20Hz net tick
+    wsTimer-=dt;if(wsTimer<=0){sendState();wsTimer=.1;} // 10Hz net tick (halved from 20Hz to cut SpacetimeDB energy; remote interp covers the gap)
     // Flush batched asteroid damage to server
     _asteroidDamageFlushTimer-=dt;if(_asteroidDamageFlushTimer<=0){flushAsteroidDamage();_asteroidDamageFlushTimer=ASTEROID_DAMAGE_FLUSH_RATE;}
     projPruneTimer-=dt;if(projPruneTimer<=0&&stdbConn&&stdbConnected){stdbConn.reducers.pruneProjectiles().catch(()=>{});projPruneTimer=2;}
